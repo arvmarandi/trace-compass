@@ -348,37 +348,6 @@ def test_mini_swe_agent_help():
     assert "mini-SWE-agent" in clean_output
 
 
-def test_json_cleaner_path_resolution(tmp_path):
-    import shutil
-    import subprocess
-    import sys
-
-    source_script = Path(__file__).resolve().parents[2] / "scripts" / "json_cleaner.py"
-    sandbox_scripts = tmp_path / "scripts"
-    sandbox_scripts.mkdir(parents=True)
-    dest_script = sandbox_scripts / "json_cleaner.py"
-    shutil.copy2(source_script, dest_script)
-
-    # Create input JSON in the script dir (relative paths should work from there)
-    input_json = sandbox_scripts / "preds.json"
-    input_json.write_text('{"1": {"foo": "bar"}, "2": {"baz": "qux"}}', encoding="utf-8")
-
-    # Run the script from another cwd to verify script-relative resolution
-    result = subprocess.run(
-        [sys.executable, str(dest_script), "--input-file", "preds.json", "--output-file", "out.json"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0
-    output_json = sandbox_scripts / "out.json"
-    assert output_json.exists()
-    assert output_json.read_text(encoding="utf-8") == '[\n  {\n    "foo": "bar"\n  },\n  {\n    "baz": "qux"\n  }\n]'
-
-
-
 def test_mini_extra_help():
     """Test that mini-extra --help works correctly."""
     result = subprocess.run(

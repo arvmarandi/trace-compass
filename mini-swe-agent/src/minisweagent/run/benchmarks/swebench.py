@@ -206,13 +206,20 @@ def process_instance(
         
         # files with tests in them
         test_files = find_test_files(env)
+        llm_test_files = None
 
-        # prompt llm to retrieve relevant file
-        llm_test_files = agent.run_test_func_loc1(task, test_files)
+        # validation loop
+        for i in range(5): # 5 iterations, at most 
+            # prompt llm to retrieve relevant file
+            llm_test_files = agent.run_test_func_loc1(task, test_files)
 
-        # validate the paths
-        llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-        llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
+            # validate the paths
+            llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+            llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
+
+            if (len(test_files) >= 7 and len(llm_test_files) == 7) or len(test_files) < 7: # make sure that K files are produced
+                break
+
         validated_files = []
         for file_path in llm_test_files:
             val_path = find_closest_paths(file_path, test_files)
@@ -226,8 +233,12 @@ def process_instance(
         # prompt llmn to retrieve relevant functions
         test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
+
+        exit_status = ""
+        result = test_function_paths
+
         # validate the paths
-        test_function_paths = test_function_paths.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+        # test_function_paths = test_function_paths.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
 
 
         # need to do something similar for the paths to functions. keep in mind the ::
@@ -242,16 +253,16 @@ def process_instance(
         # prog_bodies = get_function_bodies(env, prog_function_paths)
 
 
-        test_bodies = get_function_bodies(env, test_function_paths)
+        # test_bodies = get_function_bodies(env, test_function_paths)
 
         # TESTING
         # exit_status = test_function_paths
         # result = test_bodies
 
         # # info = agent.run(task, prog_bodies + test_bodies)
-        info = agent.run(task, test_bodies)
-        exit_status = info.get("exit_status")
-        result = info.get("submission")
+        # info = agent.run(task, test_bodies)
+        # exit_status = info.get("exit_status")
+        # result = info.get("submission")
 
 
 
@@ -419,45 +430,34 @@ def find_test_files(env: Environment) -> list[str]:
 
 
 def find_test_functions(env: Environment, test_files: list[str]) -> list[str]:
-    """Find test functions and classes in the given test files.
-
-    Searches for:
-    1. Test functions (def test_*)
-
-    Args:
-        env: The environment to execute commands in
-        test_files: List of test file paths relative to repository root
-
-    Returns:
-        List of test function/class names in format "file.py::function_name"
-    """
     test_functions = []
-
     for file_path in test_files:
         if not file_path.strip():
             continue
-
+        
+        file_path = file_path.lstrip('/')
         full_path = f"/testbed/{file_path}"
-
+        
         try:
-            # Find test functions
-            out = env.execute({"command": f"grep -n '^def test_' '{full_path}' 2>/dev/null || true"})
+            out = env.execute({"command": f"grep -n 'def test_' '{full_path}' 2>/dev/null || true"})
             if out["returncode"] == 0 and out["output"].strip():
-                for line in out["output"].strip().split("\n"):
-                    if line.strip():
-                        # Extract function name from "line_num:def test_function_name"
-                        parts = line.split(":", 1)
-                        if len(parts) >= 2:
-                            func_def = parts[1].strip()
-                            # Extract function name from "def test_function_name("
-                            if func_def.startswith("def ") and "(" in func_def:
-                                func_name = func_def[4 : func_def.index("(")].strip()
-                                test_functions.append(f"{file_path}::{func_name}")
-
-        except Exception:
-            # Skip files that can't be processed
+                current_class = None
+                # get class context too
+                full_out = env.execute({"command": f"grep -n 'class \|def test_' '{full_path}' 2>/dev/null || true"})
+                for line in full_out["output"].strip().split("\n"):
+                    content = line.split(":", 1)[-1] if ":" in line else line
+                    if "class " in content and not content.strip().startswith("def"):
+                        current_class = content.strip().split("class ")[1].split("(")[0].strip()
+                    elif "def test_" in content:
+                        func_name = content.strip()[4:content.strip().index("(")].strip()
+                        if current_class:
+                            test_functions.append(f"{file_path}::{current_class}::{func_name}")
+                        else:
+                            test_functions.append(f"{file_path}::{func_name}")
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
             continue
-
+    
     return sorted(test_functions)
 
 
