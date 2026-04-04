@@ -32,6 +32,8 @@ class AgentConfig(BaseModel):
     """Template for helper function to choose test files from list. (Optional)"""
     test_func_loc2: str | None = None
     """Template for helper function to choose test files from list. (Optional)"""
+    initial_planner: str | None = None
+    """Template for helper function to choose test files from list. (Optional)"""
     step_limit: int = 0
     """Maximum number of steps the agent can take."""
     cost_limit: float = 3.0
@@ -227,6 +229,38 @@ class DefaultAgent:
         except Exception as e:
             self.logger.error(f"Echo hack failed: {e}")
             return ""
+        
+    def initial_planner(self, task: str, list_test_file_function: list[str], list_focal_file_function: list[str]) -> str:
+        if not self.config.initial_planner:
+            raise ValueError("test_func_loc1 template is not configured")
+
+        self.extra_template_vars |= {
+            "task": task,
+            "list_test_file_function": "\n".join(list_test_file_function),
+            "list_focal_file_function": "\n".join(list_focal_file_function),
+        }
+        self.messages = []
+        self.add_messages(
+            self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
+            self.model.format_message(role="user", content=self._render_template(self.config.initial_planner)),
+        )
+
+        try:
+            # This will now succeed because the model IS providing a tool call
+            message = self.query()  # Use the standard agent query()
+
+            # Extract the command from the tool call
+            actions = message.get("extra", {}).get("actions", [])
+            if actions:
+                # This is your file list!
+                raw_echo_command = actions[0].get("command", "")
+                # Clean out the 'echo' and quotes if the model included them
+                return raw_echo_command.replace("echo ", "").strip("'\"")
+
+            return message.get("content", "")  # Fallback
+        except Exception as e:
+            self.logger.error(f"Echo hack failed: {e}")
+            return ""
 
     def run(self, task: str = "", sigs: str = "", **kwargs) -> dict:
         """Run step() until agent is finished. Returns dictionary with exit_status, submission keys."""
@@ -236,7 +270,8 @@ class DefaultAgent:
             self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
             self.model.format_message(role="user", content=self._render_template(self.config.instance_template)),
         )
-        while True:
+        steps = 0
+        while True or steps > 250:
             try:
                 self.step()
             except InterruptAgentFlow as e:
@@ -248,6 +283,7 @@ class DefaultAgent:
                 self.save(self.config.output_path)
             if self.messages[-1].get("role") == "exit":
                 break
+            steps += 1
         return self.messages[-1].get("extra", {})
 
     def step(self) -> list[dict]:
