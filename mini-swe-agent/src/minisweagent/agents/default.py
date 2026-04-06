@@ -32,8 +32,6 @@ class AgentConfig(BaseModel):
     """Template for helper function to choose test files from list. (Optional)"""
     test_func_loc2: str | None = None
     """Template for helper function to choose test files from list. (Optional)"""
-    initial_planner: str | None = None
-    """Template for helper function to choose test files from list. (Optional)"""
     step_limit: int = 0
     """Maximum number of steps the agent can take."""
     cost_limit: float = 3.0
@@ -87,11 +85,6 @@ class DefaultAgent:
         )
 
     def run_func_loc1(self, task: str, list_files: list[str]) -> str:
-        """Run the run_func_loc1 template with task and list of files.
-
-        Returns only the text response from the model, ignoring any tool calls.
-        This method bypasses tool call validation since we don't expect any actions.
-        """
         if not self.config.func_loc1:
             raise ValueError("func_loc1 template is not configured")
 
@@ -106,28 +99,20 @@ class DefaultAgent:
         )
 
         try:
-            # This will now succeed because the model IS providing a tool call
-            message = self.query()  # Use the standard agent query()
+            # mini-swe-agent must provide a tool call, so we use an echo command
+            message = self.query()
 
-            # Extract the command from the tool call
             actions = message.get("extra", {}).get("actions", [])
             if actions:
-                # This is your file list!
-                raw_echo_command = actions[0].get("command", "")
-                # Clean out the 'echo' and quotes if the model included them
-                return raw_echo_command.replace("echo ", "").strip("'\"")
+                raw_echo_command = actions[0].get("command", "") # the list
+                return raw_echo_command.replace("echo ", "").strip("'\"") # filter out the "echo" command and slashes
 
-            return message.get("content", "")  # Fallback
+            return message.get("content", "")
         except Exception as e:
             self.logger.error(f"Echo hack failed: {e}")
             return ""
         
     def run_func_loc2(self, task: str, list_file_function: list[str]) -> str:
-        """Run the func_loc2 template with task and list of files.
-
-        Returns only the text response from the model, ignoring any tool calls.
-        This method bypasses tool call validation since we don't expect any actions.
-        """
         if not self.config.func_loc2:
             raise ValueError("test_func_loc1 template is not configured")
 
@@ -142,28 +127,20 @@ class DefaultAgent:
         )
 
         try:
-            # This will now succeed because the model IS providing a tool call
-            message = self.query()  # Use the standard agent query()
+            # mini-swe-agent must provide a tool call, so we use an echo command
+            message = self.query()  
 
-            # Extract the command from the tool call
             actions = message.get("extra", {}).get("actions", [])
             if actions:
-                # This is your file list!
                 raw_echo_command = actions[0].get("command", "")
-                # Clean out the 'echo' and quotes if the model included them
                 return raw_echo_command.replace("echo ", "").strip("'\"")
 
-            return message.get("content", "")  # Fallback
+            return message.get("content", "")
         except Exception as e:
             self.logger.error(f"Echo hack failed: {e}")
             return ""
 
     def run_test_func_loc1(self, task: str, list_files: list[str]) -> str:
-        """Run the test_func_loc1 template with task and list of files.
-
-        Returns only the text response from the model, ignoring any tool calls.
-        This method bypasses tool call validation since we don't expect any actions.
-        """
         if not self.config.test_func_loc1:
             raise ValueError("test_func_loc1 template is not configured")
 
@@ -178,28 +155,19 @@ class DefaultAgent:
         )
 
         try:
-            # This will now succeed because the model IS providing a tool call
-            message = self.query()  # Use the standard agent query()
+            message = self.query()
 
-            # Extract the command from the tool call
             actions = message.get("extra", {}).get("actions", [])
             if actions:
-                # This is your file list!
                 raw_echo_command = actions[0].get("command", "")
-                # Clean out the 'echo' and quotes if the model included them
                 return raw_echo_command.replace("echo ", "").strip("'\"")
 
-            return message.get("content", "")  # Fallback
+            return message.get("content", "")
         except Exception as e:
             self.logger.error(f"Echo hack failed: {e}")
             return ""
         
     def run_test_func_loc2(self, task: str, list_file_function: list[str]) -> str:
-        """Run the test_func_loc2 template with task and list of files.
-
-        Returns only the text response from the model, ignoring any tool calls.
-        This method bypasses tool call validation since we don't expect any actions.
-        """
         if not self.config.test_func_loc2:
             raise ValueError("test_func_loc1 template is not configured")
 
@@ -214,50 +182,14 @@ class DefaultAgent:
         )
 
         try:
-            # This will now succeed because the model IS providing a tool call
-            message = self.query()  # Use the standard agent query()
+            message = self.query()
 
-            # Extract the command from the tool call
             actions = message.get("extra", {}).get("actions", [])
             if actions:
-                # This is your file list!
                 raw_echo_command = actions[0].get("command", "")
-                # Clean out the 'echo' and quotes if the model included them
                 return raw_echo_command.replace("echo ", "").strip("'\"")
 
-            return message.get("content", "")  # Fallback
-        except Exception as e:
-            self.logger.error(f"Echo hack failed: {e}")
-            return ""
-        
-    def initial_planner(self, task: str, list_test_file_function: list[str], list_focal_file_function: list[str]) -> str:
-        if not self.config.initial_planner:
-            raise ValueError("test_func_loc1 template is not configured")
-
-        self.extra_template_vars |= {
-            "task": task,
-            "list_test_file_function": "\n".join(list_test_file_function),
-            "list_focal_file_function": "\n".join(list_focal_file_function),
-        }
-        self.messages = []
-        self.add_messages(
-            self.model.format_message(role="system", content=self._render_template(self.config.system_template)),
-            self.model.format_message(role="user", content=self._render_template(self.config.initial_planner)),
-        )
-
-        try:
-            # This will now succeed because the model IS providing a tool call
-            message = self.query()  # Use the standard agent query()
-
-            # Extract the command from the tool call
-            actions = message.get("extra", {}).get("actions", [])
-            if actions:
-                # This is your file list!
-                raw_echo_command = actions[0].get("command", "")
-                # Clean out the 'echo' and quotes if the model included them
-                return raw_echo_command.replace("echo ", "").strip("'\"")
-
-            return message.get("content", "")  # Fallback
+            return message.get("content", "")
         except Exception as e:
             self.logger.error(f"Echo hack failed: {e}")
             return ""

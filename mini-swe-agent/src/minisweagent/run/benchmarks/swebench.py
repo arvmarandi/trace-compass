@@ -234,12 +234,6 @@ def process_instance(
         exit_status = info.get("exit_status")
         result = info.get("submission")
 
-
-        # PART 4: Run tests
-        
-
-
-
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
         exit_status, result = type(e).__name__, ""
