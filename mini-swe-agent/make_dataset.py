@@ -69,7 +69,7 @@ def process_all_trajectories(base_dir):
                         parsed_stack = parse_call_stack(raw_output)
                         
                         if is_valid_bug_trace(parsed_stack, raw_output):
-                            # The core of grouping! Push the data into the corresponding instance_id room
+                            # Push the data into the corresponding instance_id room
                             grouped_data[instance_id].append({
                                 "call_stack": parsed_stack,
                                 "raw_error": raw_output
