@@ -226,27 +226,13 @@ def process_instance(
         # prompt llmn to retrieve relevant functions
         test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
-        # PART 3: ACTION PLANNER
+        # PART 3: Test Generation
         prog_bodies = get_function_bodies(env, prog_function_paths)
         test_bodies = get_function_bodies(env, test_function_paths)
-
-        # should probably implement the focal function part as well
-        # the planner will always have a selection between focal functions and test functions. It doesn't need to choose one or the other
-
 
         info = agent.run(task, prog_bodies + test_bodies)
         exit_status = info.get("exit_status")
         result = info.get("submission")
-
-
-
-
-        # initial_plan = agent.initial_planner(task, test_bodies, prog_bodies)
-
-        # exit_status = ""
-        # result = initial_plan
-
-        # initial_plan= initial_plan.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
 
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
