@@ -167,43 +167,37 @@ def process_instance(
             **config.get("agent", {}),
         )
 
+
         # PART 1: Focal Function Localization
+        prog_files = find_program_files(env)
+        llm_prog_files = None # prompt llm to retrieve relevant files 
 
-        # files with programs in them
-        # prog_files = find_program_files(env)
+        # validation loop
+        for i in range(5): # 5 iterations, at most 
+            # prompt llm to retrieve relevant file
+            llm_prog_files = agent.run_func_loc1(task, prog_files)
 
-        # # prompt llm to retrieve relevant files 
-        # llm_prog_files = agent.run_func_loc1(task, prog_files)   
+            # validate the paths
+            llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+            llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
 
-        # # validate the paths
-        # llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-        # llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
-        # validated_prog_files = []
-        # for file_path in llm_prog_files:
-        #     val_path = find_closest_paths(file_path, prog_files)
-        #     if val_path:
-        #         validated_prog_files.append(val_path)
+            if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
+                break
 
-        # # find all the functions in the selected files
-        # prog_functions = find_functions(env, validated_prog_files)
+        validated_prog_files = []
+        for file_path in llm_prog_files:
+            val_path = find_closest_paths(file_path, prog_files)
+            if val_path:
+                validated_prog_files.append(val_path)
 
-        # # prompt llm to retrieve relevant functions
-        # prog_function_paths = agent.run_func_loc2(task, prog_functions) 
-         
-        # # validate the paths
-        # prog_function_paths = prog_function_paths.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-        # prog_function_paths = [line.strip() for line in prog_function_paths.split('\n') if line.strip()]
+        # find all the functions in the selected files
+        prog_functions = find_functions(env, validated_prog_files)
 
-        # use find_closest_paths
-
-        # sigs = get_function_bodies(env, prog_function_paths)
-
-        # exit_status = ""
-        # result = sigs
-
+        # prompt llmn to retrieve relevant functions
+        prog_function_paths = agent.run_func_loc2(task, prog_functions) 
+        
 
         # PART 2: Test Function Localization
-        
         # files with tests in them
         test_files = find_test_files(env)
         llm_test_files = None
@@ -217,7 +211,7 @@ def process_instance(
             llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
             llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
 
-            if (len(test_files) >= 7 and len(llm_test_files) == 7) or len(test_files) < 7: # make sure that K files are produced
+            if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
                 break
 
         validated_files = []
@@ -226,74 +220,20 @@ def process_instance(
             if val_path:
                 validated_files.append(val_path)
 
-
         # find all the functions in the selected files
         test_functions = find_test_functions(env, validated_files)
 
         # prompt llmn to retrieve relevant functions
         test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
+        # PART 3: Test Generation
+        prog_bodies = get_function_bodies(env, prog_function_paths)
+        test_bodies = get_function_bodies(env, test_function_paths)
 
-        exit_status = ""
-        result = test_function_paths
+        info = agent.run(task, prog_bodies + test_bodies)
+        exit_status = info.get("exit_status")
+        result = info.get("submission")
 
-        # validate the paths
-        # test_function_paths = test_function_paths.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-
-
-        # need to do something similar for the paths to functions. keep in mind the ::
-        # validated_files = []
-        # for file_path in llm_test_files:
-        #     val_path = find_closest_paths(file_path, prog_files)
-        #     if val_path:
-        #         validated_files.append(val_path)
-
-
-        # get the function bodies and pass them into the test generation workflow   
-        # prog_bodies = get_function_bodies(env, prog_function_paths)
-
-
-        # test_bodies = get_function_bodies(env, test_function_paths)
-
-        # TESTING
-        # exit_status = test_function_paths
-        # result = test_bodies
-
-        # # info = agent.run(task, prog_bodies + test_bodies)
-        # info = agent.run(task, test_bodies)
-        # exit_status = info.get("exit_status")
-        # result = info.get("submission")
-
-
-
-        
-
-
-
-
-
-        # # this is where you'll add the localization preprocessing
-        # files = find_test_files(env)
-
-        # llm_files = agent.run_test_func_loc1(task, files)
-        # # validate the files produced by the LLM using the previous list
-        # llm_files = [f.strip() for f in llm_files.split("\n") if f.strip()]
-        # validated_files = [f for f in llm_files if f in files]
-
-        # # find test functions from test files
-        # test_functions = find_test_functions(env, validated_files)
-
-        # # read the lines and skeletonize the functions
-        # function_paths = agent.run_test_func_loc2(task, test_functions)
-        # # similar to finding the relevant files, try to one shot the functions. basically, have it find the functions in each file that have names relevant to the issue, and then only read those ones.
-        # sigs = get_function_bodies(env, function_paths)
-        
-
-
-        # # feed that preprocessed information into agent.run, in addition to task
-        # info = agent.run(task, sigs)
-        # exit_status = info.get("exit_status")
-        # result = info.get("submission")
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
         exit_status, result = type(e).__name__, ""
@@ -350,17 +290,6 @@ def select_instances(instances: list[dict], *, instance_ids: str = "") -> list[d
 
 # return all the program files in the repository
 def find_program_files(env: Environment, exclude_test_files: bool = False) -> list[str]:
-    """Find all program/source files in the repository.
-    
-    Searches for Python files that are source code (not test files).
-    
-    Args:
-        env: The environment to execute commands in
-        exclude_test_files: If True, exclude test files from results (default: True)
-    
-    Returns:
-        List of program file paths relative to the repository root.
-    """
     program_files = set()
     test_files = set()
     
@@ -377,11 +306,11 @@ def find_program_files(env: Environment, exclude_test_files: bool = False) -> li
     except Exception:
         pass
     
-    # Clean up and filter results
+    # clean up and filter results
     program_files = {f for f in program_files if f.strip() and f.startswith("/testbed/")}
     program_files = {f.replace("/testbed/", "") for f in program_files if f}
     
-    # Exclude test files if requested
+    # exclude test files if requested
     if exclude_test_files:
         program_files = program_files - test_files
     
@@ -462,60 +391,58 @@ def find_test_functions(env: Environment, test_files: list[str]) -> list[str]:
 
 
 def find_functions(env: Environment, file_paths: list[str]) -> list[str]:
-    """Find all function names in given files.
-
-    Args:
-        env: The environment to execute commands in
-        file_paths: List of file paths relative to repository root
-
-    Returns:
-        List of function names in format "file.py::function_name"
-    """
     functions = []
-
     for file_path in file_paths:
         if not file_path.strip():
             continue
-
+        file_path = file_path.lstrip('/')
         full_path = f"/testbed/{file_path}"
 
+        script = f"""import ast
+with open('{full_path}') as f:
+    source = f.read()
+tree = ast.parse(source)
+file_path = '{file_path}'
+for node in tree.body:
+    if isinstance(node, ast.ClassDef):
+        for item in node.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                print(f"{{file_path}}::{{node.name}}::{{item.name}}")
+    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        print(f"{{file_path}}::{{node.name}}")
+"""
         try:
-            out = env.execute({"command": f"grep -n '^def ' '{full_path}' 2>/dev/null || true"})
-            if out["returncode"] == 0 and out["output"].strip():
+            # Write script to temp file and execute
+            env.execute({"command": f"cat > /tmp/extract_funcs.py << 'PYEOF'\n{script}\nPYEOF"})
+            out = env.execute({"command": "python3 /tmp/extract_funcs.py"})
+            if out.get("output", "").strip():
                 for line in out["output"].strip().split("\n"):
-                    if not line.strip():
-                        continue
-                    parts = line.split(":", 1)
-                    if len(parts) < 2:
-                        continue
-                    def_line = parts[1].strip()
-                    if def_line.startswith("def ") and "(" in def_line:
-                        func_name = def_line[4:def_line.index("(")].strip()
-                        functions.append(f"{file_path}::{func_name}")
-        except Exception:
+                    if line.strip():
+                        functions.append(line.strip())
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
             continue
 
     return sorted(functions)
 
 def find_closest_paths(llm_guess, all_repo_files):
-    # 1. Pre-process: LLMs often use dots (astropy.modeling.core) instead of slashes
+    # 1. pre-process: LLMs often use dots (astropy.modeling.core) instead of slashes
     clean_guess = llm_guess.replace('.', '/').strip()
     if not clean_guess.endswith('.py') and '/' in clean_guess:
         clean_guess += '.py'
 
-    # 2. Exact Match Check (The "Happy Path")
+    # 2. happy path
     if clean_guess in all_repo_files:
         return clean_guess
 
-    # 3. Fuzzy Match (The "Surgical Search")
-    # cutoff=0.5 is a good balance for "close enough"
+    # 3. Levenshtein distance
+    # cutoff=0.6 is a good balance for "close enough"
     matches = difflib.get_close_matches(clean_guess, all_repo_files, n=1, cutoff=0.6)
     
     if matches:
         return matches[0]
 
-    # 4. Final Fallback: Filename Anchor
-    # If the path is wrong, but the filename is unique in the repo
+    # 4. if the path is wrong, but the filename is unique in the repo
     llm_filename = clean_guess.split('/')[-1]
     filename_matches = [f for f in all_repo_files if f.endswith(llm_filename)]
     
@@ -524,60 +451,61 @@ def find_closest_paths(llm_guess, all_repo_files):
 
     return None # Truly not found
 
-def get_function_bodies(env, signatures_raw):
-    # If the LLM returned a sentence instead of a list, this will be empty
-    signatures = [s.strip() for s in signatures_raw.split("\n") if "::" in s]
-    
-    if not signatures:
-        print(f"DEBUG: No valid signatures found in LLM response: {signatures_raw[:50]}...")
+def get_function_body(env, signature: str) -> str:
+    parts = signature.split("::")
+    if len(parts) == 2:
+        file_path, func_name = parts
+    elif len(parts) == 3:
+        file_path, _, func_name = parts
+    else:
         return ""
 
-    combined_context = ""
-    processed_files = set()
+    full_path = f"/testbed/{file_path}"
 
+    # find the line number of the function definition
+    find_obs = env.execute({
+        "command": f"grep -n 'def {func_name}' '{full_path}' 2>/dev/null | head -1"
+    })
+    line_str = find_obs.get("output", "").split(":")[0].strip()
+    if not line_str.isdigit():
+        return ""
+
+    start_line = int(line_str)
+
+    # extract the function body using the AST
+    extract_cmd = f"""python3 - <<'EOF'
+import ast, sys
+
+with open('{full_path}') as f:
+    source = f.read()
+
+tree = ast.parse(source)
+lines = source.splitlines()
+
+for node in ast.walk(tree):
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if node.name == '{func_name}' and node.lineno == {start_line}:
+            print('\\n'.join(lines[node.lineno - 1:node.end_lineno]))
+            sys.exit(0)
+EOF"""
+
+    body_obs = env.execute({"command": extract_cmd})
+    return body_obs.get("output", "").strip()
+
+
+def get_function_bodies(env, signatures_raw: str) -> str:
+    normalized = signatures_raw.replace('\\n', '\n').replace('\\\\n', '\n') # stupid LLM hallucinates backslashes for newline characters
+    signatures = [s.strip() for s in normalized.split("\n") if "::" in s]
+    if not signatures:
+        return ""
+
+    results = []
     for sig in signatures:
-        try:
-            parts = sig.split("::")
-            if len(parts) != 2: continue
-            file_path, func_name = parts
-            
-            # --- PROTECT AGAINST LLM FRAGMENTS ---
-            # If the LLM returned something like "The list::not provided"
-            if " " in file_path or not file_path.endswith('.py'):
-                continue
+        body = get_function_body(env, sig)
+        if body:
+            results.append(f"--- {sig} ---\n{body}")
 
-            # 1. Grab Imports
-            if file_path not in processed_files:
-                header_obs = env.execute({"command": f"ls {file_path} && head -n 50 {file_path}"})
-                if "No such file" not in header_obs.get("output", ""):
-                    combined_context += f"\nFILE: {file_path}\n{header_obs.get('output', '')}\n"
-                    processed_files.add(file_path)
-
-            # 2. Locate Function
-            find_cmd = f"grep -n -w 'def {func_name}' {file_path}"
-            find_obs = env.execute({"command": find_cmd})
-            output = find_obs.get("output", "").splitlines()
-            
-            # --- CRITICAL FIX: VALIDATE GREP OUTPUT ---
-            if not output or ":" not in output[0]:
-                continue
-            
-            line_str = output[0].split(":")[0]
-            if not line_str.isdigit():
-                continue
-                
-            start_line = int(line_str)
-
-            # 3. Extraction
-            fetch_cmd = f"sed -n '{start_line},{start_line + 100}p' {file_path}"
-            body_obs = env.execute({"command": fetch_cmd})
-            combined_context += f"\n--- CONTEXT: {sig} ---\n{body_obs.get('output', '')}\n"
-
-        except Exception as e:
-            print(f"Skipping malformed signature {sig}: {e}")
-            continue
-            
-    return combined_context
+    return "\n\n".join(results)
 
 # fmt: off
 @app.command(help=_HELP_TEXT)

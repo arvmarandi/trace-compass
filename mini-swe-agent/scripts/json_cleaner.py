@@ -1,7 +1,5 @@
 import json
 
-import os
-
 input_file = "../outputs/preds.json"
 output_file = "../outputs/swt_bench_compatible.json"
 
