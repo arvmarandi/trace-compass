@@ -234,6 +234,16 @@ def process_instance(
         exit_status = info.get("exit_status")
         result = info.get("submission")
 
+        # PART 4: Generate Stack Traces
+        # 1) modify SWT-Bench to return stack traces for generated tests
+        # 2) bridge the ouputs of SWT-Bench to this program
+
+        # so, the imemdiate thoughts are that I create a process on this program to execute the swt-bench programs
+        
+
+
+
+
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
         exit_status, result = type(e).__name__, ""

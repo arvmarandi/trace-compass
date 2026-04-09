@@ -11,6 +11,7 @@ from src.constants import (
     MAP_REPO_TO_INSTALL,
     MAP_VERSION_TO_INSTALL,
     MAP_REPO_TO_TEST_FRAMEWORK,
+    MAP_REPO_TO_TEST_FRAMEWORK_VERBOSE,
     USE_X86,
 )
 from src.dockerfiles import (
@@ -71,6 +72,26 @@ class ExecSpec:
 
     @property
     def test_command(self):
+        # # Force unbuffered output so logs aren't lost on crashes/timeouts
+        # prefix = "PYTHONUNBUFFERED=1"
+
+        # if self.exec_mode == "reproduction_script":
+        #     # Run reproduction script with -u (unbuffered) 
+        #     # 2>&1 merges stderr (where traces live) into stdout (which is logged)
+        #     reproduction_script_path = f"/testbed/{self.reproduction_script_name}"
+        #     return f"{prefix} python3 -u {reproduction_script_path} 2>&1"
+
+        # # 1. Pull from the VERBOSE framework map which uses --tb=long
+        # # 2. Safety override: explicitly replace --tb=no with --tb=long 
+        # base_cmd = MAP_REPO_TO_TEST_FRAMEWORK_VERBOSE[self.repo][self.version]
+        # test_command = base_cmd.replace("--tb=no", "--tb=long")
+
+        # # 3. Join the base test runner with specific test files/directives
+        # full_command = " ".join([test_command, *self.test_directives])
+
+        # # 4. Final command with stderr redirection
+        # return f"{prefix} {full_command} 2>&1"
+
         trace_path = "/root/trace.py"
         changed_files_pattern = "({})".format("|".join(re.escape(x) for x in self.coverage_files))
         trace_pattern = f"python3 {trace_path} --count -C coverage.cover --include-pattern '/testbed/{changed_files_pattern}'"
@@ -87,14 +108,15 @@ class ExecSpec:
         # otherwise execute the test suite command
         test_command = " ".join(
             [
-                MAP_REPO_TO_TEST_FRAMEWORK[self.repo][self.version],
+                MAP_REPO_TO_TEST_FRAMEWORK_VERBOSE[self.repo][self.version],
                 *self.test_directives,
             ]
         )
+
         if not self.compute_coverage:
             return test_command
 
-        cleaned_test_cmd = test_command.replace("--tb=no", "")
+        cleaned_test_cmd = test_command.replace("--tb=no", "--tb=long")
 
         if re.findall(r"python(3?) -m", cleaned_test_cmd):
             trace_test_cmd = re.subn(r"python(3?) -m", f"{trace_pattern} -m", cleaned_test_cmd, 1)
