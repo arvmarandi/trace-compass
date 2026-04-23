@@ -8,7 +8,7 @@ load_dotenv()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 # Bailian
-BAILIAN_API_KEY = os.getenv("BAILIAN_API_KEY")
+BAILIAN_API_KEY = os.getenv("GEMINI_API_KEY")
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
@@ -33,11 +33,12 @@ DECAY_FACTOR = 0.6
 VECTOR_SIMILARITY_WEIGHT = 0.3
 
 # API Configuration
-DEEPSEEK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-MODEL_NAME = "deepseek-v3"
+DEEPSEEK_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+MODEL_NAME = "gemini-2.5-flash"
+REVIEW_MODEL_NAME = "gemini-2.5-flash"
 
 # LLM Request Configuration
-MAX_TOKENS = 4096
+MAX_TOKENS = 8192
 TEMPERATURE = 0.3
 TOP_P = 0.95
 
