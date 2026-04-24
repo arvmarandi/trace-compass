@@ -73,18 +73,17 @@ def get_logs_eval(
         # remove installation logs
 
     # STACK TRACE HERE:
-    
     stack_traces = []
 
-    # 1. Find all standard Python tracebacks
+    # find Pythonic stack traces
     python_traces = re.findall(r"(Traceback \(most recent call last\):.*?)(?=\n\+|$)", raw_content, re.DOTALL)
     stack_traces.extend(python_traces)
 
-    # 2. Find all Pytest failure blocks (if standard tracebacks weren't used)
+    # find all Pytest failure blocks (if standard tracebacks weren't used)
     pytest_blocks = re.findall(r"(_+ [^_]+ _+.*?)(?=\n={3,}|$)", raw_content, re.DOTALL)
     stack_traces.extend(pytest_blocks)
 
-    # Join them into one string for the report
+    # join both stack traces into one string
     final_stack_trace = "\n\n" + "="*50 + "\n\n".join(stack_traces)
 
     if "trace.py --count -C coverage.cover" in raw_content:
@@ -236,7 +235,6 @@ def get_resolution_success(report_pred: dict[str, list[str]], report_base: dict[
     not_added_x2f = len(pred_p2f.difference(base_p2f)) == 0 and (len(pred_f2f.difference(base_f2f)) == 0)
 
     return added_p2f and not_added_x2f, len(pred_f2p.difference(base_f2p))
-
     
 
 def extract_changed_lines_from_patch(patch: str) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]]]:

@@ -3,6 +3,7 @@
 """Run mini-SWE-agent on SWE-bench instances in batch mode."""
 # Read this first: https://mini-swe-agent.com/latest/usage/swebench/  (usage docs)
 
+import sys
 import concurrent.futures
 import json
 import random
@@ -234,15 +235,30 @@ def process_instance(
         exit_status = info.get("exit_status")
         result = info.get("submission")
 
-        # PART 4: Generate Stack Traces
-        # 1) modify SWT-Bench to return stack traces for generated tests
-        # 2) bridge the ouputs of SWT-Bench to this program
+        # PART 4: Generate Stack Traces and Coverage
+        if result: # if there's a patch
+            try:
+                apply_patch_to_env(env, result) # apply the diff
+                test_files = extract_test_files_from_patch(result) # parse the diff to extract the test file paths
+                if test_files:
+                    repo_id = instance.get("repo", "")
+                    version = instance.get("version", "")
 
-        # so, the imemdiate thoughts are that I create a process on this program to execute the swt-bench programs
-        
+                    # run tests normally to capture stack traces
+                    raw_output = run_tests_in_env(env, test_files, repo_id, version)
+                    traces = extract_stack_traces(raw_output)
+                    extra_info["stack_traces"] = traces
+                    extra_info["test_output"] = raw_output
 
-
-
+                    # re-run under coverage to capture source-level execution data
+                    cov_cmd = get_coverage_command(repo_id, version, test_files)
+                    if cov_cmd:
+                        env.execute({"command": cov_cmd})
+                        coverage = collect_coverage_data(env)
+                        if coverage:
+                            extra_info["coverage"] = coverage
+            except Exception as trace_err:
+                logger.warning(f"Stack trace generation failed for {instance_id}: {trace_err}")
 
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
@@ -504,7 +520,7 @@ EOF"""
 
 
 def get_function_bodies(env, signatures_raw: str) -> str:
-    normalized = signatures_raw.replace('\\n', '\n').replace('\\\\n', '\n') # stupid LLM hallucinates backslashes for newline characters
+    normalized = signatures_raw.replace('\\n', '\n').replace('\\\\n', '\n') # LLM hallucinates backslashes for newline characters
     signatures = [s.strip() for s in normalized.split("\n") if "::" in s]
     if not signatures:
         return ""
@@ -516,6 +532,146 @@ def get_function_bodies(env, signatures_raw: str) -> str:
             results.append(f"--- {sig} ---\n{body}")
 
     return "\n\n".join(results)
+
+def apply_patch_to_env(env: Environment, patch_str: str) -> None:
+    """Write patch to container and apply it with git apply."""
+    env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
+    out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1 || true"})
+    logger.debug(f"git apply output: {out.get('output', '')}")
+
+
+def extract_test_files_from_patch(patch_str: str) -> list[str]:
+    """Parse unified diff to find test files added or modified."""
+    test_files = []
+    for match in re.finditer(r"^\+\+\+ b/(.+)$", patch_str, re.MULTILINE):
+        path = match.group(1)
+        if re.search(r"(test|tests)[^/]*\.py$|/(test|tests)/", path) or re.search(r"def test_", patch_str):
+            if path not in test_files:
+                test_files.append(path)
+    return test_files
+
+
+_DJANGO_REPOS = {"django/django"}
+_SYMPY_REPOS = {"sympy/sympy"}
+_SPHINX_REPOS = {"sphinx-doc/sphinx"}
+_PYTHON_REPOS = {"swe-bench/humaneval", "nielstron/humaneval_fix"}
+
+
+def _django_paths_to_modules(test_files: list[str]) -> list[str]:
+    """Convert file paths like tests/auth/test_basic.py to Django module notation auth.test_basic."""
+    modules = []
+    for f in test_files:
+        # Strip leading tests/ prefix if present
+        mod = re.sub(r"^tests/", "", f)
+        mod = mod.removesuffix(".py").replace("/", ".")
+        modules.append(mod)
+    return modules
+
+
+def get_test_command(repo: str, version: str, test_files: list[str]) -> str | None:
+    """Return the shell command to run the given test files for the repo, or None if unknown."""
+    if repo in _DJANGO_REPOS:
+        modules = _django_paths_to_modules(test_files)
+        if not modules:
+            return None
+        modules_arg = " ".join(modules)
+        return f"cd /testbed && ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 {modules_arg} 2>&1 || true"
+
+    if repo in _SYMPY_REPOS:
+        files_arg = " ".join(test_files)
+        return f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning' bin/test -C --verbose {files_arg} 2>&1 || true"
+
+    if repo in _SPHINX_REPOS:
+        files_arg = " ".join(test_files)
+        return f"cd /testbed && tox -epy39 -v -- {files_arg} 2>&1 || true"
+
+    if repo in _PYTHON_REPOS:
+        # Run each file directly; join outputs
+        cmds = " && ".join(f"python /testbed/{f}" for f in test_files)
+        return f"{cmds} 2>&1 || true"
+
+    # Default: pytest (covers astropy, matplotlib, scikit-learn, requests, xarray, etc.)
+    files_arg = " ".join(f"/testbed/{f}" for f in test_files)
+    return f"cd /testbed && python -m pytest --tb=long -x {files_arg} 2>&1 || true"
+
+
+def get_coverage_command(repo: str, version: str, test_files: list[str]) -> str | None:
+    """Return a shell command that runs tests under coverage and exports /tmp/coverage.json."""
+    cov_suffix = " && coverage json -o /tmp/coverage.json 2>/dev/null || true"
+
+    if repo in _DJANGO_REPOS:
+        modules = _django_paths_to_modules(test_files)
+        if not modules:
+            return None
+        modules_arg = " ".join(modules)
+        return (
+            f"cd /testbed && coverage run tests/runtests.py --verbosity 2 --settings=test_sqlite"
+            f" --parallel 1 {modules_arg} 2>&1 || true{cov_suffix}"
+        )
+
+    if repo in _SYMPY_REPOS:
+        files_arg = " ".join(test_files)
+        return (
+            f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning'"
+            f" coverage run bin/test -C --verbose {files_arg} 2>&1 || true{cov_suffix}"
+        )
+
+    if repo in _SPHINX_REPOS:
+        files_arg = " ".join(test_files)
+        return f"cd /testbed && coverage run -m pytest {files_arg} 2>&1 || true{cov_suffix}"
+
+    if repo in _PYTHON_REPOS:
+        cmds = " && ".join(f"coverage run /testbed/{f}" for f in test_files)
+        return f"{cmds} 2>&1 || true{cov_suffix}"
+
+    # Default: pytest
+    files_arg = " ".join(f"/testbed/{f}" for f in test_files)
+    return f"cd /testbed && coverage run -m pytest --tb=long -x {files_arg} 2>&1 || true{cov_suffix}"
+
+
+def collect_coverage_data(env: Environment) -> dict:
+    """Read /tmp/coverage.json from the container and return source-only executed lines.
+
+    Returns a dict mapping relative file paths to lists of executed line numbers,
+    filtered to exclude test files so only source code is represented.
+    """
+    out = env.execute({"command": "cat /tmp/coverage.json 2>/dev/null || echo '{}'"})
+    raw = out.get("output", "{}")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+    result = {}
+    for file_path, file_data in data.get("files", {}).items():
+        # Normalise to a path relative to /testbed/
+        rel = file_path.removeprefix("/testbed/").lstrip("/")
+        # Skip test files — we only want source-level coverage
+        if re.search(r"(^|/)tests?/|test_[^/]+\.py$|_test\.py$", rel):
+            continue
+        executed = file_data.get("executed_lines", [])
+        if executed:
+            result[rel] = executed
+    return result
+
+
+def run_tests_in_env(env: Environment, test_files: list[str], repo: str = "", version: str = "") -> str:
+    """Run tests with verbose tracebacks on the given test files, return raw output."""
+    cmd = get_test_command(repo, version, test_files)
+    if cmd is None:
+        logger.warning(f"No test command available for repo='{repo}' version='{version}'")
+        return ""
+    out = env.execute({"command": cmd})
+    return out.get("output", "")
+
+
+def extract_stack_traces(raw_output: str) -> list[str]:
+    """Extract Python tracebacks and pytest failure blocks from raw pytest output."""
+    traces = []
+    traces.extend(re.findall(r"(Traceback \(most recent call last\):.*?)(?=\n\+|$)", raw_output, re.DOTALL))
+    traces.extend(re.findall(r"(_+ [^_]+ _+.*?)(?=\n={3,}|$)", raw_output, re.DOTALL))
+    return traces
+
 
 # fmt: off
 @app.command(help=_HELP_TEXT)
