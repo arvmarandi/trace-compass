@@ -147,8 +147,8 @@ def process_instance(
     # avoid inconsistent state if something here fails and there's leftover previous files
     remove_from_preds_file(output_dir / "preds.json", instance_id)
     (instance_dir / f"{instance_id}.traj.json").unlink(missing_ok=True)
-    model = get_model(config=config.get("model", {}))
-    task = instance["problem_statement"]
+    # model = get_model(config=config.get("model", {}))
+    # task = instance["problem_statement"]
 
     progress_manager.on_instance_start(instance_id)
     progress_manager.update_instance_status(instance_id, "Pulling/starting environment")
@@ -158,87 +158,100 @@ def process_instance(
     result = None
     extra_info = {}
 
+    # Load pre-generated patch from preds.json instead of running LLM generation.
+    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
+    if _preds_path.exists():
+        _preds = json.loads(_preds_path.read_text())
+        if instance_id in _preds:
+            result = _preds[instance_id].get("model_patch", "") or ""
+            _preds_model_name = _preds[instance_id].get("model_name_or_path", "pre-generated")
+            exit_status = "Submitted" if result else None
+        else:
+            _preds_model_name = "pre-generated"
+    else:
+        _preds_model_name = "pre-generated"
+
     try:
         env = get_sb_environment(config, instance)
-        agent = ProgressTrackingAgent(
-            model,
-            env,
-            progress_manager=progress_manager,
-            instance_id=instance_id,
-            **config.get("agent", {}),
-        )
+        # agent = ProgressTrackingAgent(
+        #     model,
+        #     env,
+        #     progress_manager=progress_manager,
+        #     instance_id=instance_id,
+        #     **config.get("agent", {}),
+        # )
 
 
         # PART 1: Focal Function Localization
-        prog_files = find_program_files(env)
-        llm_prog_files = None # prompt llm to retrieve relevant files 
+        # prog_files = find_program_files(env)
+        # llm_prog_files = None # prompt llm to retrieve relevant files 
 
-        # validation loop
-        for i in range(5): # 5 iterations, at most 
-            # prompt llm to retrieve relevant file
-            llm_prog_files = agent.run_func_loc1(task, prog_files)
+        # # validation loop
+        # for i in range(5): # 5 iterations, at most 
+        #     # prompt llm to retrieve relevant file
+        #     llm_prog_files = agent.run_func_loc1(task, prog_files)
 
-            # validate the paths
-            llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-            llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
+        #     # validate the paths
+        #     llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+        #     llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
 
-            if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
-                break
+        #     if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
+        #         break
 
-        validated_prog_files = []
-        for file_path in llm_prog_files:
-            val_path = find_closest_paths(file_path, prog_files)
-            if val_path:
-                validated_prog_files.append(val_path)
+        # validated_prog_files = []
+        # for file_path in llm_prog_files:
+        #     val_path = find_closest_paths(file_path, prog_files)
+        #     if val_path:
+        #         validated_prog_files.append(val_path)
 
-        # find all the functions in the selected files
-        prog_functions = find_functions(env, validated_prog_files)
+        # # find all the functions in the selected files
+        # prog_functions = find_functions(env, validated_prog_files)
 
-        # prompt llmn to retrieve relevant functions
-        prog_function_paths = agent.run_func_loc2(task, prog_functions) 
+        # # prompt llmn to retrieve relevant functions
+        # prog_function_paths = agent.run_func_loc2(task, prog_functions) 
         
 
-        # PART 2: Test Function Localization
-        # files with tests in them
-        test_files = find_test_files(env)
-        llm_test_files = None
+        # # PART 2: Test Function Localization
+        # # files with tests in them
+        # test_files = find_test_files(env)
+        # llm_test_files = None
 
-        # validation loop
-        for i in range(5): # 5 iterations, at most 
-            # prompt llm to retrieve relevant file
-            llm_test_files = agent.run_test_func_loc1(task, test_files)
+        # # validation loop
+        # for i in range(5): # 5 iterations, at most 
+        #     # prompt llm to retrieve relevant file
+        #     llm_test_files = agent.run_test_func_loc1(task, test_files)
 
-            # validate the paths
-            llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-            llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
+        #     # validate the paths
+        #     llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+        #     llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
 
-            if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
-                break
+        #     if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
+        #         break
 
-        validated_files = []
-        for file_path in llm_test_files:
-            val_path = find_closest_paths(file_path, test_files)
-            if val_path:
-                validated_files.append(val_path)
+        # validated_files = []
+        # for file_path in llm_test_files:
+        #     val_path = find_closest_paths(file_path, test_files)
+        #     if val_path:
+        #         validated_files.append(val_path)
 
-        # find all the functions in the selected files
-        test_functions = find_test_functions(env, validated_files)
+        # # find all the functions in the selected files
+        # test_functions = find_test_functions(env, validated_files)
 
-        # prompt llmn to retrieve relevant functions
-        test_function_paths = agent.run_test_func_loc2(task, test_functions)
+        # # prompt llmn to retrieve relevant functions
+        # test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
-        # PART 3: Test Generation
-        prog_bodies = get_function_bodies(env, prog_function_paths)
-        test_bodies = get_function_bodies(env, test_function_paths)
+        # # PART 3: Test Generation
+        # prog_bodies = get_function_bodies(env, prog_function_paths)
+        # test_bodies = get_function_bodies(env, test_function_paths)
 
-        info = agent.run(task, prog_bodies + test_bodies)
-        exit_status = info.get("exit_status")
-        result = info.get("submission")
+        # info = agent.run(task, prog_bodies + test_bodies)
+        # exit_status = info.get("exit_status")
+        # result = info.get("submission")
 
         # PART 4: Generate Stack Traces and Coverage
         if result: # if there's a patch
             try:
-                # apply_patch_to_env(env, result) # apply the diff
+                apply_patch_to_env(env, result) # apply the diff
                 test_files = extract_test_files_from_patch(result) # parse the diff to extract the test file paths
                 if test_files:
                     repo_id = instance.get("repo", "")
@@ -273,8 +286,9 @@ def process_instance(
         exit_status, result = type(e).__name__, ""
         extra_info = {"traceback": traceback.format_exc(), "exception_str": str(e)}
     finally:
+        traj_path = instance_dir / f"{instance_id}.traj.json"
+        instance_dir.mkdir(parents=True, exist_ok=True)
         if agent is not None:
-            traj_path = instance_dir / f"{instance_id}.traj.json"
             agent.save(
                 traj_path,
                 {
@@ -286,8 +300,15 @@ def process_instance(
                     "instance_id": instance_id,
                 },
             )
-            logger.info(f"Saved trajectory to '{traj_path}'")
-        update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)
+        else:
+            traj_path.write_text(json.dumps({
+                "info": {"exit_status": exit_status, "submission": result, **extra_info},
+                "instance_id": instance_id,
+                "messages": [],
+            }, indent=2))
+        logger.info(f"Saved trajectory to '{traj_path}'")
+        # update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)  
+        update_preds_file(output_dir / "preds.json", instance_id, _preds_model_name, result)
         progress_manager.on_instance_end(instance_id, exit_status)
 
 
@@ -544,16 +565,16 @@ def get_function_bodies(env, signatures_raw: str) -> str:
 
     return "\n\n".join(results)
 
-# def apply_patch_to_env(env: Environment, patch_str: str) -> None:
-#     """Write patch to container and apply it with git apply."""
-#     env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
-#     out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1"})
-#     logger.debug(f"git apply output: {out.get('output', '')}")
-#     if out.get("returncode", 0) != 0:
-#         # git apply refuses to create files that already exist; fall back to patch which overwrites
-#         logger.debug("git apply failed, retrying with patch -p1 --force")
-#         out = env.execute({"command": "cd /testbed && patch -p1 --force < /tmp/model.patch 2>&1 || true"})
-#         logger.debug(f"patch output: {out.get('output', '')}")
+def apply_patch_to_env(env: Environment, patch_str: str) -> None:
+    """Write patch to container and apply it with git apply."""
+    env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
+    out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1"})
+    logger.debug(f"git apply output: {out.get('output', '')}")
+    if out.get("returncode", 0) != 0:
+        # git apply refuses to create files that already exist; fall back to patch which overwrites
+        logger.debug("git apply failed, retrying with patch -p1 --force")
+        out = env.execute({"command": "cd /testbed && patch -p1 --force < /tmp/model.patch 2>&1 || true"})
+        logger.debug(f"patch output: {out.get('output', '')}")
 
 
 def extract_test_files_from_patch(patch_str: str) -> list[str]:
@@ -1096,6 +1117,16 @@ def main(
 
     if instance_ids:
         instances = select_instances(instances, instance_ids=instance_ids)
+
+    # Temporarily: sample 10 random instances from those covered by preds.json.
+    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
+    if _preds_path.exists():
+        _preds_ids = set(json.loads(_preds_path.read_text()).keys())
+        instances = [i for i in instances if i["instance_id"] in _preds_ids]
+        if len(instances) > 10:
+            random.seed(42)
+            instances = random.sample(instances, 10)
+        logger.info(f"Sampled {len(instances)} instances from preds.json")
 
     logger.info(f"Running on {len(instances)} instances...")
 

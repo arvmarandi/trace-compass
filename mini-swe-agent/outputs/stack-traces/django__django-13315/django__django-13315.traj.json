@@ -1,0 +1,162 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/model_forms/test_limit_choices_duplicates.py b/tests/model_forms/test_limit_choices_duplicates.py\nnew file mode 100644\nindex 0000000000..b665d55375\n--- /dev/null\n+++ b/tests/model_forms/test_limit_choices_duplicates.py\n@@ -0,0 +1,162 @@\n+\"\"\"\n+Regression tests for duplicate options in ForeignKey form fields with limit_choices_to.\n+\n+When a Q object as limit_choices_to involves a join (e.g., through a ManyToMany\n+or ForeignKey relationship), it can produce duplicate options in the form field.\n+\n+The bug manifests when:\n+1. A ForeignKey has limit_choices_to set to a Q object\n+2. The Q object filters through a relation (causing a JOIN)\n+3. The same object can be returned multiple times due to multiple matching relations\n+\n+The fix is to call .distinct() on the queryset in apply_limit_choices_to_to_formfield.\n+\n+See: https://code.djangoproject.com/ticket/11707\n+\"\"\"\n+from django import forms\n+from django.db.models import Q\n+from django.forms.models import apply_limit_choices_to_to_formfield\n+from django.test import TestCase\n+\n+from .models import Character, Student\n+\n+\n+class LimitChoicesToDuplicateChoicesTests(TestCase):\n+    \"\"\"\n+    Tests to ensure limit_choices_to doesn't produce duplicate options when\n+    the Q object involves a join.\n+    \"\"\"\n+\n+    @classmethod\n+    def setUpTestData(cls):\n+        cls.char1 = Character.objects.create(\n+            username='user1',\n+            last_action='2017-01-01T00:00:00',\n+        )\n+        cls.char2 = Character.objects.create(\n+            username='user2',\n+            last_action='2017-01-01T00:00:00',\n+        )\n+        # Create multiple students for char1 that ALL match the filter\n+        # This will cause duplicates when using limit_choices_to\n+        cls.student1 = Student.objects.create(\n+            character=cls.char1,\n+            study='Science',  # Contains 'e'\n+        )\n+        cls.student2 = Student.objects.create(\n+            character=cls.char2,\n+            study='English',  # Contains 'e'\n+        )\n+        cls.student3 = Student.objects.create(\n+            character=cls.char1,\n+            study='English',  # Same character as student1, also contains 'e' - causes duplicates!\n+        )\n+\n+    def test_limit_choices_to_with_join_no_duplicate_options_in_formfield(self):\n+        \"\"\"\n+        A limit_choices_to using a Q object that involves a join should not\n+        produce duplicate options in form fields.\n+        \n+        When a Character has multiple Students that all match the filter,\n+        the same Character will be returned multiple times in the query.\n+        The form field choices should NOT have duplicates.\n+        \n+        This is a regression test for #11707.\n+        \"\"\"\n+        # Now test with apply_limit_choices_to_to_formfield\n+        field = forms.ModelChoiceField(\n+            queryset=Character.objects.all(),\n+            limit_choices_to=Q(student__study__icontains='e'),\n+        )\n+        \n+        apply_limit_choices_to_to_formfield(field)\n+        \n+        # Get the queryset\n+        queryset = field.queryset\n+        \n+        # Check the queryset count vs distinct count\n+        field_count = queryset.count()\n+        field_distinct_count = queryset.distinct().count()\n+        \n+        # This assertion verifies that the field's queryset is deduplicated\n+        # If the bug exists (no .distinct() in apply_limit_choices_to_to_formfield),\n+        # field_count would be greater than field_distinct_count\n+        self.assertEqual(\n+            field_count, field_distinct_count,\n+            f\"Field queryset count ({field_count}) doesn't match distinct count \"\n+            f\"({field_distinct_count}). The apply_limit_choices_to_to_formfield \"\n+            f\"function should call .distinct() to prevent duplicates in form fields.\"\n+        )\n+        \n+        # Get the choices\n+        choices = list(queryset)\n+        \n+        # Verify no duplicates in the choices\n+        char1_count = len([c for c in choices if c.pk == self.char1.pk])\n+        self.assertEqual(\n+            char1_count, 1,\n+            f\"Character {self.char1.pk} (user1) appears {char1_count} times in choices \"\n+            f\"but should appear only once. This is the duplicate options bug (#11707). \"\n+            f\"Choices: {choices}\"\n+        )\n+\n+    def test_limit_choices_to_q_with_join_no_duplicates_in_queryset(self):\n+        \"\"\"\n+        Test that applying limit_choices_to to a queryset with a Q object \n+        involving a join doesn't produce duplicates.\n+        \"\"\"\n+        # Create a ModelChoiceField with limit_choices_to involving a join\n+        field = forms.ModelChoiceField(\n+            queryset=Character.objects.all(),\n+            limit_choices_to=Q(student__study__icontains='e'),\n+        )\n+        \n+        # Apply limit_choices_to\n+        apply_limit_choices_to_to_formfield(field)\n+        \n+        # Get the choices\n+        choices = list(field.queryset)\n+        \n+        # Verify no duplicates by checking pk count matches list length\n+        pks = [c.pk for c in choices]\n+        self.assertEqual(\n+            len(pks), len(set(pks)),\n+            f\"Duplicates found in choices: {pks}. \"\n+            f\"Expected unique values but got {len(pks)} choices with only {len(set(pks))} unique.\"\n+        )\n+        \n+        # Verify both characters are present exactly once\n+        self.assertEqual(set(pks), {self.char1.pk, self.char2.pk})\n+\n+    def test_queryset_count_matches_unique_count(self):\n+        \"\"\"\n+        Test that the queryset count() matches the count of unique choices.\n+        \n+        If the bug exists (no .distinct() applied), count() will return\n+        more results than the number of unique choices.\n+        \"\"\"\n+        # Create a ModelChoiceField with limit_choices_to involving a join\n+        field = forms.ModelChoiceField(\n+            queryset=Character.objects.all(),\n+            limit_choices_to=Q(student__study__icontains='e'),\n+        )\n+        \n+        # Apply limit_choices_to\n+        apply_limit_choices_to_to_formfield(field)\n+        \n+        queryset = field.queryset\n+        \n+        # Count from the queryset\n+        queryset_count = queryset.count()\n+        \n+        # Count unique choices by evaluating and using set\n+        choices = list(queryset)\n+        unique_count = len(set(c.pk for c in choices))\n+        \n+        self.assertEqual(\n+            queryset_count, unique_count,\n+            f\"Queryset count ({queryset_count}) doesn't match unique count ({unique_count}). \"\n+            f\"This indicates duplicates in the queryset due to a JOIN in limit_choices_to. \"\n+            f\"The apply_limit_choices_to_to_formfield function should call .distinct() \"\n+            f\"to prevent this.\"\n+        )\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_limit_choices_to_q_with_join_no_duplicates_in_queryset (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests) ... FAIL\ntest_limit_choices_to_with_join_no_duplicate_options_in_formfield (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests) ... FAIL\ntest_queryset_count_matches_unique_count (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests) ... FAIL\n\n======================================================================\nFAIL: test_limit_choices_to_q_with_join_no_duplicates_in_queryset (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_forms/test_limit_choices_duplicates.py\", line 124, in test_limit_choices_to_q_with_join_no_duplicates_in_queryset\n    f\"Duplicates found in choices: {pks}. \"\nAssertionError: 3 != 2 : Duplicates found in choices: [1, 2, 1]. Expected unique values but got 3 choices with only 2 unique.\n\n======================================================================\nFAIL: test_limit_choices_to_with_join_no_duplicate_options_in_formfield (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_forms/test_limit_choices_duplicates.py\", line 86, in test_limit_choices_to_with_join_no_duplicate_options_in_formfield\n    f\"Field queryset count ({field_count}) doesn't match distinct count \"\nAssertionError: 3 != 2 : Field queryset count (3) doesn't match distinct count (2). The apply_limit_choices_to_to_formfield function should call .distinct() to prevent duplicates in form fields.\n\n======================================================================\nFAIL: test_queryset_count_matches_unique_count (model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_forms/test_limit_choices_duplicates.py\", line 158, in test_queryset_count_matches_unique_count\n    f\"Queryset count ({queryset_count}) doesn't match unique count ({unique_count}). \"\nAssertionError: 3 != 2 : Queryset count (3) doesn't match unique count (2). This indicates duplicates in the queryset due to a JOIN in limit_choices_to. The apply_limit_choices_to_to_formfield function should call .distinct() to prevent this.\n\n----------------------------------------------------------------------\nRan 3 tests in 0.006s\n\nFAILED (failures=3)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 model_forms.test_limit_choices_duplicates` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application model_forms\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, model_forms, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table model_forms_person\n    Creating table model_forms_category\n    Creating table model_forms_writer\n    Creating table model_forms_article\n    Creating table model_forms_improvedarticle\n    Creating table model_forms_improvedarticlewithparentlink\n    Creating table model_forms_betterwriter\n    Creating table model_forms_publication\n    Creating table model_forms_publicationdefaults\n    Creating table model_forms_author\n    Creating table model_forms_author1\n    Creating table model_forms_writerprofile\n    Creating table model_forms_document\n    Creating table model_forms_textfile\n    Creating table model_forms_customff\n    Creating table model_forms_filepathmodel\n    Creating table model_forms_imagefile\n    Creating table model_forms_optionalimagefile\n    Creating table model_forms_noextensionimagefile\n    Creating table model_forms_homepage\n    Creating table model_forms_product\n    Creating table model_forms_price\n    Creating table model_forms_triple\n    Creating table model_forms_articlestatus\n    Creating table model_forms_inventory\n    Creating table model_forms_book\n    Creating table model_forms_derivedbook\n    Creating table model_forms_explicitpk\n    Creating table model_forms_post\n    Creating table model_forms_datetimepost\n    Creating table model_forms_derivedpost\n    Creating table model_forms_bigint\n    Creating table model_forms_customfieldforexclusionmodel\n    Creating table model_forms_flexibledatepost\n    Creating table model_forms_colour\n    Creating table model_forms_colourfulitem\n    Creating table model_forms_customerrormessage\n    Creating table model_forms_character\n    Creating table model_forms_stumpjoke\n    Creating table model_forms_student\n    Creating table model_forms_photo\n    Creating table model_forms_uuidpk\n    Creating table model_forms_strictassignmentfieldspecific\n    Creating table model_forms_strictassignmentall\n    Creating table model_forms_award\n    Creating table model_forms_nullableuniquecharfieldmodel\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests.test_limit_choices_to_q_with_join_no_duplicates_in_queryset": [
+        {
+          "file": "tests/model_forms/test_limit_choices_duplicates.py",
+          "line": 103,
+          "func": "test_limit_choices_to_q_with_join_no_duplicates_in_queryset",
+          "is_test": true
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1190,
+          "func": "__init__",
+          "is_test": false
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1231,
+          "func": "_set_queryset",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 926,
+          "func": "all",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1294,
+          "func": "_chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1306,
+          "func": "_clone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 339,
+          "func": "chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 288,
+          "func": "clone",
+          "is_test": false
+        }
+      ],
+      "model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests.test_limit_choices_to_with_join_no_duplicate_options_in_formfield": [
+        {
+          "file": "tests/model_forms/test_limit_choices_duplicates.py",
+          "line": 55,
+          "func": "test_limit_choices_to_with_join_no_duplicate_options_in_formfield",
+          "is_test": true
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1190,
+          "func": "__init__",
+          "is_test": false
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1231,
+          "func": "_set_queryset",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 926,
+          "func": "all",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1294,
+          "func": "_chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1306,
+          "func": "_clone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 339,
+          "func": "chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 288,
+          "func": "clone",
+          "is_test": false
+        }
+      ],
+      "model_forms.test_limit_choices_duplicates.LimitChoicesToDuplicateChoicesTests.test_queryset_count_matches_unique_count": [
+        {
+          "file": "tests/model_forms/test_limit_choices_duplicates.py",
+          "line": 131,
+          "func": "test_queryset_count_matches_unique_count",
+          "is_test": true
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1190,
+          "func": "__init__",
+          "is_test": false
+        },
+        {
+          "file": "django/forms/models.py",
+          "line": 1231,
+          "func": "_set_queryset",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 926,
+          "func": "all",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1294,
+          "func": "_chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1306,
+          "func": "_clone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 339,
+          "func": "chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 288,
+          "func": "clone",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-13315",
+  "messages": []
+}
