@@ -412,7 +412,10 @@ def find_test_functions(env: Environment, test_files: list[str]) -> list[str]:
                     if "class " in content and not content.strip().startswith("def"):
                         current_class = content.strip().split("class ")[1].split("(")[0].strip()
                     elif "def test_" in content:
-                        func_name = content.strip()[4:content.strip().index("(")].strip()
+                        stripped = content.strip()
+                        if not stripped.startswith("def test_") or "(" not in stripped:
+                            continue
+                        func_name = stripped[4:stripped.index("(")].strip()
                         if current_class:
                             test_functions.append(f"{file_path}::{current_class}::{func_name}")
                         else:
@@ -616,8 +619,14 @@ class _Tracer:
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
-        elif event == "exception" and self.frames is None and self._stack:
-            self.frames = [info for _, info in self._stack]
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            # Prefer exceptions that originate in test/user code over internal
+            # framework exceptions (e.g. pytest marker evaluation fires first).
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
         return self
 
 
@@ -639,8 +648,12 @@ class TracerPlugin:
 import pytest
 
 plugin = TracerPlugin()
-pytest.main(["--no-header", "-q", "--tb=no"] + TEST_IDS, plugins=[plugin])
-Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
+try:
+    pytest.main(["-q", "--tb=no", "--noconftest", "--override-ini=addopts="] + TEST_IDS, plugins=[plugin])
+except Exception as e:
+    sys.stderr.write(f"settrace pytest.main raised: {e}\\n")
+finally:
+    Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
 """
 
 # Django variant: patches unittest.TestCase.run so the tracer works with Django's
@@ -692,8 +705,12 @@ class _Tracer:
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
-        elif event == "exception" and self.frames is None and self._stack:
-            self.frames = [info for _, info in self._stack]
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
         return self
 
 
@@ -723,6 +740,94 @@ runpy.run_path("/testbed/tests/runtests.py", run_name="__main__")
 """
 
 
+# Sympy variant: imports each failing test function directly from its module and
+# runs it under sys.settrace. Sympy uses its own bin/test runner (no pytest),
+# so we cannot use pytest.main here. Instead we parse the failing test IDs from
+# the bin/test output, import the module, and call the function directly.
+_SYMPY_SETTRACE_RUNNER = """\
+import sys, json, importlib
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+sys.path.insert(0, "/testbed")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                self._stack.append((id(frame), {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                }))
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+results = {}
+tracer = _Tracer()
+
+for test_id in TEST_IDS:
+    # test_id format: "sympy/printing/tests/test_ccode.py::test_ccode_sinc"
+    try:
+        file_part, func_name = test_id.rsplit("::", 1)
+        module_name = file_part[:-3].replace("/", ".")  # strip .py, convert path to dotted module
+        module = importlib.import_module(module_name)
+        test_func = getattr(module, func_name, None)
+        if not callable(test_func):
+            results[test_id] = []
+            continue
+
+        tracer.reset()
+        sys.settrace(tracer)
+        try:
+            test_func()
+        except Exception:
+            pass
+        finally:
+            sys.settrace(None)
+
+        results[test_id] = tracer.frames or []
+    except Exception as e:
+        sys.stderr.write(f"Error running {test_id}: {e}\\n")
+        results[test_id] = []
+
+Path("/tmp/settrace_results.json").write_text(json.dumps(results, indent=2))
+"""
+
+
 def _extract_failing_test_ids_pytest(raw_output: str) -> list[str]:
     """Parse pytest FAILED lines into node IDs (requires '::' separator)."""
     ids = []
@@ -730,6 +835,14 @@ def _extract_failing_test_ids_pytest(raw_output: str) -> list[str]:
         node_id = match.group(1).strip()
         if "::" in node_id:
             ids.append(node_id)
+    return ids
+
+
+def _extract_failing_test_ids_sympy(raw_output: str) -> list[str]:
+    """Parse sympy bin/test failure headers into file::func IDs."""
+    ids = []
+    for match in re.finditer(r"_{5,} (\S+\.py):(\w+) _{5,}", raw_output):
+        ids.append(f"{match.group(1)}::{match.group(2)}")
     return ids
 
 
@@ -749,7 +862,10 @@ def _run_settrace_pytest(env: Environment, failing_ids: list[str]) -> dict:
     ids_json = json.dumps(failing_ids)
     env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
     env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
-    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/dev/null || true"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
     out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
     try:
         return json.loads(out.get("output", "{}"))
@@ -769,10 +885,19 @@ def _run_settrace_django(env: Environment, failing_ids: list[str]) -> dict:
         return {}
 
 
-def _run_settrace_sympy(env: Environment, test_files: list[str]) -> dict:
-    """Re-run Sympy test files under settrace via pytest (Sympy tests are pytest-compatible)."""
-    full_paths = [f"/testbed/{f.lstrip('/')}" for f in test_files]
-    return _run_settrace_pytest(env, full_paths)
+def _run_settrace_sympy(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SYMPY_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
 
 
 def run_settrace_on_failing_tests(
@@ -783,7 +908,8 @@ def run_settrace_on_failing_tests(
         failing_ids = _extract_failing_test_ids_django(raw_output)
         return _run_settrace_django(env, failing_ids) if failing_ids else {}
     if repo_id in _SYMPY_REPOS:
-        return _run_settrace_sympy(env, test_files) if test_files else {}
+        failing_ids = _extract_failing_test_ids_sympy(raw_output)
+        return _run_settrace_sympy(env, failing_ids) if failing_ids else {}
     if repo_id in (_SPHINX_REPOS | _PYTHON_REPOS):
         return {}  # custom runners not supported
     failing_ids = _extract_failing_test_ids_pytest(raw_output)
