@@ -3,40 +3,903 @@
     "exit_status": "Submitted",
     "submission": "diff --git a/sympy/integrals/tests/test_intpoly_decompose_order.py b/sympy/integrals/tests/test_intpoly_decompose_order.py\nnew file mode 100644\nindex 0000000000..75d3d715e3\n--- /dev/null\n+++ b/sympy/integrals/tests/test_intpoly_decompose_order.py\n@@ -0,0 +1,94 @@\n+\"\"\"\n+Test to verify that decompose() with separate=True returns results sorted by degree.\n+\n+This test exposes the bug described in the PR where decompose() returns a list\n+of arbitrary order when separate=True.\n+\"\"\"\n+from __future__ import print_function, division\n+\n+from sympy import Add, Mul, Pow\n+from sympy.core import S\n+from sympy.integrals.intpoly import decompose\n+from sympy.abc import x, y\n+\n+\n+def test_decompose_separate_sorted_by_degree():\n+    \"\"\"\n+    Test that decompose(expr, separate=True) returns monomials sorted by degree.\n+    \n+    The bug is that when expressions are created with evaluate=False, the args\n+    order is preserved as passed rather than being canonicalized, causing\n+    decompose() to return results in the wrong order.\n+    \"\"\"\n+    # Test case 1: Basic Add expression - order depends on args ordering\n+    # When x**2 is passed before y to Add(), args returns (x**2, y)\n+    # but the expected output should be sorted by degree: [y, x**2]\n+    expr1 = Add(x**2, y, evaluate=False)\n+    result1 = decompose(expr1, separate=True)\n+    # y has degree 1, x**2 has degree 2, so [y, x**2] is the expected order\n+    assert result1 == [y, x**2], \\\n+        f\"Expected [y, x**2] but got {result1}\"\n+    \n+    # Test case 2: Multiple terms in wrong order\n+    expr2 = Add(x**3, 3*x, 5*x**2, evaluate=False)\n+    result2 = decompose(expr2, separate=True)\n+    # Should be sorted by degree: 3*x (deg 1), 5*x**2 (deg 2), x**3 (deg 3)\n+    assert result2 == [3*x, 5*x**2, x**3], \\\n+        f\"Expected [3*x, 5*x**2, x**3] but got {result2}\"\n+    \n+    # Test case 3: Mixed terms\n+    expr3 = Add(x*y, y**2, x**2, evaluate=False)\n+    result3 = decompose(expr3, separate=True)\n+    # x*y and y**2 have degree 2, x**2 has degree 2\n+    # All degree 2 terms should come before higher degree terms\n+    # The order of same-degree terms can vary but should be consistent\n+    degrees = [sum(decompose(term, False).keys()) for term in result3]\n+    assert degrees == sorted(degrees), \\\n+        f\"Results not sorted by degree: {result3} with degrees {degrees}\"\n+    \n+    # Test case 4: Ensure regular expressions still work\n+    expr4 = x**2 + y\n+    result4 = decompose(expr4, separate=True)\n+    assert result4 == [y, x**2], \\\n+        f\"Expected [y, x**2] but got {result4}\"\n+    \n+    # Test case 5: With constants\n+    expr5 = Add(S(7), 4*y, 8*x**2, evaluate=False)\n+    result5 = decompose(expr5, separate=True)\n+    # Should be sorted by degree: 7 (deg 0), 4*y (deg 1), 8*x**2 (deg 2)\n+    assert result5 == [7, 4*y, 8*x**2], \\\n+        f\"Expected [7, 4*y, 8*x**2] but got {result5}\"\n+    \n+    # Test case 6: Complex expression with multiple degrees\n+    expr6 = Add(x**3, 9*x**2, x*y**2, 4*x, y, S(3), evaluate=False)\n+    result6 = decompose(expr6, separate=True)\n+    # Degree 0: 3\n+    # Degree 1: y, 4*x\n+    # Degree 2: 9*x**2, x*y**2\n+    # Degree 3: x**3\n+    degrees = [sum(decompose(term, False).keys()) if decompose(term, False) else 0 \n+               for term in result6]\n+    # Check that results are sorted by degree\n+    assert degrees == sorted(degrees), \\\n+        f\"Results not sorted by degree: {result6} with degrees {degrees}\"\n+\n+\n+def test_decompose_non_add_expressions():\n+    \"\"\"Test that non-Add expressions still work correctly.\"\"\"\n+    # Single symbol\n+    assert decompose(x, True) == [x]\n+    \n+    # Power\n+    assert decompose(x**2, True) == [x**2]\n+    \n+    # Multiply\n+    assert decompose(x*y, True) == [x*y]\n+    \n+    # Number\n+    assert decompose(S(7), True) == [S(7)]\n+\n+\n+if __name__ == '__main__':\n+    test_decompose_separate_sorted_by_degree()\n+    test_decompose_non_add_expressions()\n+    print(\"All tests passed!\")\n",
     "stack_traces": [],
-    "test_output": "/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n\nERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/integrals/tests/test_intpoly_decompose_order.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nrandom seed:        73468572\nhash randomization: on (PYTHONHASHSEED=1786394097)\n\nsympy/integrals/tests/test_intpoly_decompose_order.py[2] \ntest_decompose_separate_sorted_by_degree F\ntest_decompose_non_add_expressions ok                                     [FAIL]\n\n\n________________________________________________________________________________\n sympy/integrals/tests/test_intpoly_decompose_order.py:test_decompose_separate_sorted_by_degree \n  File \"/testbed/sympy/integrals/tests/test_intpoly_decompose_order.py\", line 29, in test_decompose_separate_sorted_by_degree\n    assert result1 == [y, x**2], \\\nAssertionError: Expected [y, x**2] but got [x**2, y]\n\n============= tests finished: 1 passed, 1 failed, in 0.01 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "test_output": "/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n\nERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/integrals/tests/test_intpoly_decompose_order.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nrandom seed:        85218353\nhash randomization: on (PYTHONHASHSEED=603373235)\n\nsympy/integrals/tests/test_intpoly_decompose_order.py[2] \ntest_decompose_separate_sorted_by_degree F\ntest_decompose_non_add_expressions ok                                     [FAIL]\n\n\n________________________________________________________________________________\n sympy/integrals/tests/test_intpoly_decompose_order.py:test_decompose_separate_sorted_by_degree \n  File \"/testbed/sympy/integrals/tests/test_intpoly_decompose_order.py\", line 29, in test_decompose_separate_sorted_by_degree\n    assert result1 == [y, x**2], \\\nAssertionError: Expected [y, x**2] but got [x**2, y]\n\n============= tests finished: 1 passed, 1 failed, in 0.01 seconds ==============\nDO *NOT* COMMIT!\n\n",
     "settrace_traces": {
-      "sympy/integrals/tests/test_intpoly_decompose_order.py::test_decompose_separate_sorted_by_degree": [
-        {
-          "file": "sympy/integrals/tests/test_intpoly_decompose_order.py",
-          "line": 15,
-          "func": "test_decompose_separate_sorted_by_degree",
-          "is_test": true
-        },
-        {
-          "file": "sympy/core/cache.py",
-          "line": 91,
-          "func": "wrapper",
-          "is_test": false
-        },
-        {
-          "file": "sympy/core/operations.py",
-          "line": 27,
-          "func": "__new__",
-          "is_test": false
-        },
-        {
-          "file": "sympy/core/operations.py",
-          "line": 50,
-          "func": "_from_args",
-          "is_test": false
-        },
-        {
-          "file": "sympy/core/logic.py",
-          "line": 112,
-          "func": "fuzzy_and",
-          "is_test": false
-        }
-      ]
+      "sympy/integrals/tests/test_intpoly_decompose_order.py::test_decompose_separate_sorted_by_degree": {
+        "exception_frames": [
+          {
+            "file": "sympy/integrals/tests/test_intpoly_decompose_order.py",
+            "line": 15,
+            "func": "test_decompose_separate_sorted_by_degree",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 27,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 50,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/integrals/tests/test_intpoly_decompose_order.py",
+            "line": 15,
+            "func": "test_decompose_separate_sorted_by_degree",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 84,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 53,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1956,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 122,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 105,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 139,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 143,
+            "func": "assumptions0",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 145,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2153,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 187,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 359,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 63,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 281,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 114,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2107,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 843,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 80,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1635,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 630,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 241,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 27,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 31,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 50,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 60,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 89,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/integrals/intpoly.py",
+            "line": 538,
+            "func": "decompose",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 347,
+            "func": "is_number",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 371,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 393,
+            "func": "atoms",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 464,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1833,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1886,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1883,
+            "func": "__next__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1837,
+            "func": "_preorder_traversal",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/integrals/intpoly.py",
+            "line": 569,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/polytools.py",
+            "line": 4416,
+            "func": "degree_list",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 736,
+            "func": "allowed_flags",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/polytools.py",
+            "line": 4226,
+            "func": "poly_from_expr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 725,
+            "func": "build_options",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 127,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 139,
+            "func": "preprocess_options",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 281,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1651,
+            "func": "has_dups",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1672,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 292,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 38,
+            "func": "postprocess",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polytools.py",
+            "line": 4233,
+            "func": "_poly_from_expr",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 64,
+            "func": "getter",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 264,
+            "func": "default",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 2992,
+            "func": "expand",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3035,
+            "func": "_expand_hint_key",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 2962,
+            "func": "_expand_hint",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 870,
+            "func": "_eval_expand_multinomial",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 322,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 751,
+            "func": "_eval_expand_power_base",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 237,
+            "func": "base",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 241,
+            "func": "exp",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 740,
+            "func": "_eval_expand_power_exp",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 604,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 342,
+            "func": "_dict_from_expr",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 352,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 356,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 347,
+            "func": "_is_expandable_pow",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 225,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 214,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 228,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 503,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 486,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 537,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 253,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1543,
+            "func": "_eval_is_positive",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 302,
+            "func": "_dict_from_expr_if_gens",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 178,
+            "func": "_parallel_dict_from_expr_if_gens",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 173,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/exprtools.py",
+            "line": 206,
+            "func": "decompose_power",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 678,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 204,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/constructor.py",
+            "line": 220,
+            "func": "construct_domain",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/constructor.py",
+            "line": 13,
+            "func": "_construct_simple",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/pythonintegerring.py",
+            "line": 30,
+            "func": "from_sympy",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 216,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polytools.py",
+            "line": 171,
+            "func": "_from_dict",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 106,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 160,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 78,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/polys/polyclasses.py",
+            "line": 257,
+            "func": "from_dict",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 978,
+            "func": "dmp_from_dict",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 920,
+            "func": "dup_from_dict",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 255,
+            "func": "dup_strip",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 282,
+            "func": "dmp_strip",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 698,
+            "func": "dmp_zero_p",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/polyclasses.py",
+            "line": 150,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/polys/polytools.py",
+            "line": 131,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/polyclasses.py",
+            "line": 504,
+            "func": "degree_list",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 234,
+            "func": "dmp_degree_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2781,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 223,
+            "func": "_rec_degree_list",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 160,
+            "func": "dmp_degree",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3060,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 195,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 621,
+            "func": "_eval_is_finite",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2040,
+            "func": "__radd__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2028,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1759,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/densebasic.py",
+            "line": 723,
+            "func": "dmp_zero",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3083,
+            "func": "__gt__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 382,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 773,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 196,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 231,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 235,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 489,
+            "func": "_print_Pow",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 113,
+            "func": "precedence",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 27,
+            "func": "parenthesize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 68,
+            "func": "precedence_Integer",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 527,
+            "func": "_print_Integer",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 670,
+            "func": "_print_Symbol",
+            "is_test": false,
+            "call_depth": 8
+          }
+        ]
+      }
     }
   },
   "instance_id": "sympy__sympy-13043",

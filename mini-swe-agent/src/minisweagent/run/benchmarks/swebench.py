@@ -267,17 +267,7 @@ def process_instance(
                     settrace = run_settrace_on_failing_tests(env, raw_output, repo_id, test_files)
                     if settrace:
                         extra_info["settrace_traces"] = settrace
-
-                    # re-run under coverage to capture source-level execution data
-                    # cov_cmd = get_coverage_command(repo_id, version, test_files)
-                    # if cov_cmd:
-                    #     cov_out = env.execute({"command": cov_cmd})
-                    #     logger.debug(f"Coverage command output for {instance_id}: {cov_out.get('output', '')[-500:]}")
-                    #     coverage = collect_coverage_data(env)
-                    #     if coverage:
-                    #         extra_info["coverage"] = coverage
-                    #     else:
-                    #         logger.warning(f"Coverage collection returned empty data for {instance_id}")
+                        
             except Exception as trace_err:
                 logger.warning(f"Stack trace generation failed for {instance_id}: {trace_err}")
 
@@ -620,10 +610,14 @@ def _is_source(fn):
 class _Tracer:
     def __init__(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def reset(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def __call__(self, frame, event, arg):
@@ -631,12 +625,18 @@ class _Tracer:
         if event == "call":
             if _is_source(fn):
                 rel = fn[len(_TESTBED):]
-                self._stack.append((id(frame), {
+                info = {
                     "file": rel,
                     "line": frame.f_lineno,
                     "func": frame.f_code.co_name,
                     "is_test": any(p in rel for p in _TEST_PATTERNS),
-                }))
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
@@ -663,7 +663,10 @@ class TracerPlugin:
     def pytest_runtest_logreport(self, report):
         sys.settrace(None)
         if report.when == "call" and report.failed:
-            self.results[report.nodeid] = self._tracer.frames or []
+            self.results[report.nodeid] = {
+                "exception_frames": self._tracer.frames or [],
+                "all_calls": self._tracer.all_calls,
+            }
 
 
 import pytest
@@ -706,10 +709,14 @@ def _is_source(fn):
 class _Tracer:
     def __init__(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def reset(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def __call__(self, frame, event, arg):
@@ -717,12 +724,18 @@ class _Tracer:
         if event == "call":
             if _is_source(fn):
                 rel = fn[len(_TESTBED):]
-                self._stack.append((id(frame), {
+                info = {
                     "file": rel,
                     "line": frame.f_lineno,
                     "func": frame.f_code.co_name,
                     "is_test": any(p in rel for p in _TEST_PATTERNS),
-                }))
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
@@ -748,9 +761,12 @@ def _patched_run(self, result=None):
         _orig_run(self, result)
     finally:
         sys.settrace(None)
-        if result is not None and len(result.failures) + len(result.errors) > n_before and _tracer.frames:
+        if result is not None and len(result.failures) + len(result.errors) > n_before:
             key = f"{self.__class__.__module__}.{self.__class__.__name__}.{self._testMethodName}"
-            _results[key] = _tracer.frames
+            _results[key] = {
+                "exception_frames": _tracer.frames or [],
+                "all_calls": _tracer.all_calls,
+            }
 
 
 unittest.TestCase.run = _patched_run
@@ -786,10 +802,14 @@ def _is_source(fn):
 class _Tracer:
     def __init__(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def reset(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def __call__(self, frame, event, arg):
@@ -797,12 +817,18 @@ class _Tracer:
         if event == "call":
             if _is_source(fn):
                 rel = fn[len(_TESTBED):]
-                self._stack.append((id(frame), {
+                info = {
                     "file": rel,
                     "line": frame.f_lineno,
                     "func": frame.f_code.co_name,
                     "is_test": any(p in rel for p in _TEST_PATTERNS),
-                }))
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
@@ -827,7 +853,10 @@ class TracerPlugin:
     def pytest_runtest_logreport(self, report):
         sys.settrace(None)
         if report.when == "call" and report.failed:
-            self.results[report.nodeid] = self._tracer.frames or []
+            self.results[report.nodeid] = {
+                "exception_frames": self._tracer.frames or [],
+                "all_calls": self._tracer.all_calls,
+            }
 
 
 import pytest
@@ -868,10 +897,14 @@ def _is_source(fn):
 class _Tracer:
     def __init__(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def reset(self):
         self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
         self.frames = None
 
     def __call__(self, frame, event, arg):
@@ -879,12 +912,18 @@ class _Tracer:
         if event == "call":
             if _is_source(fn):
                 rel = fn[len(_TESTBED):]
-                self._stack.append((id(frame), {
+                info = {
                     "file": rel,
                     "line": frame.f_lineno,
                     "func": frame.f_code.co_name,
                     "is_test": any(p in rel for p in _TEST_PATTERNS),
-                }))
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
         elif event == "return":
             if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
                 self._stack.pop()
@@ -908,7 +947,7 @@ for test_id in TEST_IDS:
         module = importlib.import_module(module_name)
         test_func = getattr(module, func_name, None)
         if not callable(test_func):
-            results[test_id] = []
+            results[test_id] = {"exception_frames": [], "all_calls": []}
             continue
 
         tracer.reset()
@@ -920,10 +959,13 @@ for test_id in TEST_IDS:
         finally:
             sys.settrace(None)
 
-        results[test_id] = tracer.frames or []
+        results[test_id] = {
+            "exception_frames": tracer.frames or [],
+            "all_calls": tracer.all_calls,
+        }
     except Exception as e:
         sys.stderr.write(f"Error running {test_id}: {e}\\n")
-        results[test_id] = []
+        results[test_id] = {"exception_frames": [], "all_calls": []}
 
 Path("/tmp/settrace_results.json").write_text(json.dumps(results, indent=2))
 """
@@ -1070,7 +1112,7 @@ def get_test_command(repo: str, version: str, test_files: list[str]) -> str | No
 
     if repo in _SPHINX_REPOS:
         files_arg = " ".join(f"/testbed/{f}" for f in test_files)
-        return f"cd /testbed && {_pytest} --tb=long -r f {files_arg} 2>&1 || true"
+        return f"cd /testbed && {_pytest} --tb=long -r f --color=no {files_arg} 2>&1 || true"
 
     if repo in _PYTHON_REPOS:
         cmds = " && ".join(f"{_CONDA_PYTHON} /testbed/{f}" for f in test_files)
@@ -1078,78 +1120,10 @@ def get_test_command(repo: str, version: str, test_files: list[str]) -> str | No
 
     # Default: pytest (covers astropy, matplotlib, scikit-learn, requests, xarray, etc.)
     # --tb=long: full tracebacks; -r f: force FAILED summary lines even if setup.cfg uses -q;
+    # --color=no: prevent ANSI escape codes from breaking the FAILED-line regex;
     # no -x so all failures are collected for settrace extraction.
     files_arg = " ".join(f"/testbed/{f}" for f in test_files)
-    return f"cd /testbed && {_pytest} --tb=long -r f {files_arg} 2>&1 || true"
-
-
-def get_coverage_command(repo: str, version: str, test_files: list[str]) -> str | None:
-    """Return a shell command that runs tests under coverage and exports /tmp/coverage.json."""
-    # Ensure coverage is installed; errors are suppressed so missing pip doesn't abort the chain
-    install_prefix = "pip install coverage -q 2>/dev/null || true"
-    cov_suffix = " && coverage json -o /tmp/coverage.json 2>/dev/null || true"
-
-    if repo in _DJANGO_REPOS:
-        modules = _django_paths_to_modules(test_files)
-        if not modules:
-            return None
-        modules_arg = " ".join(modules)
-        return (
-            f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
-            f" tests/runtests.py --verbosity 2 --settings=test_sqlite"
-            f" --parallel 1 {modules_arg} 2>&1 || true{cov_suffix}"
-        )
-
-    if repo in _SYMPY_REPOS:
-        files_arg = " ".join(test_files)
-        return (
-            f"{install_prefix} && cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning'"
-            f" coverage run --source=/testbed bin/test -C --verbose {files_arg} 2>&1 || true{cov_suffix}"
-        )
-
-    if repo in _SPHINX_REPOS:
-        files_arg = " ".join(test_files)
-        return (
-            f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
-            f" -m pytest {files_arg} 2>&1 || true{cov_suffix}"
-        )
-
-    if repo in _PYTHON_REPOS:
-        cmds = " && ".join(f"coverage run --source=/testbed /testbed/{f}" for f in test_files)
-        return f"{install_prefix} && {cmds} 2>&1 || true{cov_suffix}"
-
-    # Default: pytest
-    files_arg = " ".join(f"/testbed/{f}" for f in test_files)
-    return (
-        f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
-        f" -m pytest --tb=long -x {files_arg} 2>&1 || true{cov_suffix}"
-    )
-
-
-def collect_coverage_data(env: Environment) -> dict:
-    """Read /tmp/coverage.json from the container and return source-only executed lines.
-
-    Returns a dict mapping relative file paths to lists of executed line numbers,
-    filtered to exclude test files so only source code is represented.
-    """
-    out = env.execute({"command": "cat /tmp/coverage.json 2>/dev/null || echo '{}'"})
-    raw = out.get("output", "{}")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-
-    result = {}
-    for file_path, file_data in data.get("files", {}).items():
-        # Normalise to a path relative to /testbed/
-        rel = file_path.removeprefix("/testbed/").lstrip("/")
-        # Skip test files — we only want source-level coverage
-        if re.search(r"(^|/)tests?/|test_[^/]+\.py$|_test\.py$", rel):
-            continue
-        executed = file_data.get("executed_lines", [])
-        if executed:
-            result[rel] = executed
-    return result
+    return f"cd /testbed && {_pytest} --tb=long -r f --color=no {files_arg} 2>&1 || true"
 
 
 def run_tests_in_env(env: Environment, test_files: list[str], repo: str = "", version: str = "") -> str:
@@ -1228,9 +1202,9 @@ def main(
     if _preds_path.exists():
         _preds_ids = set(json.loads(_preds_path.read_text()).keys())
         instances = [i for i in instances if i["instance_id"] in _preds_ids]
-        if len(instances) > 75:
+        if len(instances) > 150:
             random.seed(42)
-            instances = random.sample(instances, 75)
+            instances = random.sample(instances, 150)
         logger.info(f"Sampled {len(instances)} instances from preds.json")
 
     logger.info(f"Running on {len(instances)} instances...")

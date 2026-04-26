@@ -3,54 +3,4542 @@
     "exit_status": "Submitted",
     "submission": "diff --git a/tests/sitemaps_tests/urls/http.py b/tests/sitemaps_tests/urls/http.py\nindex 9a468de476..cf8b279efd 100644\n--- a/tests/sitemaps_tests/urls/http.py\n+++ b/tests/sitemaps_tests/urls/http.py\n@@ -425,6 +425,34 @@ urlpatterns = [\n     ),\n ]\n \n+\n+\n+class EmptySitemapCallableLastmod(Sitemap):\n+    \"\"\"A sitemap with callable lastmod but empty items.\"\"\"\n+\n+    location = \"/location/\"\n+\n+    def items(self):\n+        return []  # Empty list - no items\n+\n+    def lastmod(self, obj):\n+        \"\"\"Callable lastmod that would return a date for each item.\"\"\"\n+        return datetime(2013, 3, 13, 10, 0, 0)\n+\n+\n+empty_callable_lastmod_sitemaps = {\n+    \"empty-callable-lastmod\": EmptySitemapCallableLastmod,\n+}\n+\n+urlpatterns += [\n+    path(\n+        \"empty-callable-lastmod/index.xml\",\n+        views.index,\n+        {\"sitemaps\": empty_callable_lastmod_sitemaps},\n+        name=\"django.contrib.sitemaps.views.index\",\n+    ),\n+]\n+\n urlpatterns += i18n_patterns(\n     path(\"i18n/testmodel/<int:id>/\", testmodelview, name=\"i18n_testmodel\"),\n )\ndiff --git a/tests/sitemaps_tests/test_empty_items.py b/tests/sitemaps_tests/test_empty_items.py\nnew file mode 100644\nindex 0000000000..3fca09eb17\n--- /dev/null\n+++ b/tests/sitemaps_tests/test_empty_items.py\n@@ -0,0 +1,54 @@\n+\"\"\"\n+Tests for sitemaps with empty items that have callable lastmod.\n+\n+This tests the fix for the bug where sitemaps with callable lastmod\n+but no items raise ValueError on get_latest_lastmod().\n+See: https://code.djangoproject.com/ticket/XXXXX\n+\"\"\"\n+from datetime import datetime\n+\n+from django.contrib.sitemaps import Sitemap\n+from django.test import TestCase, override_settings\n+\n+from .base import SitemapTestsBase\n+\n+\n+class EmptySitemapCallableLastmod(Sitemap):\n+    \"\"\"A sitemap with callable lastmod but empty items.\"\"\"\n+    \n+    location = \"/location/\"\n+    \n+    def items(self):\n+        return []  # Empty list - no items\n+    \n+    def lastmod(self, obj):\n+        \"\"\"Callable lastmod that would return a date for each item.\"\"\"\n+        return datetime(2013, 3, 13, 10, 0, 0)\n+\n+\n+class GetLatestLastmodTests(SitemapTestsBase):\n+    \"\"\"Tests for get_latest_lastmod() edge cases.\"\"\"\n+    \n+    def test_callable_lastmod_empty_items(self):\n+        \"\"\"\n+        A sitemap with callable lastmod but empty items should not\n+        raise ValueError on get_latest_lastmod().\n+        \n+        The bug was that when items() returns an empty sequence, calling\n+        max() on an empty list raises ValueError. The fix is to catch \n+        ValueError in addition to TypeError.\n+        \"\"\"\n+        sitemap = EmptySitemapCallableLastmod()\n+        # This should return None, not raise ValueError\n+        result = sitemap.get_latest_lastmod()\n+        self.assertIsNone(result)\n+\n+    def test_callable_lastmod_empty_items_index_view(self):\n+        \"\"\"\n+        The sitemap index view should handle sitemaps with callable lastmod\n+        but empty items gracefully.\n+        \"\"\"\n+        empty_sitemap = {\"empty-callable-lastmod\": EmptySitemapCallableLastmod}\n+        response = self.client.get(\"/empty-callable-lastmod/index.xml\")\n+        # The response should be valid XML and not raise an error\n+        self.assertEqual(response.status_code, 200)\n",
     "stack_traces": [],
-    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not ... ERROR\ntest_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod ... ERROR\n\n======================================================================\nERROR: test_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 43, in test_callable_lastmod_empty_items\n    result = sitemap.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n======================================================================\nERROR: test_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 52, in test_callable_lastmod_empty_items_index_view\n    response = self.client.get(\"/empty-callable-lastmod/index.xml\")\n  File \"/testbed/django/test/client.py\", line 839, in get\n    response = super().get(path, data=data, secure=secure, **extra)\n  File \"/testbed/django/test/client.py\", line 427, in get\n    return self.generic(\n  File \"/testbed/django/test/client.py\", line 544, in generic\n    return self.request(**r)\n  File \"/testbed/django/test/client.py\", line 813, in request\n    self.check_exception(response)\n  File \"/testbed/django/test/client.py\", line 666, in check_exception\n    raise exc_value\n  File \"/testbed/django/core/handlers/exception.py\", line 55, in inner\n    response = get_response(request)\n  File \"/testbed/django/core/handlers/base.py\", line 197, in _get_response\n    response = wrapped_callback(request, *callback_args, **callback_kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 34, in inner\n    response = func(request, *args, **kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 76, in index\n    site_lastmod = site.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n----------------------------------------------------------------------\nRan 2 tests in 0.025s\n\nFAILED (errors=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 sitemaps_tests.urls.http sitemaps_tests.test_empty_items` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application sitemaps_tests\nFound 2 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, sessions, sitemaps_tests, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table sitemaps_tests_testmodel\n    Creating table sitemaps_tests_i18ntestmodel\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not ... ERROR\ntest_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod ... ERROR\n\n======================================================================\nERROR: test_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 43, in test_callable_lastmod_empty_items\n    result = sitemap.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n======================================================================\nERROR: test_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 52, in test_callable_lastmod_empty_items_index_view\n    response = self.client.get(\"/empty-callable-lastmod/index.xml\")\n  File \"/testbed/django/test/client.py\", line 839, in get\n    response = super().get(path, data=data, secure=secure, **extra)\n  File \"/testbed/django/test/client.py\", line 427, in get\n    return self.generic(\n  File \"/testbed/django/test/client.py\", line 544, in generic\n    return self.request(**r)\n  File \"/testbed/django/test/client.py\", line 813, in request\n    self.check_exception(response)\n  File \"/testbed/django/test/client.py\", line 666, in check_exception\n    raise exc_value\n  File \"/testbed/django/core/handlers/exception.py\", line 55, in inner\n    response = get_response(request)\n  File \"/testbed/django/core/handlers/base.py\", line 197, in _get_response\n    response = wrapped_callback(request, *callback_args, **callback_kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 34, in inner\n    response = func(request, *args, **kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 76, in index\n    site_lastmod = site.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n----------------------------------------------------------------------\nRan 2 tests in 0.028s\n\nFAILED (errors=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 sitemaps_tests.urls.http sitemaps_tests.test_empty_items` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application sitemaps_tests\nFound 2 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, sessions, sitemaps_tests, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table sitemaps_tests_testmodel\n    Creating table sitemaps_tests_i18ntestmodel\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
     "settrace_traces": {
-      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items": [
-        {
-          "file": "tests/sitemaps_tests/test_empty_items.py",
-          "line": 32,
-          "func": "test_callable_lastmod_empty_items",
-          "is_test": true
-        },
-        {
-          "file": "django/contrib/sitemaps/__init__.py",
-          "line": 165,
-          "func": "get_latest_lastmod",
-          "is_test": false
-        }
-      ],
-      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items_index_view": [
-        {
-          "file": "tests/sitemaps_tests/test_empty_items.py",
-          "line": 46,
-          "func": "test_callable_lastmod_empty_items_index_view",
-          "is_test": true
-        },
-        {
-          "file": "django/test/client.py",
-          "line": 836,
-          "func": "get",
-          "is_test": true
-        },
-        {
-          "file": "django/test/client.py",
-          "line": 424,
-          "func": "get",
-          "is_test": true
-        },
-        {
-          "file": "django/test/client.py",
-          "line": 512,
-          "func": "generic",
-          "is_test": true
-        },
-        {
-          "file": "django/utils/functional.py",
-          "line": 291,
-          "func": "__getattribute__",
-          "is_test": false
-        }
-      ]
+      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items": {
+        "exception_frames": [
+          {
+            "file": "tests/sitemaps_tests/test_empty_items.py",
+            "line": 32,
+            "func": "test_callable_lastmod_empty_items",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 165,
+            "func": "get_latest_lastmod",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/sitemaps_tests/base.py",
+            "line": 22,
+            "func": "setUp",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/locmem.py",
+            "line": 114,
+            "func": "clear",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/sitemaps_tests/test_empty_items.py",
+            "line": 32,
+            "func": "test_callable_lastmod_empty_items",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 165,
+            "func": "get_latest_lastmod",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/sitemaps_tests/test_empty_items.py",
+            "line": 21,
+            "func": "items",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items_index_view": {
+        "exception_frames": [
+          {
+            "file": "tests/sitemaps_tests/test_empty_items.py",
+            "line": 46,
+            "func": "test_callable_lastmod_empty_items_index_view",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 836,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 424,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 512,
+            "func": "generic",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/sitemaps_tests/base.py",
+            "line": 22,
+            "func": "setUp",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/locmem.py",
+            "line": 114,
+            "func": "clear",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/sitemaps_tests/test_empty_items.py",
+            "line": 46,
+            "func": "test_callable_lastmod_empty_items_index_view",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 836,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 54,
+            "func": "urlencode",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 512,
+            "func": "generic",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 89,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 90,
+            "func": "force_bytes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 413,
+            "func": "_get_path",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 789,
+            "func": "request",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 354,
+            "func": "_base_environ",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 364,
+            "func": "<genexpr>",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 66,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 89,
+            "func": "write",
+            "is_test": true,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 47,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 152,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 109,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 139,
+            "func": "__call__",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 26,
+            "func": "load_middleware",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 24,
+            "func": "convert_exception_to_response",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 104,
+            "func": "adapt_method_mode",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 118,
+            "func": "_async_check",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/contrib/sessions/middleware.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 10,
+            "func": "SessionStore",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 26,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 39,
+            "func": "__set_name__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 113,
+            "func": "disconnect",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 234,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 176,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/__init__.py",
+            "line": 45,
+            "func": "reset_queries",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 75,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 72,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 76,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 70,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 174,
+            "func": "get_script_name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 207,
+            "func": "get_bytes_from_wsgi",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 167,
+            "func": "get_path_info",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 217,
+            "func": "repercent_broken_unicode",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 112,
+            "func": "_set_content_type_params",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 400,
+            "func": "parse_header_parameters",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 387,
+            "func": "_parseparam",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 136,
+            "func": "get_response",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 128,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 52,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 130,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/contrib/sessions/middleware.py",
+            "line": 18,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 49,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 119,
+            "func": "COOKIES",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 220,
+            "func": "get_str_from_wsgi",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/cookie.py",
+            "line": 7,
+            "func": "parse_cookie",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 43,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 168,
+            "func": "_set_session_key",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 158,
+            "func": "_validate_session_key",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/contrib/sessions/serializers.py",
+            "line": 2,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/middleware/common.py",
+            "line": 34,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 143,
+            "func": "get_host",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 125,
+            "func": "_get_raw_host",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 165,
+            "func": "get_port",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 282,
+            "func": "is_secure",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 266,
+            "func": "scheme",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 102,
+            "func": "_get_scheme",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 684,
+            "func": "split_domain_port",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 264,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 418,
+            "func": "_setup",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 345,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 304,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 706,
+            "func": "validate_host",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 721,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 235,
+            "func": "is_same_domain",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 407,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 227,
+            "func": "_get_secret",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/contrib/auth/middleware.py",
+            "line": 16,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/contrib/messages/middleware.py",
+            "line": 11,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/contrib/messages/storage/__init__.py",
+            "line": 5,
+            "func": "default_storage",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 11,
+            "func": "MessageEncoder",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 29,
+            "func": "MessageDecoder",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 50,
+            "func": "MessageSerializer",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 62,
+            "func": "CookieStorage",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 8,
+            "func": "SessionStorage",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 6,
+            "func": "FallbackStorage",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 52,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 16,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/core/signing.py",
+            "line": 109,
+            "func": "get_cookie_signer",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/core/signing.py",
+            "line": 104,
+            "func": "_cookie_signer_key",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/core/signing.py",
+            "line": 176,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 174,
+            "func": "_get_response",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 300,
+            "func": "resolve_request",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 105,
+            "func": "get_resolver",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 111,
+            "func": "_get_cached_resolver",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 188,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 657,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 195,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 131,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 232,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 207,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 712,
+            "func": "url_patterns",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 705,
+            "func": "urlconf_module",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/__init__.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/conf/urls/i18n.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/urls/conf.py",
+            "line": 61,
+            "func": "_path",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 250,
+            "func": "_route_to_regex",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/contrib/sitemaps/views.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/contrib/sites/shortcuts.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/contrib/sites/requests.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/contrib/sites/requests.py",
+            "line": 1,
+            "func": "RequestSite",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/contrib/sitemaps/views.py",
+            "line": 16,
+            "func": "SitemapIndexItem",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/contrib/sitemaps/views.py",
+            "line": 31,
+            "func": "x_robots_tag",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 13,
+            "func": "SimpleSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 23,
+            "func": "SimplePagedSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 30,
+            "func": "SimpleI18nSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 39,
+            "func": "AlternatesI18nSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 43,
+            "func": "LimitedI18nSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 47,
+            "func": "XDefaultI18nSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 51,
+            "func": "EmptySitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 57,
+            "func": "FixedLastmodSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 61,
+            "func": "FixedLastmodMixedSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 74,
+            "func": "FixedNewerLastmodSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 78,
+            "func": "DateSiteMap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 82,
+            "func": "TimezoneSiteMap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 59,
+            "func": "get_fixed_timezone",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 86,
+            "func": "CallableLastmodPartialSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 101,
+            "func": "CallableLastmodFullSitemap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 117,
+            "func": "GetLatestLastmodNoneSiteMap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 132,
+            "func": "GetLatestLastmodSiteMap",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 184,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 413,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 85,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 150,
+            "func": "get_queryset",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 294,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 231,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 22,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1670,
+            "func": "order_by",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 310,
+            "func": "query",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2062,
+            "func": "is_sliced",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1866,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1877,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 359,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 314,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 206,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 28,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2197,
+            "func": "clear_ordering",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2160,
+            "func": "add_ordering",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1616,
+            "func": "names_to_path",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 657,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 627,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 859,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1439,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 235,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/urls/converters.py",
+            "line": 65,
+            "func": "get_converter",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/urls/converters.py",
+            "line": 60,
+            "func": "get_converters",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/views/decorators/cache.py",
+            "line": 8,
+            "func": "cache_page",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/decorators.py",
+            "line": 92,
+            "func": "decorator_from_middleware_with_args",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/decorators.py",
+            "line": 117,
+            "func": "make_middleware_decorator",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/utils/decorators.py",
+            "line": 118,
+            "func": "_make_decorator",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/decorators.py",
+            "line": 119,
+            "func": "_decorator",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/middleware/cache.py",
+            "line": 187,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 430,
+            "func": "EmptySitemapCallableLastmod",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/conf/urls/i18n.py",
+            "line": 8,
+            "func": "i18n_patterns",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 337,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 636,
+            "func": "_extend_tried",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 643,
+            "func": "_join_route",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 58,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 75,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 420,
+            "func": "process_view",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 208,
+            "func": "_accept",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 345,
+            "func": "make_view_atomic",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/contrib/sitemaps/views.py",
+            "line": 32,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/contrib/sitemaps/views.py",
+            "line": 53,
+            "func": "index",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/sites/shortcuts.py",
+            "line": 6,
+            "func": "get_current_site",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 242,
+            "func": "is_installed",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 129,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 249,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/sites/models.py",
+            "line": 48,
+            "func": "get_current",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/sites/models.py",
+            "line": 28,
+            "func": "_get_site_by_id",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 630,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1446,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1975,
+            "func": "_not_support_combined_queries",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1462,
+            "func": "_filter_or_exclude",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1473,
+            "func": "_filter_or_exclude_inplace",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 48,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1497,
+            "func": "add_q",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1508,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1522,
+            "func": "_add_q",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1331,
+            "func": "build_filter",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1195,
+            "func": "solve_lookup_type",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 305,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1250,
+            "func": "check_filterable",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1175,
+            "func": "resolve_lookup_value",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 989,
+            "func": "get_initial_alias",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 191,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1011,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1032,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 789,
+            "func": "table_alias",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1732,
+            "func": "setup_joins",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1227,
+            "func": "check_related_objects",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1857,
+            "func": "trim_joins",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 379,
+            "func": "_get_col",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 470,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 592,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 479,
+            "func": "cached_col",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 15,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 1107,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1263,
+            "func": "build_lookup",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 379,
+            "func": "get_lookup",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 231,
+            "func": "get_lookup",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 212,
+            "func": "_get_lookup",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 205,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 222,
+            "func": "get_instance_lookups",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 25,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 328,
+            "func": "get_prep_lookup",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2014,
+            "func": "get_prep_value",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 90,
+            "func": "get_prep_lhs",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2609,
+            "func": "add_votes",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 63,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 89,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2616,
+            "func": "update_join_types",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 824,
+            "func": "promote_joins",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 861,
+            "func": "demote_joins",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2069,
+            "func": "can_filter",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2035,
+            "func": "set_limits",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 379,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1896,
+            "func": "_fetch_all",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 85,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1786,
+            "func": "db",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 218,
+            "func": "_route_db",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 296,
+            "func": "get_compiler",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 361,
+            "func": "compiler",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1496,
+            "func": "execute_sql",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 708,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 69,
+            "func": "pre_sql_setup",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 61,
+            "func": "setup_query",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 62,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 242,
+            "func": "get_select",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2458,
+            "func": "extra_select",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 767,
+            "func": "get_select_mask",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 925,
+            "func": "get_default_columns",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 267,
+            "func": "base_table",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 816,
+            "func": "ref_alias",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 560,
+            "func": "concrete_fields",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 82,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 233,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 38
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 570,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1061,
+            "func": "join_parent_model",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2438,
+            "func": "annotation_select",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 521,
+            "func": "compile",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 1118,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 499,
+            "func": "quote_name_unless_alias",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 187,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 457,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 485,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 437,
+            "func": "get_order_by",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 327,
+            "func": "_order_by_pairs",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 38,
+            "func": "split_having_qualify",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 233,
+            "func": "contains_aggregate",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 227,
+            "func": "_contains_aggregate",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 230,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 239,
+            "func": "contains_aggregate",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 69,
+            "func": "get_source_expressions",
+            "is_test": false,
+            "call_depth": 40
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 128,
+            "func": "rhs_is_direct_value",
+            "is_test": false,
+            "call_depth": 41
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 241,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 40
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 197,
+            "func": "get_source_expressions",
+            "is_test": false,
+            "call_depth": 43
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 243,
+            "func": "contains_over_clause",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 237,
+            "func": "_contains_over_clause",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 245,
+            "func": "contains_over_clause",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 489,
+            "func": "get_extra_select",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 85,
+            "func": "get_group_by",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 975,
+            "func": "get_distinct",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1081,
+            "func": "get_from_clause",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 195,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 114,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 343,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 213,
+            "func": "process_lhs",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 258,
+            "func": "resolve_expression",
+            "is_test": false,
+            "call_depth": 38
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 408,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 185,
+            "func": "__getstate__",
+            "is_test": false,
+            "call_depth": 40
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 278,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 200,
+            "func": "set_source_expressions",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2754,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 775,
+            "func": "db_type",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 758,
+            "func": "db_type_parameters",
+            "is_test": false,
+            "call_depth": 38
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 267,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 39
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 214,
+            "func": "field_cast_sql",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 293,
+            "func": "lookup_cast",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 108,
+            "func": "process_rhs",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 242,
+            "func": "get_db_prep_lookup",
+            "is_test": false,
+            "call_depth": 37
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2702,
+            "func": "get_db_prep_value",
+            "is_test": false,
+            "call_depth": 38
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 230,
+            "func": "get_rhs_op",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 249,
+            "func": "limit_offset_sql",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 241,
+            "func": "_get_limit_offset_params",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 252,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 880,
+            "func": "reset_refcounts",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 820,
+            "func": "unref_alias",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/asyncio.py",
+            "line": 15,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 325,
+            "func": "cursor",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 302,
+            "func": "_cursor",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 584,
+            "func": "close_if_health_check_failed",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 282,
+            "func": "ensure_connection",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 67,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 188,
+            "func": "create_cursor",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 291,
+            "func": "_prepare_cursor",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 643,
+            "func": "validate_thread_sharing",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 626,
+            "func": "allow_thread_sharing",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 181,
+            "func": "queries_logged",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 686,
+            "func": "make_cursor",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 70,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 66,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 76,
+            "func": "_execute_with_wrappers",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 82,
+            "func": "_execute",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 525,
+            "func": "validate_no_broken_transaction",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 365,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 375,
+            "func": "convert_query",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 2053,
+            "func": "cursor_iter",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 2059,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 22,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 93,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 96,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 102,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 2642,
+            "func": "get_related_populators",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1468,
+            "func": "results_iter",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1480,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1447,
+            "func": "get_converters",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 294,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 624,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 1134,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 832,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 574,
+            "func": "from_db",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 460,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 27,
+            "func": "reverse",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 140,
+            "func": "get_urlconf",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 109,
+            "func": "get_script_prefix",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 741,
+            "func": "_reverse_with_prefix",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 530,
+            "func": "_populate",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 209,
+            "func": "get_language",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 320,
+            "func": "get_language",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 264,
+            "func": "to_language",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 346,
+            "func": "regex",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 351,
+            "func": "language_prefix",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 440,
+            "func": "lookup_str",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 41,
+            "func": "normalize",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 195,
+            "func": "next_char",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 216,
+            "func": "walk_to_end",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 288,
+            "func": "flatten_result",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 173,
+            "func": "appendlist",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 164,
+            "func": "setlistdefault",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 154,
+            "func": "setlist",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 129,
+            "func": "_getlist",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 615,
+            "func": "reverse_dict",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 147,
+            "func": "getlist",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 622,
+            "func": "namespace_dict",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 629,
+            "func": "app_dict",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/urls/converters.py",
+            "line": 21,
+            "func": "to_url",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 376,
+            "func": "escape_leading_slashes",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 165,
+            "func": "get_latest_lastmod",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "tests/sitemaps_tests/urls/http.py",
+            "line": 435,
+            "func": "items",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/sitemaps/__init__.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 356,
+            "func": "process_exception_by_middleware",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 63,
+            "func": "response_for_exception",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 651,
+            "func": "store_exc_info",
+            "is_test": true,
+            "call_depth": 21
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 172,
+            "func": "handle_uncaught_exception",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 728,
+            "func": "resolve_error_handler",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/utils.py",
+            "line": 8,
+            "func": "get_callable",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/utils/decorators.py",
+            "line": 122,
+            "func": "_wrapper_view",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/views/defaults.py",
+            "line": 82,
+            "func": "server_error",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/loader.py",
+            "line": 5,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/loader.py",
+            "line": 65,
+            "func": "_engine_list",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 93,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 90,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 25,
+            "func": "templates",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 56,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 67,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 38,
+            "func": "get_templatetag_libraries",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 110,
+            "func": "get_installed_libraries",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 117,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 88,
+            "func": "get_template_tag_modules",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 145,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 94,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 122,
+            "func": "get_package_libraries",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/backends/base.py",
+            "line": 12,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 121,
+            "func": "get_template_libraries",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/library.py",
+            "line": 369,
+            "func": "import_library",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 118,
+            "func": "get_template_builtins",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 119,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 32,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 170,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 153,
+            "func": "find_template",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 127,
+            "func": "template_loaders",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 131,
+            "func": "get_template_loaders",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 139,
+            "func": "find_template_loader",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/loaders/__init__.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 4,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 14,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 12,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 5,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/template/loaders/app_directories.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/template/loaders/app_directories.py",
+            "line": 11,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 28,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 72,
+            "func": "cache_key",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 8,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 68,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 27,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 17,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/utils/_os.py",
+            "line": 9,
+            "func": "safe_join",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 25,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 20,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/exceptions.py",
+            "line": 28,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/loaders/app_directories.py",
+            "line": 12,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 97,
+            "func": "get_app_template_dirs",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 80,
+            "func": "reraise",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 67,
+            "func": "copy_exception",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 380,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 308,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 151,
+            "func": "charset",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 82,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 40,
+            "func": "_convert_to_charset",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 409,
+            "func": "content",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 302,
+            "func": "make_bytes",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 477,
+            "func": "process_response",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 139,
+            "func": "reason_phrase",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 210,
+            "func": "log_response",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 167,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 94,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 138,
+            "func": "format_subject",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 302,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 81,
+            "func": "get_exception_reporter_filter",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 75,
+            "func": "get_default_exception_reporter_filter",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 410,
+            "func": "get_traceback_text",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 298,
+            "func": "text_template_path",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 30,
+            "func": "builtin_template_path",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 163,
+            "func": "from_string",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 179,
+            "func": "compile_nodelist",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 417,
+            "func": "tokenize",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 413,
+            "func": "_tag_re_split",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 403,
+            "func": "_tag_re_split_positions",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 367,
+            "func": "create_token",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 592,
+            "func": "add_library",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 458,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 583,
+            "func": "next_token",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 719,
+            "func": "firstof",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 325,
+            "func": "split_contents",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 359,
+            "func": "smart_split",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 765,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 596,
+            "func": "compile_filter",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 239,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 241,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 378,
+            "func": "unescape_string_literal",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 843,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 142,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 528,
+            "func": "extend_nodelist",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 892,
+            "func": "do_if",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 157,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 177,
+            "func": "translate_token",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 888,
+            "func": "create_var",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 185,
+            "func": "next_token",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 193,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 202,
+            "func": "expression",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 134,
+            "func": "nud",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 586,
+            "func": "prepend_token",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 602,
+            "func": "find_filter",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 749,
+            "func": "args_check",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 768,
+            "func": "do_for",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 53,
+            "func": "led",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 983,
+            "func": "ifchanged",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 1258,
+            "func": "spaceless",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 589,
+            "func": "delete_first_token",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 325,
+            "func": "get_traceback_data",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 476,
+            "func": "get_traceback_frames",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 470,
+            "func": "_get_explicit_or_implicit_cause",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 509,
+            "func": "get_exception_traceback_frames",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 434,
+            "func": "_get_lines_from_file",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 417,
+            "func": "_get_source",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 236,
+            "func": "get_traceback_frame_variables",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 172,
+            "func": "is_active",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 222,
+            "func": "cleanse_special_types",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 972,
+            "func": "pprint",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 74,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 173,
+            "func": "get_full_path",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 179,
+            "func": "_get_full_path",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 195,
+            "func": "escape_uri_path",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 108,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 587,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/contrib/sites/models.py",
+            "line": 97,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/contrib/auth/middleware.py",
+            "line": 25,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/contrib/auth/middleware.py",
+            "line": 9,
+            "func": "get_user",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/contrib/auth/__init__.py",
+            "line": 182,
+            "func": "get_user",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/contrib/auth/__init__.py",
+            "line": 57,
+            "func": "_get_user_session_key",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/contrib/auth/__init__.py",
+            "line": 165,
+            "func": "get_user_model",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 188,
+            "func": "get_model",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 150,
+            "func": "get_app_config",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 224,
+            "func": "get_model",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 52,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 180,
+            "func": "_get_session",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 165,
+            "func": "_get_session_key",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/contrib/auth/models.py",
+            "line": 427,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 156,
+            "func": "get_safe_request_meta",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 162,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 116,
+            "func": "cleanse_setting",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 136,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 164,
+            "func": "get_safe_cookies",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 195,
+            "func": "get_post_parameters",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 111,
+            "func": "_get_post",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 367,
+            "func": "_load_post_and_files",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 485,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 534,
+            "func": "encoding",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 177,
+            "func": "items",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 145,
+            "func": "get_safe_settings",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 287,
+            "func": "__dir__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 288,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 137,
+            "func": "_add_script_prefix",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 157,
+            "func": "USE_L10N",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 235,
+            "func": "now",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 21,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 52,
+            "func": "get_complete_version",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 45,
+            "func": "get_main_version",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 49,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 105,
+            "func": "GET",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 124,
+            "func": "FILES",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 314,
+            "func": "_get_raw_insecure_uri",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 95,
+            "func": "get_caller",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 136,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 31,
+            "func": "_reset_dicts",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 169,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 201,
+            "func": "push_state",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 48,
+            "func": "push",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 147,
+            "func": "bind_template",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 105,
+            "func": "instrumented_test_render",
+            "is_test": true,
+            "call_depth": 23
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 229,
+            "func": "store_rendered_templates",
+            "is_test": true,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 157,
+            "func": "__copy__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1005,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 958,
+            "func": "render_annotated",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 146,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 867,
+            "func": "_resolve_lookup",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 78,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1037,
+            "func": "render_value_in_context",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 181,
+            "func": "template_localtime",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 199,
+            "func": "localize",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 877,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 765,
+            "func": "date",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 150,
+            "func": "date_format",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 100,
+            "func": "get_format",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 173,
+            "func": "_USE_L10N_INTERNAL",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 43,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 89,
+            "func": "get_format_modules",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 62,
+            "func": "iter_format_modules",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 217,
+            "func": "check_for_language",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 62,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 230,
+            "func": "to_locale",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/conf/locale/en/__init__.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/conf/locale/en/formats.py",
+            "line": 7,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/utils/dateformat.py",
+            "line": 326,
+            "func": "format",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "django/utils/dateformat.py",
+            "line": 55,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 259,
+            "func": "is_naive",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 71,
+            "func": "get_default_timezone",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/utils/dateformat.py",
+            "line": 265,
+            "func": "r",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 272,
+            "func": "make_aware",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 323,
+            "func": "_is_pytz_zone",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 309,
+            "func": "_pytz_imported",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 246,
+            "func": "is_aware",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 89,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 90,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 20,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 62,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 280,
+            "func": "_get_context_stack_frame",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 185,
+            "func": "strip_spaces_between_tags",
+            "is_test": false,
+            "call_depth": 43
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 23,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 57,
+            "func": "pop",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 550,
+            "func": "dictsort",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 512,
+            "func": "_property_resolver",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 162,
+            "func": "update",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 263,
+            "func": "stringformat",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 84,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 99,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 130,
+            "func": "send_mail",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 135,
+            "func": "connection",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/core/mail/__init__.py",
+            "line": 42,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/core/mail/backends/__init__.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/core/mail/backends/locmem.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/core/mail/backends/base.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/core/mail/backends/base.py",
+            "line": 4,
+            "func": "BaseEmailBackend",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "django/core/mail/backends/locmem.py",
+            "line": 9,
+            "func": "EmailBackend",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "django/core/mail/backends/locmem.py",
+            "line": 19,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/core/mail/backends/base.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/core/mail/__init__.py",
+            "line": 117,
+            "func": "mail_admins",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/middleware.py",
+            "line": 14,
+            "func": "process_response",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 123,
+            "func": "update",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 116,
+            "func": "_prepare_messages",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/middleware/common.py",
+            "line": 100,
+            "func": "process_response",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 198,
+            "func": "has_header",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/contrib/sessions/middleware.py",
+            "line": 22,
+            "func": "process_response",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 139,
+            "func": "is_empty",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/cache.py",
+            "line": 297,
+            "func": "patch_vary_headers",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/cache.py",
+            "line": 312,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/utils/cache.py",
+            "line": 313,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 109,
+            "func": "conditional_content_removal",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "django/http/response.py",
+            "line": 323,
+            "func": "close",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 405,
+            "func": "close",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 185,
+            "func": "lists",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 60,
+            "func": "close_caches",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 83,
+            "func": "close_all",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 383,
+            "func": "close",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 368,
+            "func": "reset_urlconf",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 655,
+            "func": "check_exception",
+            "is_test": true,
+            "call_depth": 5
+          }
+        ]
+      }
     }
   },
   "instance_id": "django__django-16255",

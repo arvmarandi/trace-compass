@@ -1,0 +1,348 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sklearn/svm/tests/test_sparse_empty_sv.py b/sklearn/svm/tests/test_sparse_empty_sv.py\nnew file mode 100644\nindex 000000000..db6e21224\n--- /dev/null\n+++ b/sklearn/svm/tests/test_sparse_empty_sv.py\n@@ -0,0 +1,81 @@\n+\"\"\"\n+Test for sparse SVM with empty support vectors (ZeroDivisionError bug).\n+\n+This test reproduces the bug where fitting an SVR with sparse data\n+when there are no support vectors causes a ZeroDivisionError in _sparse_fit.\n+\n+The bug is in sklearn/svm/base.py in the _sparse_fit method at line 291:\n+    dual_coef_indptr = np.arange(0, dual_coef_indices.size + 1,\n+                                 dual_coef_indices.size / n_class)\n+\n+When n_SV (number of support vectors) is 0:\n+- dual_coef_indices.size = 0\n+- step = 0 / n_class = 0\n+- np.arange(0, 1, 0) raises ZeroDivisionError\n+\"\"\"\n+\n+import numpy as np\n+from scipy import sparse\n+\n+from sklearn.svm import SVR\n+\n+\n+def test_sparse_svr_empty_support_vectors():\n+    \"\"\"Test that SVR with sparse data works when there are no support vectors.\n+    \n+    Regression test for empty support_vectors_ causing ZeroDivisionError\n+    in _sparse_fit. This happens when the data is such that no samples\n+    become support vectors during the SVM fitting process.\n+    \n+    With the bug, the following code would raise:\n+        ZeroDivisionError: float division by zero\n+    at the line: dual_coef_indices.size / n_class\n+    \"\"\"\n+    x_train = np.array([[0, 1, 0, 0],\n+                        [0, 0, 0, 1],\n+                        [0, 0, 1, 0],\n+                        [0, 0, 0, 1]])\n+    y_train = np.array([0.04, 0.04, 0.10, 0.16])\n+    \n+    model = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3,\n+                epsilon=0.1, gamma=1.0, kernel='linear', max_iter=15000,\n+                shrinking=True, tol=0.001, verbose=False)\n+    \n+    # First verify that dense data works (this should always succeed)\n+    model.fit(x_train, y_train)\n+    \n+    # Verify that with this data, there are indeed no support vectors\n+    # (this is what causes the bug in the sparse case)\n+    assert model.support_vectors_.shape[0] == 0, \\\n+        \"Test assumption failed: there should be no support vectors\"\n+    \n+    # Now test with sparse data (this previously raised ZeroDivisionError)\n+    xtrain = sparse.csr_matrix(x_train)\n+    model.fit(xtrain, y_train)\n+    \n+    # Verify that dual_coef_ is a sparse matrix with correct shape\n+    assert sparse.issparse(model.dual_coef_), \\\n+        \"dual_coef_ should be a sparse matrix\"\n+    assert model.dual_coef_.shape == (1, 0), \\\n+        \"dual_coef_ should have shape (1, 0) for regression with no SVs\"\n+    assert model.support_vectors_.shape[0] == 0, \\\n+        \"support_vectors_ should still have shape (0, n_features)\"\n+\n+\n+def test_sparse_svr_empty_support_vectors_predict():\n+    \"\"\"Test that prediction works after sparse fit with empty support vectors.\"\"\"\n+    x_train = np.array([[0, 1, 0, 0],\n+                        [0, 0, 0, 1],\n+                        [0, 0, 1, 0],\n+                        [0, 0, 0, 1]])\n+    y_train = np.array([0.04, 0.04, 0.10, 0.16])\n+    \n+    model = SVR(C=316.227766017, gamma=1.0, kernel='linear', epsilon=0.1)\n+    \n+    # Fit with sparse data (may or may not have empty SVs depending on data)\n+    xtrain = sparse.csr_matrix(x_train)\n+    model.fit(xtrain, y_train)\n+    \n+    # Prediction should still work\n+    predictions = model.predict(x_train)\n+    assert predictions.shape == (4,)\n",
+    "stack_traces": [
+      "____________________ test_sparse_svr_empty_support_vectors _____________________\n\n    def test_sparse_svr_empty_support_vectors():\n        \"\"\"Test that SVR with sparse data works when there are no support vectors.\n    \n        Regression test for empty support_vectors_ causing ZeroDivisionError\n        in _sparse_fit. This happens when the data is such that no samples\n        become support vectors during the SVM fitting process.\n    \n        With the bug, the following code would raise:\n            ZeroDivisionError: float division by zero\n        at the line: dual_coef_indices.size / n_class\n        \"\"\"\n        x_train = np.array([[0, 1, 0, 0],\n                            [0, 0, 0, 1],\n                            [0, 0, 1, 0],\n                            [0, 0, 0, 1]])\n        y_train = np.array([0.04, 0.04, 0.10, 0.16])\n    \n        model = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3,\n                    epsilon=0.1, gamma=1.0, kernel='linear', max_iter=15000,\n                    shrinking=True, tol=0.001, verbose=False)\n    \n        # First verify that dense data works (this should always succeed)\n        model.fit(x_train, y_train)\n    \n        # Verify that with this data, there are indeed no support vectors\n        # (this is what causes the bug in the sparse case)\n        assert model.support_vectors_.shape[0] == 0, \\\n            \"Test assumption failed: there should be no support vectors\"\n    \n        # Now test with sparse data (this previously raised ZeroDivisionError)\n        xtrain = sparse.csr_matrix(x_train)\n>       model.fit(xtrain, y_train)\n\nsklearn/svm/tests/test_sparse_empty_sv.py:54: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=15000, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\n\n    def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the SVM model according to the given training data.\n    \n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vectors, where n_samples is the number of samples\n            and n_features is the number of features.\n            For kernel=\"precomputed\", the expected shape of X is\n            (n_samples, n_samples).\n    \n        y : array-like, shape (n_samples,)\n            Target values (class labels in classification, real numbers in\n            regression)\n    \n        sample_weight : array-like, shape (n_samples,)\n            Per-sample weights. Rescale C per sample. Higher weights\n            force the classifier to put more emphasis on these points.\n    \n        Returns\n        -------\n        self : object\n    \n        Notes\n        -----\n        If X and y are not C-ordered and contiguous arrays of np.float64 and\n        X is not a scipy.sparse.csr_matrix, X and/or y may be copied.\n    \n        If X is a dense array, then the other methods will not support sparse\n        matrices as input.\n        \"\"\"\n    \n        rnd = check_random_state(self.random_state)\n    \n        sparse = sp.isspmatrix(X)\n        if sparse and self.kernel == \"precomputed\":\n            raise TypeError(\"Sparse precomputed kernels are not supported.\")\n        self._sparse = sparse and not callable(self.kernel)\n    \n        X, y = check_X_y(X, y, dtype=np.float64,\n                         order='C', accept_sparse='csr',\n                         accept_large_sparse=False)\n        y = self._validate_targets(y)\n    \n        sample_weight = np.asarray([]\n                                   if sample_weight is None\n                                   else sample_weight, dtype=np.float64)\n        solver_type = LIBSVM_IMPL.index(self._impl)\n    \n        # input validation\n        if solver_type != 2 and X.shape[0] != y.shape[0]:\n            raise ValueError(\"X and y have incompatible shapes.\\n\" +\n                             \"X has %s samples, but y has %s.\" %\n                             (X.shape[0], y.shape[0]))\n    \n        if self.kernel == \"precomputed\" and X.shape[0] != X.shape[1]:\n            raise ValueError(\"Precomputed matrix must be a square matrix.\"\n                             \" Input is a {}x{} matrix.\"\n                             .format(X.shape[0], X.shape[1]))\n    \n        if sample_weight.shape[0] > 0 and sample_weight.shape[0] != X.shape[0]:\n            raise ValueError(\"sample_weight and X have incompatible shapes: \"\n                             \"%r vs %r\\n\"\n                             \"Note: Sparse matrices cannot be indexed w/\"\n                             \"boolean masks (use `indices=True` in CV).\"\n                             % (sample_weight.shape, X.shape))\n    \n        if isinstance(self.gamma, str):\n            if self.gamma == 'scale':\n                # var = E[X^2] - E[X]^2 if sparse\n                X_var = ((X.multiply(X)).mean() - (X.mean()) ** 2\n                         if sparse else X.var())\n                self._gamma = 1.0 / (X.shape[1] * X_var) if X_var != 0 else 1.0\n            elif self.gamma == 'auto':\n                self._gamma = 1.0 / X.shape[1]\n            else:\n                raise ValueError(\n                    \"When 'gamma' is a string, it should be either 'scale' or \"\n                    \"'auto'. Got '{}' instead.\".format(self.gamma)\n                )\n        else:\n            self._gamma = self.gamma\n    \n        kernel = self.kernel\n        if callable(kernel):\n            kernel = 'precomputed'\n    \n        fit = self._sparse_fit if self._sparse else self._dense_fit\n        if self.verbose:  # pragma: no cover\n            print('[LibSVM]', end='')\n    \n        seed = rnd.randint(np.iinfo('i').max)\n>       fit(X, y, sample_weight, solver_type, kernel, random_seed=seed)\n\nsklearn/svm/base.py:198: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=15000, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\nsolver_type = 3, kernel = 'linear', random_seed = 501801180\n\n    def _sparse_fit(self, X, y, sample_weight, solver_type, kernel,\n                    random_seed):\n        X.data = np.asarray(X.data, dtype=np.float64, order='C')\n        X.sort_indices()\n    \n        kernel_type = self._sparse_kernels.index(kernel)\n    \n        libsvm_sparse.set_verbosity_wrap(self.verbose)\n    \n        self.support_, self.support_vectors_, dual_coef_data, \\\n            self.intercept_, self._n_support, \\\n            self.probA_, self.probB_, self.fit_status_ = \\\n            libsvm_sparse.libsvm_sparse_train(\n                X.shape[1], X.data, X.indices, X.indptr, y, solver_type,\n                kernel_type, self.degree, self._gamma, self.coef0, self.tol,\n                self.C, self.class_weight_,\n                sample_weight, self.nu, self.cache_size, self.epsilon,\n                int(self.shrinking), int(self.probability), self.max_iter,\n                random_seed)\n    \n        self._warn_from_fit_status()\n    \n        if hasattr(self, \"classes_\"):\n            n_class = len(self.classes_) - 1\n        else:  # regression\n            n_class = 1\n        n_SV = self.support_vectors_.shape[0]\n    \n        dual_coef_indices = np.tile(np.arange(n_SV), n_class)\n        dual_coef_indptr = np.arange(0, dual_coef_indices.size + 1,\n>                                    dual_coef_indices.size / n_class)\nE       ZeroDivisionError: float division by zero\n\nsklearn/svm/base.py:291: ZeroDivisionError\n________________ test_sparse_svr_empty_support_vectors_predict _________________\n\n    def test_sparse_svr_empty_support_vectors_predict():\n        \"\"\"Test that prediction works after sparse fit with empty support vectors.\"\"\"\n        x_train = np.array([[0, 1, 0, 0],\n                            [0, 0, 0, 1],\n                            [0, 0, 1, 0],\n                            [0, 0, 0, 1]])\n        y_train = np.array([0.04, 0.04, 0.10, 0.16])\n    \n        model = SVR(C=316.227766017, gamma=1.0, kernel='linear', epsilon=0.1)\n    \n        # Fit with sparse data (may or may not have empty SVs depending on data)\n        xtrain = sparse.csr_matrix(x_train)\n>       model.fit(xtrain, y_train)\n\nsklearn/svm/tests/test_sparse_empty_sv.py:77: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=-1, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\n\n    def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the SVM model according to the given training data.\n    \n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vectors, where n_samples is the number of samples\n            and n_features is the number of features.\n            For kernel=\"precomputed\", the expected shape of X is\n            (n_samples, n_samples).\n    \n        y : array-like, shape (n_samples,)\n            Target values (class labels in classification, real numbers in\n            regression)\n    \n        sample_weight : array-like, shape (n_samples,)\n            Per-sample weights. Rescale C per sample. Higher weights\n            force the classifier to put more emphasis on these points.\n    \n        Returns\n        -------\n        self : object\n    \n        Notes\n        -----\n        If X and y are not C-ordered and contiguous arrays of np.float64 and\n        X is not a scipy.sparse.csr_matrix, X and/or y may be copied.\n    \n        If X is a dense array, then the other methods will not support sparse\n        matrices as input.\n        \"\"\"\n    \n        rnd = check_random_state(self.random_state)\n    \n        sparse = sp.isspmatrix(X)\n        if sparse and self.kernel == \"precomputed\":\n            raise TypeError(\"Sparse precomputed kernels are not supported.\")\n        self._sparse = sparse and not callable(self.kernel)\n    \n        X, y = check_X_y(X, y, dtype=np.float64,\n                         order='C', accept_sparse='csr',\n                         accept_large_sparse=False)\n        y = self._validate_targets(y)\n    \n        sample_weight = np.asarray([]\n                                   if sample_weight is None\n                                   else sample_weight, dtype=np.float64)\n        solver_type = LIBSVM_IMPL.index(self._impl)\n    \n        # input validation\n        if solver_type != 2 and X.shape[0] != y.shape[0]:\n            raise ValueError(\"X and y have incompatible shapes.\\n\" +\n                             \"X has %s samples, but y has %s.\" %\n                             (X.shape[0], y.shape[0]))\n    \n        if self.kernel == \"precomputed\" and X.shape[0] != X.shape[1]:\n            raise ValueError(\"Precomputed matrix must be a square matrix.\"\n                             \" Input is a {}x{} matrix.\"\n                             .format(X.shape[0], X.shape[1]))\n    \n        if sample_weight.shape[0] > 0 and sample_weight.shape[0] != X.shape[0]:\n            raise ValueError(\"sample_weight and X have incompatible shapes: \"\n                             \"%r vs %r\\n\"\n                             \"Note: Sparse matrices cannot be indexed w/\"\n                             \"boolean masks (use `indices=True` in CV).\"\n                             % (sample_weight.shape, X.shape))\n    \n        if isinstance(self.gamma, str):\n            if self.gamma == 'scale':\n                # var = E[X^2] - E[X]^2 if sparse\n                X_var = ((X.multiply(X)).mean() - (X.mean()) ** 2\n                         if sparse else X.var())\n                self._gamma = 1.0 / (X.shape[1] * X_var) if X_var != 0 else 1.0\n            elif self.gamma == 'auto':\n                self._gamma = 1.0 / X.shape[1]\n            else:\n                raise ValueError(\n                    \"When 'gamma' is a string, it should be either 'scale' or \"\n                    \"'auto'. Got '{}' instead.\".format(self.gamma)\n                )\n        else:\n            self._gamma = self.gamma\n    \n        kernel = self.kernel\n        if callable(kernel):\n            kernel = 'precomputed'\n    \n        fit = self._sparse_fit if self._sparse else self._dense_fit\n        if self.verbose:  # pragma: no cover\n            print('[LibSVM]', end='')\n    \n        seed = rnd.randint(np.iinfo('i').max)\n>       fit(X, y, sample_weight, solver_type, kernel, random_seed=seed)\n\nsklearn/svm/base.py:198: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=-1, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\nsolver_type = 3, kernel = 'linear', random_seed = 976530866\n\n    def _sparse_fit(self, X, y, sample_weight, solver_type, kernel,\n                    random_seed):\n        X.data = np.asarray(X.data, dtype=np.float64, order='C')\n        X.sort_indices()\n    \n        kernel_type = self._sparse_kernels.index(kernel)\n    \n        libsvm_sparse.set_verbosity_wrap(self.verbose)\n    \n        self.support_, self.support_vectors_, dual_coef_data, \\\n            self.intercept_, self._n_support, \\\n            self.probA_, self.probB_, self.fit_status_ = \\\n            libsvm_sparse.libsvm_sparse_train(\n                X.shape[1], X.data, X.indices, X.indptr, y, solver_type,\n                kernel_type, self.degree, self._gamma, self.coef0, self.tol,\n                self.C, self.class_weight_,\n                sample_weight, self.nu, self.cache_size, self.epsilon,\n                int(self.shrinking), int(self.probability), self.max_iter,\n                random_seed)\n    \n        self._warn_from_fit_status()\n    \n        if hasattr(self, \"classes_\"):\n            n_class = len(self.classes_) - 1\n        else:  # regression\n            n_class = 1\n        n_SV = self.support_vectors_.shape[0]\n    \n        dual_coef_indices = np.tile(np.arange(n_SV), n_class)\n        dual_coef_indptr = np.arange(0, dual_coef_indices.size + 1,\n>                                    dual_coef_indices.size / n_class)\nE       ZeroDivisionError: float division by zero\n\nsklearn/svm/base.py:291: ZeroDivisionError"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 2 items\n\nsklearn/svm/tests/test_sparse_empty_sv.py FF                             [100%]\n\n=================================== FAILURES ===================================\n____________________ test_sparse_svr_empty_support_vectors _____________________\n\n    def test_sparse_svr_empty_support_vectors():\n        \"\"\"Test that SVR with sparse data works when there are no support vectors.\n    \n        Regression test for empty support_vectors_ causing ZeroDivisionError\n        in _sparse_fit. This happens when the data is such that no samples\n        become support vectors during the SVM fitting process.\n    \n        With the bug, the following code would raise:\n            ZeroDivisionError: float division by zero\n        at the line: dual_coef_indices.size / n_class\n        \"\"\"\n        x_train = np.array([[0, 1, 0, 0],\n                            [0, 0, 0, 1],\n                            [0, 0, 1, 0],\n                            [0, 0, 0, 1]])\n        y_train = np.array([0.04, 0.04, 0.10, 0.16])\n    \n        model = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3,\n                    epsilon=0.1, gamma=1.0, kernel='linear', max_iter=15000,\n                    shrinking=True, tol=0.001, verbose=False)\n    \n        # First verify that dense data works (this should always succeed)\n        model.fit(x_train, y_train)\n    \n        # Verify that with this data, there are indeed no support vectors\n        # (this is what causes the bug in the sparse case)\n        assert model.support_vectors_.shape[0] == 0, \\\n            \"Test assumption failed: there should be no support vectors\"\n    \n        # Now test with sparse data (this previously raised ZeroDivisionError)\n        xtrain = sparse.csr_matrix(x_train)\n>       model.fit(xtrain, y_train)\n\nsklearn/svm/tests/test_sparse_empty_sv.py:54: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=15000, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\n\n    def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the SVM model according to the given training data.\n    \n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vectors, where n_samples is the number of samples\n            and n_features is the number of features.\n            For kernel=\"precomputed\", the expected shape of X is\n            (n_samples, n_samples).\n    \n        y : array-like, shape (n_samples,)\n            Target values (class labels in classification, real numbers in\n            regression)\n    \n        sample_weight : array-like, shape (n_samples,)\n            Per-sample weights. Rescale C per sample. Higher weights\n            force the classifier to put more emphasis on these points.\n    \n        Returns\n        -------\n        self : object\n    \n        Notes\n        -----\n        If X and y are not C-ordered and contiguous arrays of np.float64 and\n        X is not a scipy.sparse.csr_matrix, X and/or y may be copied.\n    \n        If X is a dense array, then the other methods will not support sparse\n        matrices as input.\n        \"\"\"\n    \n        rnd = check_random_state(self.random_state)\n    \n        sparse = sp.isspmatrix(X)\n        if sparse and self.kernel == \"precomputed\":\n            raise TypeError(\"Sparse precomputed kernels are not supported.\")\n        self._sparse = sparse and not callable(self.kernel)\n    \n        X, y = check_X_y(X, y, dtype=np.float64,\n                         order='C', accept_sparse='csr',\n                         accept_large_sparse=False)\n        y = self._validate_targets(y)\n    \n        sample_weight = np.asarray([]\n                                   if sample_weight is None\n                                   else sample_weight, dtype=np.float64)\n        solver_type = LIBSVM_IMPL.index(self._impl)\n    \n        # input validation\n        if solver_type != 2 and X.shape[0] != y.shape[0]:\n            raise ValueError(\"X and y have incompatible shapes.\\n\" +\n                             \"X has %s samples, but y has %s.\" %\n                             (X.shape[0], y.shape[0]))\n    \n        if self.kernel == \"precomputed\" and X.shape[0] != X.shape[1]:\n            raise ValueError(\"Precomputed matrix must be a square matrix.\"\n                             \" Input is a {}x{} matrix.\"\n                             .format(X.shape[0], X.shape[1]))\n    \n        if sample_weight.shape[0] > 0 and sample_weight.shape[0] != X.shape[0]:\n            raise ValueError(\"sample_weight and X have incompatible shapes: \"\n                             \"%r vs %r\\n\"\n                             \"Note: Sparse matrices cannot be indexed w/\"\n                             \"boolean masks (use `indices=True` in CV).\"\n                             % (sample_weight.shape, X.shape))\n    \n        if isinstance(self.gamma, str):\n            if self.gamma == 'scale':\n                # var = E[X^2] - E[X]^2 if sparse\n                X_var = ((X.multiply(X)).mean() - (X.mean()) ** 2\n                         if sparse else X.var())\n                self._gamma = 1.0 / (X.shape[1] * X_var) if X_var != 0 else 1.0\n            elif self.gamma == 'auto':\n                self._gamma = 1.0 / X.shape[1]\n            else:\n                raise ValueError(\n                    \"When 'gamma' is a string, it should be either 'scale' or \"\n                    \"'auto'. Got '{}' instead.\".format(self.gamma)\n                )\n        else:\n            self._gamma = self.gamma\n    \n        kernel = self.kernel\n        if callable(kernel):\n            kernel = 'precomputed'\n    \n        fit = self._sparse_fit if self._sparse else self._dense_fit\n        if self.verbose:  # pragma: no cover\n            print('[LibSVM]', end='')\n    \n        seed = rnd.randint(np.iinfo('i').max)\n>       fit(X, y, sample_weight, solver_type, kernel, random_seed=seed)\n\nsklearn/svm/base.py:198: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=15000, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\nsolver_type = 3, kernel = 'linear', random_seed = 501801180\n\n    def _sparse_fit(self, X, y, sample_weight, solver_type, kernel,\n                    random_seed):\n        X.data = np.asarray(X.data, dtype=np.float64, order='C')\n        X.sort_indices()\n    \n        kernel_type = self._sparse_kernels.index(kernel)\n    \n        libsvm_sparse.set_verbosity_wrap(self.verbose)\n    \n        self.support_, self.support_vectors_, dual_coef_data, \\\n            self.intercept_, self._n_support, \\\n            self.probA_, self.probB_, self.fit_status_ = \\\n            libsvm_sparse.libsvm_sparse_train(\n                X.shape[1], X.data, X.indices, X.indptr, y, solver_type,\n                kernel_type, self.degree, self._gamma, self.coef0, self.tol,\n                self.C, self.class_weight_,\n                sample_weight, self.nu, self.cache_size, self.epsilon,\n                int(self.shrinking), int(self.probability), self.max_iter,\n                random_seed)\n    \n        self._warn_from_fit_status()\n    \n        if hasattr(self, \"classes_\"):\n            n_class = len(self.classes_) - 1\n        else:  # regression\n            n_class = 1\n        n_SV = self.support_vectors_.shape[0]\n    \n        dual_coef_indices = np.tile(np.arange(n_SV), n_class)\n        dual_coef_indptr = np.arange(0, dual_coef_indices.size + 1,\n>                                    dual_coef_indices.size / n_class)\nE       ZeroDivisionError: float division by zero\n\nsklearn/svm/base.py:291: ZeroDivisionError\n________________ test_sparse_svr_empty_support_vectors_predict _________________\n\n    def test_sparse_svr_empty_support_vectors_predict():\n        \"\"\"Test that prediction works after sparse fit with empty support vectors.\"\"\"\n        x_train = np.array([[0, 1, 0, 0],\n                            [0, 0, 0, 1],\n                            [0, 0, 1, 0],\n                            [0, 0, 0, 1]])\n        y_train = np.array([0.04, 0.04, 0.10, 0.16])\n    \n        model = SVR(C=316.227766017, gamma=1.0, kernel='linear', epsilon=0.1)\n    \n        # Fit with sparse data (may or may not have empty SVs depending on data)\n        xtrain = sparse.csr_matrix(x_train)\n>       model.fit(xtrain, y_train)\n\nsklearn/svm/tests/test_sparse_empty_sv.py:77: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=-1, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\n\n    def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the SVM model according to the given training data.\n    \n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vectors, where n_samples is the number of samples\n            and n_features is the number of features.\n            For kernel=\"precomputed\", the expected shape of X is\n            (n_samples, n_samples).\n    \n        y : array-like, shape (n_samples,)\n            Target values (class labels in classification, real numbers in\n            regression)\n    \n        sample_weight : array-like, shape (n_samples,)\n            Per-sample weights. Rescale C per sample. Higher weights\n            force the classifier to put more emphasis on these points.\n    \n        Returns\n        -------\n        self : object\n    \n        Notes\n        -----\n        If X and y are not C-ordered and contiguous arrays of np.float64 and\n        X is not a scipy.sparse.csr_matrix, X and/or y may be copied.\n    \n        If X is a dense array, then the other methods will not support sparse\n        matrices as input.\n        \"\"\"\n    \n        rnd = check_random_state(self.random_state)\n    \n        sparse = sp.isspmatrix(X)\n        if sparse and self.kernel == \"precomputed\":\n            raise TypeError(\"Sparse precomputed kernels are not supported.\")\n        self._sparse = sparse and not callable(self.kernel)\n    \n        X, y = check_X_y(X, y, dtype=np.float64,\n                         order='C', accept_sparse='csr',\n                         accept_large_sparse=False)\n        y = self._validate_targets(y)\n    \n        sample_weight = np.asarray([]\n                                   if sample_weight is None\n                                   else sample_weight, dtype=np.float64)\n        solver_type = LIBSVM_IMPL.index(self._impl)\n    \n        # input validation\n        if solver_type != 2 and X.shape[0] != y.shape[0]:\n            raise ValueError(\"X and y have incompatible shapes.\\n\" +\n                             \"X has %s samples, but y has %s.\" %\n                             (X.shape[0], y.shape[0]))\n    \n        if self.kernel == \"precomputed\" and X.shape[0] != X.shape[1]:\n            raise ValueError(\"Precomputed matrix must be a square matrix.\"\n                             \" Input is a {}x{} matrix.\"\n                             .format(X.shape[0], X.shape[1]))\n    \n        if sample_weight.shape[0] > 0 and sample_weight.shape[0] != X.shape[0]:\n            raise ValueError(\"sample_weight and X have incompatible shapes: \"\n                             \"%r vs %r\\n\"\n                             \"Note: Sparse matrices cannot be indexed w/\"\n                             \"boolean masks (use `indices=True` in CV).\"\n                             % (sample_weight.shape, X.shape))\n    \n        if isinstance(self.gamma, str):\n            if self.gamma == 'scale':\n                # var = E[X^2] - E[X]^2 if sparse\n                X_var = ((X.multiply(X)).mean() - (X.mean()) ** 2\n                         if sparse else X.var())\n                self._gamma = 1.0 / (X.shape[1] * X_var) if X_var != 0 else 1.0\n            elif self.gamma == 'auto':\n                self._gamma = 1.0 / X.shape[1]\n            else:\n                raise ValueError(\n                    \"When 'gamma' is a string, it should be either 'scale' or \"\n                    \"'auto'. Got '{}' instead.\".format(self.gamma)\n                )\n        else:\n            self._gamma = self.gamma\n    \n        kernel = self.kernel\n        if callable(kernel):\n            kernel = 'precomputed'\n    \n        fit = self._sparse_fit if self._sparse else self._dense_fit\n        if self.verbose:  # pragma: no cover\n            print('[LibSVM]', end='')\n    \n        seed = rnd.randint(np.iinfo('i').max)\n>       fit(X, y, sample_weight, solver_type, kernel, random_seed=seed)\n\nsklearn/svm/base.py:198: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = SVR(C=316.227766017, cache_size=200, coef0=0.0, degree=3, epsilon=0.1,\n    gamma=1.0, kernel='linear', max_iter=-1, shrinking=True, tol=0.001,\n    verbose=False)\nX = <4x4 sparse matrix of type '<class 'numpy.float64'>'\n\twith 4 stored elements in Compressed Sparse Row format>\ny = array([0.04, 0.04, 0.1 , 0.16]), sample_weight = array([], dtype=float64)\nsolver_type = 3, kernel = 'linear', random_seed = 976530866\n\n    def _sparse_fit(self, X, y, sample_weight, solver_type, kernel,\n                    random_seed):\n        X.data = np.asarray(X.data, dtype=np.float64, order='C')\n        X.sort_indices()\n    \n        kernel_type = self._sparse_kernels.index(kernel)\n    \n        libsvm_sparse.set_verbosity_wrap(self.verbose)\n    \n        self.support_, self.support_vectors_, dual_coef_data, \\\n            self.intercept_, self._n_support, \\\n            self.probA_, self.probB_, self.fit_status_ = \\\n            libsvm_sparse.libsvm_sparse_train(\n                X.shape[1], X.data, X.indices, X.indptr, y, solver_type,\n                kernel_type, self.degree, self._gamma, self.coef0, self.tol,\n                self.C, self.class_weight_,\n                sample_weight, self.nu, self.cache_size, self.epsilon,\n                int(self.shrinking), int(self.probability), self.max_iter,\n                random_seed)\n    \n        self._warn_from_fit_status()\n    \n        if hasattr(self, \"classes_\"):\n            n_class = len(self.classes_) - 1\n        else:  # regression\n            n_class = 1\n        n_SV = self.support_vectors_.shape[0]\n    \n        dual_coef_indices = np.tile(np.arange(n_SV), n_class)\n        dual_coef_indptr = np.arange(0, dual_coef_indices.size + 1,\n>                                    dual_coef_indices.size / n_class)\nE       ZeroDivisionError: float division by zero\n\nsklearn/svm/base.py:291: ZeroDivisionError\n=========================== short test summary info ============================\nFAILED sklearn/svm/tests/test_sparse_empty_sv.py::test_sparse_svr_empty_support_vectors\nFAILED sklearn/svm/tests/test_sparse_empty_sv.py::test_sparse_svr_empty_support_vectors_predict\n============================== 2 failed in 0.16s ===============================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/sklearn/svm/tests/test_sparse_empty_sv.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "sklearn/svm/tests/test_sparse_empty_sv.py::test_sparse_svr_empty_support_vectors": {
+        "exception_frames": [
+          {
+            "file": "sklearn/svm/tests/test_sparse_empty_sv.py",
+            "line": 23,
+            "func": "test_sparse_svr_empty_support_vectors",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 106,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 617,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/svm/tests/test_sparse_empty_sv.py",
+            "line": 23,
+            "func": "test_sparse_svr_empty_support_vectors",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/svm/classes.py",
+            "line": 982,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 71,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 106,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 780,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 617,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 751,
+            "func": "column_or_1d",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 196,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 207,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 214,
+            "func": "_validate_targets",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 232,
+            "func": "_dense_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 224,
+            "func": "_warn_from_fit_status",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 240,
+            "func": "_ensure_sparse_format",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 598,
+            "func": "_check_large_sparse",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 261,
+            "func": "_sparse_fit",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "sklearn/svm/tests/test_sparse_empty_sv.py::test_sparse_svr_empty_support_vectors_predict": {
+        "exception_frames": [
+          {
+            "file": "sklearn/svm/tests/test_sparse_empty_sv.py",
+            "line": 65,
+            "func": "test_sparse_svr_empty_support_vectors_predict",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/svm/tests/test_sparse_empty_sv.py",
+            "line": 65,
+            "func": "test_sparse_svr_empty_support_vectors_predict",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/svm/classes.py",
+            "line": 982,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 71,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 106,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 780,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 617,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 240,
+            "func": "_ensure_sparse_format",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 598,
+            "func": "_check_large_sparse",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 751,
+            "func": "column_or_1d",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 196,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 207,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 214,
+            "func": "_validate_targets",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 261,
+            "func": "_sparse_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/svm/base.py",
+            "line": 224,
+            "func": "_warn_from_fit_status",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-14894",
+  "messages": []
+}

@@ -1,0 +1,1242 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/inspectdb/tests.py b/tests/inspectdb/tests.py\nindex 9bf3c432e5..68f1d3f9e2 100644\n--- a/tests/inspectdb/tests.py\n+++ b/tests/inspectdb/tests.py\n@@ -434,6 +434,106 @@ class InspectDBTestCase(TestCase):\n         self.assertIn(\"# The error was:\", output)\n \n \n+    @skipUnlessDBFeature(\"can_introspect_foreign_keys\")\n+    def test_multiple_foreign_keys_same_model_with_related_name(self):\n+        \"\"\"\n+        inspectdb should generate related_name for multiple FK fields pointing\n+        to the same model to avoid reverse accessor clashes.\n+        \"\"\"\n+        with connection.cursor() as cursor:\n+            # Create a source table\n+            cursor.execute(\n+                \"\"\"\n+                CREATE TABLE inspectdb_multi_fk_source (\n+                    id INTEGER PRIMARY KEY,\n+                    name VARCHAR(100)\n+                )\n+            \"\"\"\n+            )\n+            # Create a target table with two FKs to the same source table\n+            cursor.execute(\n+                \"\"\"\n+                CREATE TABLE inspectdb_multi_fk_target (\n+                    id INTEGER PRIMARY KEY,\n+                    source1_id INTEGER REFERENCES inspectdb_multi_fk_source(id),\n+                    source2_id INTEGER REFERENCES inspectdb_multi_fk_source(id),\n+                    name VARCHAR(100)\n+                )\n+            \"\"\"\n+            )\n+\n+        try:\n+            out = StringIO()\n+            call_command(\n+                \"inspectdb\",\n+                \"inspectdb_multi_fk_target\",\n+                table_name_filter=inspectdb_tables_only,\n+                stdout=out,\n+            )\n+            output = out.getvalue()\n+\n+            # Verify that related_name is present in the generated model\n+            # to avoid reverse accessor clashes (E304 error)\n+            self.assertIn(\"related_name=\", output)\n+            # Both fields should have related_name\n+            self.assertIn(\"source1 = models.ForeignKey\", output)\n+            self.assertIn(\"source2 = models.ForeignKey\", output)\n+        finally:\n+            with connection.cursor() as cursor:\n+                cursor.execute(\"DROP TABLE inspectdb_multi_fk_target\")\n+                cursor.execute(\"DROP TABLE inspectdb_multi_fk_source\")\n+\n+    @skipUnlessDBFeature(\"can_introspect_foreign_keys\")\n+    def test_multiple_fk_to_known_model_generates_related_name(self):\n+        \"\"\"\n+        When inspectdb generates a model with multiple FKs to a model that\n+        was already generated (is in known_models), it should add related_name\n+        to avoid reverse accessor clashes.\n+        \"\"\"\n+        with connection.cursor() as cursor:\n+            # Create a source table\n+            cursor.execute(\n+                \"\"\"\n+                CREATE TABLE inspectdb_fk_source_known (\n+                    id INTEGER PRIMARY KEY,\n+                    name VARCHAR(100)\n+                )\n+            \"\"\"\n+            )\n+            # Create a target table with two FKs to the source table\n+            cursor.execute(\n+                \"\"\"\n+                CREATE TABLE inspectdb_fk_target_known (\n+                    id INTEGER PRIMARY KEY,\n+                    ref1_id INTEGER REFERENCES inspectdb_fk_source_known(id),\n+                    ref2_id INTEGER REFERENCES inspectdb_fk_source_known(id),\n+                    name VARCHAR(100)\n+                )\n+            \"\"\"\n+            )\n+\n+        try:\n+            out = StringIO()\n+            call_command(\n+                \"inspectdb\",\n+                \"inspectdb_fk_target_known\",\n+                table_name_filter=inspectdb_tables_only,\n+                stdout=out,\n+            )\n+            output = out.getvalue()\n+\n+            # Verify that related_name is present to avoid E304 reverse accessor clash\n+            self.assertIn(\"related_name=\", output)\n+            # Both ForeignKey fields should be generated\n+            self.assertIn(\"ref1 = models.ForeignKey\", output)\n+            self.assertIn(\"ref2 = models.ForeignKey\", output)\n+        finally:\n+            with connection.cursor() as cursor:\n+                cursor.execute(\"DROP TABLE inspectdb_fk_target_known\")\n+                cursor.execute(\"DROP TABLE inspectdb_fk_source_known\")\n+\n+\n+\n class InspectDBTransactionalTests(TransactionTestCase):\n     available_apps = [\"inspectdb\"]\n \n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_attribute_name_not_python_keyword (inspectdb.tests.InspectDBTestCase) ... ok\ntest_char_field_db_collation (inspectdb.tests.InspectDBTestCase) ... ok\ntest_custom_fields (inspectdb.tests.InspectDBTestCase)\nIntrospection of columns with a custom field (#21090) ... ok\ntest_digits_column_name_introspection (inspectdb.tests.InspectDBTestCase)\nIntrospection of column names consist/start with digits (#16536/#17676) ... ok\ntest_field_types (inspectdb.tests.InspectDBTestCase)\nTest introspection of various Django field types ... ok\ntest_foreign_key_to_field (inspectdb.tests.InspectDBTestCase) ... ok\ntest_introspection_errors (inspectdb.tests.InspectDBTestCase)\nIntrospection errors should not crash the command, and the error should ... ok\ntest_json_field (inspectdb.tests.InspectDBTestCase) ... ok\ntest_managed_models (inspectdb.tests.InspectDBTestCase)\nBy default the command generates models with `Meta.managed = False`. ... ok\ntest_multiple_fk_to_known_model_generates_related_name (inspectdb.tests.InspectDBTestCase)\nWhen inspectdb generates a model with multiple FKs to a model that ... FAIL\ntest_multiple_foreign_keys_same_model_with_related_name (inspectdb.tests.InspectDBTestCase)\ninspectdb should generate related_name for multiple FK fields pointing ... FAIL\ntest_number_field_types (inspectdb.tests.InspectDBTestCase)\nTest introspection of various Django field types ... ok\ntest_special_column_name_introspection (inspectdb.tests.InspectDBTestCase)\nIntrospection of column names containing special characters, ... ok\ntest_stealth_table_name_filter_option (inspectdb.tests.InspectDBTestCase) ... ok\ntest_table_name_introspection (inspectdb.tests.InspectDBTestCase)\nIntrospection of table names containing special characters, ... ok\ntest_table_option (inspectdb.tests.InspectDBTestCase)\ninspectdb can inspect a subset of tables by passing the table names as ... ok\ntest_table_with_func_unique_constraint (inspectdb.tests.InspectDBTestCase) ... ok\ntest_text_field_db_collation (inspectdb.tests.InspectDBTestCase) ... ok\ntest_unique_together_meta (inspectdb.tests.InspectDBTestCase) ... ok\ntest_unsupported_unique_together (inspectdb.tests.InspectDBTestCase)\nUnsupported index types (COALESCE here) are skipped. ... skipped 'PostgreSQL specific SQL'\ntest_composite_primary_key (inspectdb.tests.InspectDBTransactionalTests) ... ok\ntest_foreign_data_wrapper (inspectdb.tests.InspectDBTransactionalTests) ... skipped 'PostgreSQL specific SQL'\ntest_include_materialized_views (inspectdb.tests.InspectDBTransactionalTests)\ninspectdb --include-views creates models for materialized views. ... skipped \"Database doesn't support feature(s): can_introspect_materialized_views\"\ntest_include_partitions (inspectdb.tests.InspectDBTransactionalTests)\ninspectdb --include-partitions creates models for partitions. ... skipped 'PostgreSQL specific SQL'\ntest_include_views (inspectdb.tests.InspectDBTransactionalTests)\ninspectdb --include-views creates models for database views. ... ok\n\n======================================================================\nFAIL: test_multiple_fk_to_known_model_generates_related_name (inspectdb.tests.InspectDBTestCase)\nWhen inspectdb generates a model with multiple FKs to a model that\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/testcases.py\", line 1571, in skip_wrapper\n    return test_func(*args, **kwargs)\n  File \"/testbed/tests/inspectdb/tests.py\", line 526, in test_multiple_fk_to_known_model_generates_related_name\n    self.assertIn(\"related_name=\", output)\nAssertionError: 'related_name=' not found in \"# This is an auto-generated Django model module.\\n# You'll have to do the following manually to clean this up:\\n#   * Rearrange models' order\\n#   * Make sure each model has one field with primary_key=True\\n#   * Make sure each ForeignKey and OneToOneField has `on_delete` set to the desired behavior\\n#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table\\n# Feel free to rename the models, but don't rename db_table values or field names.\\nfrom django.db import models\\n\\n\\nclass InspectdbFkTargetKnown(models.Model):\\n    ref1 = models.ForeignKey('InspectdbFkSourceKnown', models.DO_NOTHING, blank=True, null=True)\\n    ref2 = models.ForeignKey('InspectdbFkSourceKnown', models.DO_NOTHING, blank=True, null=True)\\n    name = models.CharField(blank=True, null=True)\\n\\n    class Meta:\\n        managed = False\\n        db_table = 'inspectdb_fk_target_known'\\n\"\n\n======================================================================\nFAIL: test_multiple_foreign_keys_same_model_with_related_name (inspectdb.tests.InspectDBTestCase)\ninspectdb should generate related_name for multiple FK fields pointing\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/testcases.py\", line 1571, in skip_wrapper\n    return test_func(*args, **kwargs)\n  File \"/testbed/tests/inspectdb/tests.py\", line 477, in test_multiple_foreign_keys_same_model_with_related_name\n    self.assertIn(\"related_name=\", output)\nAssertionError: 'related_name=' not found in \"# This is an auto-generated Django model module.\\n# You'll have to do the following manually to clean this up:\\n#   * Rearrange models' order\\n#   * Make sure each model has one field with primary_key=True\\n#   * Make sure each ForeignKey and OneToOneField has `on_delete` set to the desired behavior\\n#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table\\n# Feel free to rename the models, but don't rename db_table values or field names.\\nfrom django.db import models\\n\\n\\nclass InspectdbMultiFkTarget(models.Model):\\n    source1 = models.ForeignKey('InspectdbMultiFkSource', models.DO_NOTHING, blank=True, null=True)\\n    source2 = models.ForeignKey('InspectdbMultiFkSource', models.DO_NOTHING, blank=True, null=True)\\n    name = models.CharField(blank=True, null=True)\\n\\n    class Meta:\\n        managed = False\\n        db_table = 'inspectdb_multi_fk_target'\\n\"\n\n----------------------------------------------------------------------\nRan 25 tests in 0.252s\n\nFAILED (failures=2, skipped=4)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 inspectdb.tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application inspectdb\nFound 25 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, inspectdb, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table inspectdb_people\n    Creating table inspectdb_message\n    Creating table inspectdb_peopledata\n    Creating table inspectdb_peoplemoredata\n    Creating table inspectdb_foreignkeytofield\n    Creating table inspectdb_digitsincolumnname\n    Creating table inspectdb_special.table name\n    Creating table inspectdb_columntypes\n    Creating table inspectdb_jsonfieldcolumntype\n    Creating table inspectdb_charfielddbcollation\n    Creating table inspectdb_textfielddbcollation\n    Creating table inspectdb_uniquetogether\n    Creating table inspectdb_funcuniqueconstraint\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (2 silenced).\n\n",
+    "settrace_traces": {
+      "inspectdb.tests.InspectDBTestCase.test_multiple_fk_to_known_model_generates_related_name": {
+        "exception_frames": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1552,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1552,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1617,
+            "func": "<lambda>",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1617,
+            "func": "<genexpr>",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/inspectdb/tests.py",
+            "line": 486,
+            "func": "test_multiple_fk_to_known_model_generates_related_name",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/asyncio.py",
+            "line": 15,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 320,
+            "func": "cursor",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 297,
+            "func": "_cursor",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 577,
+            "func": "close_if_health_check_failed",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 277,
+            "func": "ensure_connection",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 67,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 176,
+            "func": "create_cursor",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 286,
+            "func": "_prepare_cursor",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 636,
+            "func": "validate_thread_sharing",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 619,
+            "func": "allow_thread_sharing",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 176,
+            "func": "queries_logged",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 679,
+            "func": "make_cursor",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 70,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 33,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 66,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 76,
+            "func": "_execute_with_wrappers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 82,
+            "func": "_execute",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 518,
+            "func": "validate_no_broken_transaction",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 353,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 36,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 22,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 87,
+            "func": "call_command",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 42,
+            "func": "load_command_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 143,
+            "func": "style_func",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 107,
+            "func": "color_style",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 21,
+            "func": "supports_color",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 162,
+            "func": "isatty",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 276,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 21,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 52,
+            "func": "get_complete_version",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 45,
+            "func": "get_main_version",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 49,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 366,
+            "func": "add_base_argument",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 18,
+            "func": "add_arguments",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 127,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 140,
+            "func": "get_actions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 150,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 60,
+            "func": "parse_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 421,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 155,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 158,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 44,
+            "func": "handle",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 54,
+            "func": "handle_inspection",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 165,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 148,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 76,
+            "func": "get_table_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 93,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 96,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 86,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "tests/inspectdb/tests.py",
+            "line": 14,
+            "func": "inspectdb_tables_only",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 139,
+            "func": "get_relations",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 189,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 147,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 304,
+            "func": "get_constraints",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 88,
+            "func": "get_table_description",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 409,
+            "func": "_get_column_collations",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 363,
+            "func": "convert_query",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 264,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 19,
+            "func": "get_field_size",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 320,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 265,
+            "func": "_parse_table_constraints",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 271,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 165,
+            "func": "_parse_column_or_constraint_definition",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 159,
+            "func": "get_primary_key_columns",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 117,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 59,
+            "func": "table2model",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 247,
+            "func": "normalize_col_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 307,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 62,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/introspection.py",
+            "line": 22,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 54,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/introspection.py",
+            "line": 176,
+            "func": "get_primary_key_column",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 230,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 347,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      },
+      "inspectdb.tests.InspectDBTestCase.test_multiple_foreign_keys_same_model_with_related_name": {
+        "exception_frames": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1552,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1552,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1617,
+            "func": "<lambda>",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1617,
+            "func": "<genexpr>",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/inspectdb/tests.py",
+            "line": 437,
+            "func": "test_multiple_foreign_keys_same_model_with_related_name",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/asyncio.py",
+            "line": 15,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 320,
+            "func": "cursor",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 297,
+            "func": "_cursor",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 577,
+            "func": "close_if_health_check_failed",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 277,
+            "func": "ensure_connection",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 67,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 176,
+            "func": "create_cursor",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 286,
+            "func": "_prepare_cursor",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 636,
+            "func": "validate_thread_sharing",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 619,
+            "func": "allow_thread_sharing",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 176,
+            "func": "queries_logged",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 679,
+            "func": "make_cursor",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 70,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 33,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 66,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 76,
+            "func": "_execute_with_wrappers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 82,
+            "func": "_execute",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 518,
+            "func": "validate_no_broken_transaction",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 353,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 36,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 22,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 87,
+            "func": "call_command",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 42,
+            "func": "load_command_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 143,
+            "func": "style_func",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 107,
+            "func": "color_style",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 21,
+            "func": "supports_color",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 162,
+            "func": "isatty",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 276,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 21,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 52,
+            "func": "get_complete_version",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 45,
+            "func": "get_main_version",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 49,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 366,
+            "func": "add_base_argument",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 18,
+            "func": "add_arguments",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 127,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 140,
+            "func": "get_actions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 150,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 60,
+            "func": "parse_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 421,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 155,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 158,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 44,
+            "func": "handle",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 54,
+            "func": "handle_inspection",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 165,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 148,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 76,
+            "func": "get_table_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 93,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 96,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 86,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "tests/inspectdb/tests.py",
+            "line": 14,
+            "func": "inspectdb_tables_only",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 139,
+            "func": "get_relations",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 189,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 147,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 304,
+            "func": "get_constraints",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 88,
+            "func": "get_table_description",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 409,
+            "func": "_get_column_collations",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 363,
+            "func": "convert_query",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 264,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 19,
+            "func": "get_field_size",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 320,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 265,
+            "func": "_parse_table_constraints",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 271,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 165,
+            "func": "_parse_column_or_constraint_definition",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 159,
+            "func": "get_primary_key_columns",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 117,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 59,
+            "func": "table2model",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 247,
+            "func": "normalize_col_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 307,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 62,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/introspection.py",
+            "line": 22,
+            "func": "get_field_type",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 54,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/introspection.py",
+            "line": 176,
+            "func": "get_primary_key_column",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 230,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/management/commands/inspectdb.py",
+            "line": 347,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-15819",
+  "messages": []
+}

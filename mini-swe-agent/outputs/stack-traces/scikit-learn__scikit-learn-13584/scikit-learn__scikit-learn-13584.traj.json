@@ -1,0 +1,299 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sklearn/utils/tests/test_pprint_array_params.py b/sklearn/utils/tests/test_pprint_array_params.py\nnew file mode 100644\nindex 000000000..f612d1171\n--- /dev/null\n+++ b/sklearn/utils/tests/test_pprint_array_params.py\n@@ -0,0 +1,92 @@\n+\"\"\"Tests for _pprint with array parameters.\n+\n+This test file specifically tests the bug where using print_changed_only=True\n+with estimators that have array parameters causes a ValueError due to\n+ambiguous truth value of numpy arrays.\n+\n+See https://github.com/scikit-learn/scikit-learn/issues/XXXXX\n+\"\"\"\n+\n+import numpy as np\n+import pytest\n+\n+from sklearn.base import BaseEstimator\n+from sklearn import set_config\n+\n+\n+class DummyEstimatorWithArrayParam(BaseEstimator):\n+    \"\"\"A simple estimator with an array parameter for testing.\"\"\"\n+\n+    def __init__(self, Cs=None):\n+        self.Cs = Cs\n+\n+\n+def test_repr_array_params_changed_only():\n+    \"\"\"Test that repr works with array parameters when print_changed_only=True.\n+    \n+    This is a regression test for a bug where using print_changed_only=True\n+    with estimators that have numpy array parameters caused a ValueError:\n+    \"The truth value of an array with more than one element is ambiguous.\n+    Use a.any() or a.all()\"\n+    \n+    The bug was in the _changed_params function which compared parameter values\n+    using `v != init_params[k]`. When v is a numpy array, this returns an\n+    array of booleans instead of a single boolean, which can't be used in an\n+    if statement.\n+    \"\"\"\n+    set_config(print_changed_only=True)\n+    \n+    try:\n+        # Create an estimator with an array parameter\n+        est = DummyEstimatorWithArrayParam(Cs=np.array([0.1, 1]))\n+        \n+        # This should not raise ValueError\n+        repr_str = repr(est)\n+        \n+        # The repr should contain the array value\n+        assert 'Cs=' in repr_str\n+        assert '0.1' in repr_str\n+    finally:\n+        set_config(print_changed_only=False)\n+\n+\n+def test_repr_array_params_changed_only_multidim():\n+    \"\"\"Test that repr works with multi-dimensional array parameters.\n+    \n+    This is an additional regression test for the same bug but with\n+    multi-dimensional numpy arrays.\n+    \"\"\"\n+    set_config(print_changed_only=True)\n+    \n+    try:\n+        # Create an estimator with a 2D array parameter\n+        est = DummyEstimatorWithArrayParam(Cs=np.array([[0.1, 0.5], [1.0, 2.0]]))\n+        \n+        # This should not raise ValueError\n+        repr_str = repr(est)\n+        \n+        # The repr should contain the array value\n+        assert 'Cs=' in repr_str\n+    finally:\n+        set_config(print_changed_only=False)\n+\n+\n+def test_changed_only_with_list_params():\n+    \"\"\"Test that repr works with list parameters when print_changed_only=True.\n+    \n+    This is a related test to ensure that list parameters also work correctly.\n+    \"\"\"\n+    set_config(print_changed_only=True)\n+    \n+    try:\n+        # Create an estimator with a list parameter\n+        est = DummyEstimatorWithArrayParam(Cs=[0.1, 1])\n+        \n+        # This should not raise ValueError\n+        repr_str = repr(est)\n+        \n+        # The repr should contain the list value\n+        assert 'Cs=' in repr_str\n+        assert '0.1' in repr_str\n+    finally:\n+        set_config(print_changed_only=False)\n",
+    "stack_traces": [
+      "_____________________ test_repr_array_params_changed_only ______________________\n\n    def test_repr_array_params_changed_only():\n        \"\"\"Test that repr works with array parameters when print_changed_only=True.\n    \n        This is a regression test for a bug where using print_changed_only=True\n        with estimators that have numpy array parameters caused a ValueError:\n        \"The truth value of an array with more than one element is ambiguous.\n        Use a.any() or a.all()\"\n    \n        The bug was in the _changed_params function which compared parameter values\n        using `v != init_params[k]`. When v is a numpy array, this returns an\n        array of booleans instead of a single boolean, which can't be used in an\n        if statement.\n        \"\"\"\n        set_config(print_changed_only=True)\n    \n        try:\n            # Create an estimator with an array parameter\n            est = DummyEstimatorWithArrayParam(Cs=np.array([0.1, 1]))\n    \n            # This should not raise ValueError\n>           repr_str = repr(est)\n\nsklearn/utils/tests/test_pprint_array_params.py:44: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def __repr__(self):\n        from .utils._pprint import _EstimatorPrettyPrinter\n    \n        N_CHAR_MAX = 700  # number of non-whitespace or newline chars\n        N_MAX_ELEMENTS_TO_SHOW = 30  # number of elements to show in sequences\n    \n        # use ellipsis for sequences with a lot of elements\n        pp = _EstimatorPrettyPrinter(\n            compact=True, indent=1, indent_at_name=True,\n            n_max_elements_to_show=N_MAX_ELEMENTS_TO_SHOW)\n    \n>       repr_ = pp.pformat(self)\n\nsklearn/base.py:247: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def pformat(self, object):\n        sio = _StringIO()\n>       self._format(object, sio, 0, 0, {}, 0)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:144: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\nstream = <_io.StringIO object at 0x7fff9df6adc8>, indent = 0, allowance = 0\ncontext = {}, level = 0\n\n    def _format(self, object, stream, indent, allowance, context, level):\n        objid = id(object)\n        if objid in context:\n            stream.write(_recursion(object))\n            self._recursive = True\n            self._readable = False\n            return\n>       rep = self._repr(object, context, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:161: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ])), context = {}\nlevel = 0\n\n    def _repr(self, object, context, level):\n        repr, readable, recursive = self.format(object, context.copy(),\n>                                               self._depth, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:393: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\ncontext = {140737410032640: 1}, maxlevels = None, level = 0\n\n    def format(self, object, context, maxlevels, level):\n        return _safe_repr(object, context, maxlevels, level,\n>                         changed_only=self._changed_only)\n\nsklearn/utils/_pprint.py:170: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\ncontext = {140737410032640: 1}, maxlevels = None, level = 0, changed_only = True\n\n    def _safe_repr(object, context, maxlevels, level, changed_only=False):\n        \"\"\"Same as the builtin _safe_repr, with added support for Estimator\n        objects.\"\"\"\n        typ = type(object)\n    \n        if typ in pprint._builtin_scalars:\n            return repr(object), True, False\n    \n        r = getattr(typ, \"__repr__\", None)\n        if issubclass(typ, dict) and r is dict.__repr__:\n            if not object:\n                return \"{}\", True, False\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            saferepr = _safe_repr\n            items = sorted(object.items(), key=pprint._safe_tuple)\n            for k, v in items:\n                krepr, kreadable, krecur = saferepr(\n                    k, context, maxlevels, level, changed_only=changed_only)\n                vrepr, vreadable, vrecur = saferepr(\n                    v, context, maxlevels, level, changed_only=changed_only)\n                append(\"%s: %s\" % (krepr, vrepr))\n                readable = readable and kreadable and vreadable\n                if krecur or vrecur:\n                    recursive = True\n            del context[objid]\n            return \"{%s}\" % \", \".join(components), readable, recursive\n    \n        if (issubclass(typ, list) and r is list.__repr__) or \\\n           (issubclass(typ, tuple) and r is tuple.__repr__):\n            if issubclass(typ, list):\n                if not object:\n                    return \"[]\", True, False\n                format = \"[%s]\"\n            elif len(object) == 1:\n                format = \"(%s,)\"\n            else:\n                if not object:\n                    return \"()\", True, False\n                format = \"(%s)\"\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return format % \"...\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            for o in object:\n                orepr, oreadable, orecur = _safe_repr(\n                    o, context, maxlevels, level, changed_only=changed_only)\n                append(orepr)\n                if not oreadable:\n                    readable = False\n                if orecur:\n                    recursive = True\n            del context[objid]\n            return format % \", \".join(components), readable, recursive\n    \n        if issubclass(typ, BaseEstimator):\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            if changed_only:\n>               params = _changed_params(object)\n\nsklearn/utils/_pprint.py:413: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nestimator = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def _changed_params(estimator):\n        \"\"\"Return dict (param_name: value) of parameters that were given to\n        estimator with non-default values.\"\"\"\n    \n        params = estimator.get_params(deep=False)\n        filtered_params = {}\n        init_func = getattr(estimator.__init__, 'deprecated_original',\n                            estimator.__init__)\n        init_params = signature(init_func).parameters\n        init_params = {name: param.default for name, param in init_params.items()}\n        for k, v in params.items():\n>           if (v != init_params[k] and\n                    not (is_scalar_nan(init_params[k]) and is_scalar_nan(v))):\nE                   ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()\n\nsklearn/utils/_pprint.py:98: ValueError\n_________________ test_repr_array_params_changed_only_multidim _________________\n\n    def test_repr_array_params_changed_only_multidim():\n        \"\"\"Test that repr works with multi-dimensional array parameters.\n    \n        This is an additional regression test for the same bug but with\n        multi-dimensional numpy arrays.\n        \"\"\"\n        set_config(print_changed_only=True)\n    \n        try:\n            # Create an estimator with a 2D array parameter\n            est = DummyEstimatorWithArrayParam(Cs=np.array([[0.1, 0.5], [1.0, 2.0]]))\n    \n            # This should not raise ValueError\n>           repr_str = repr(est)\n\nsklearn/utils/tests/test_pprint_array_params.py:66: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def __repr__(self):\n        from .utils._pprint import _EstimatorPrettyPrinter\n    \n        N_CHAR_MAX = 700  # number of non-whitespace or newline chars\n        N_MAX_ELEMENTS_TO_SHOW = 30  # number of elements to show in sequences\n    \n        # use ellipsis for sequences with a lot of elements\n        pp = _EstimatorPrettyPrinter(\n            compact=True, indent=1, indent_at_name=True,\n            n_max_elements_to_show=N_MAX_ELEMENTS_TO_SHOW)\n    \n>       repr_ = pp.pformat(self)\n\nsklearn/base.py:247: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def pformat(self, object):\n        sio = _StringIO()\n>       self._format(object, sio, 0, 0, {}, 0)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:144: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\nstream = <_io.StringIO object at 0x7ffffe2388b8>, indent = 0, allowance = 0\ncontext = {}, level = 0\n\n    def _format(self, object, stream, indent, allowance, context, level):\n        objid = id(object)\n        if objid in context:\n            stream.write(_recursion(object))\n            self._recursive = True\n            self._readable = False\n            return\n>       rep = self._repr(object, context, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:161: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {}, level = 0\n\n    def _repr(self, object, context, level):\n        repr, readable, recursive = self.format(object, context.copy(),\n>                                               self._depth, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:393: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {140737408903712: 1}, maxlevels = None, level = 0\n\n    def format(self, object, context, maxlevels, level):\n        return _safe_repr(object, context, maxlevels, level,\n>                         changed_only=self._changed_only)\n\nsklearn/utils/_pprint.py:170: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {140737408903712: 1}, maxlevels = None, level = 0, changed_only = True\n\n    def _safe_repr(object, context, maxlevels, level, changed_only=False):\n        \"\"\"Same as the builtin _safe_repr, with added support for Estimator\n        objects.\"\"\"\n        typ = type(object)\n    \n        if typ in pprint._builtin_scalars:\n            return repr(object), True, False\n    \n        r = getattr(typ, \"__repr__\", None)\n        if issubclass(typ, dict) and r is dict.__repr__:\n            if not object:\n                return \"{}\", True, False\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            saferepr = _safe_repr\n            items = sorted(object.items(), key=pprint._safe_tuple)\n            for k, v in items:\n                krepr, kreadable, krecur = saferepr(\n                    k, context, maxlevels, level, changed_only=changed_only)\n                vrepr, vreadable, vrecur = saferepr(\n                    v, context, maxlevels, level, changed_only=changed_only)\n                append(\"%s: %s\" % (krepr, vrepr))\n                readable = readable and kreadable and vreadable\n                if krecur or vrecur:\n                    recursive = True\n            del context[objid]\n            return \"{%s}\" % \", \".join(components), readable, recursive\n    \n        if (issubclass(typ, list) and r is list.__repr__) or \\\n           (issubclass(typ, tuple) and r is tuple.__repr__):\n            if issubclass(typ, list):\n                if not object:\n                    return \"[]\", True, False\n                format = \"[%s]\"\n            elif len(object) == 1:\n                format = \"(%s,)\"\n            else:\n                if not object:\n                    return \"()\", True, False\n                format = \"(%s)\"\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return format % \"...\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            for o in object:\n                orepr, oreadable, orecur = _safe_repr(\n                    o, context, maxlevels, level, changed_only=changed_only)\n                append(orepr)\n                if not oreadable:\n                    readable = False\n                if orecur:\n                    recursive = True\n            del context[objid]\n            return format % \", \".join(components), readable, recursive\n    \n        if issubclass(typ, BaseEstimator):\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            if changed_only:\n>               params = _changed_params(object)\n\nsklearn/utils/_pprint.py:413: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nestimator = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def _changed_params(estimator):\n        \"\"\"Return dict (param_name: value) of parameters that were given to\n        estimator with non-default values.\"\"\"\n    \n        params = estimator.get_params(deep=False)\n        filtered_params = {}\n        init_func = getattr(estimator.__init__, 'deprecated_original',\n                            estimator.__init__)\n        init_params = signature(init_func).parameters\n        init_params = {name: param.default for name, param in init_params.items()}\n        for k, v in params.items():\n>           if (v != init_params[k] and\n                    not (is_scalar_nan(init_params[k]) and is_scalar_nan(v))):\nE                   ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()\n\nsklearn/utils/_pprint.py:98: ValueError"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 3 items\n\nsklearn/utils/tests/test_pprint_array_params.py FF.                      [100%]\n\n=================================== FAILURES ===================================\n_____________________ test_repr_array_params_changed_only ______________________\n\n    def test_repr_array_params_changed_only():\n        \"\"\"Test that repr works with array parameters when print_changed_only=True.\n    \n        This is a regression test for a bug where using print_changed_only=True\n        with estimators that have numpy array parameters caused a ValueError:\n        \"The truth value of an array with more than one element is ambiguous.\n        Use a.any() or a.all()\"\n    \n        The bug was in the _changed_params function which compared parameter values\n        using `v != init_params[k]`. When v is a numpy array, this returns an\n        array of booleans instead of a single boolean, which can't be used in an\n        if statement.\n        \"\"\"\n        set_config(print_changed_only=True)\n    \n        try:\n            # Create an estimator with an array parameter\n            est = DummyEstimatorWithArrayParam(Cs=np.array([0.1, 1]))\n    \n            # This should not raise ValueError\n>           repr_str = repr(est)\n\nsklearn/utils/tests/test_pprint_array_params.py:44: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def __repr__(self):\n        from .utils._pprint import _EstimatorPrettyPrinter\n    \n        N_CHAR_MAX = 700  # number of non-whitespace or newline chars\n        N_MAX_ELEMENTS_TO_SHOW = 30  # number of elements to show in sequences\n    \n        # use ellipsis for sequences with a lot of elements\n        pp = _EstimatorPrettyPrinter(\n            compact=True, indent=1, indent_at_name=True,\n            n_max_elements_to_show=N_MAX_ELEMENTS_TO_SHOW)\n    \n>       repr_ = pp.pformat(self)\n\nsklearn/base.py:247: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def pformat(self, object):\n        sio = _StringIO()\n>       self._format(object, sio, 0, 0, {}, 0)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:144: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\nstream = <_io.StringIO object at 0x7fff9df6adc8>, indent = 0, allowance = 0\ncontext = {}, level = 0\n\n    def _format(self, object, stream, indent, allowance, context, level):\n        objid = id(object)\n        if objid in context:\n            stream.write(_recursion(object))\n            self._recursive = True\n            self._readable = False\n            return\n>       rep = self._repr(object, context, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:161: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ])), context = {}\nlevel = 0\n\n    def _repr(self, object, context, level):\n        repr, readable, recursive = self.format(object, context.copy(),\n>                                               self._depth, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:393: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb54e630>\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\ncontext = {140737410032640: 1}, maxlevels = None, level = 0\n\n    def format(self, object, context, maxlevels, level):\n        return _safe_repr(object, context, maxlevels, level,\n>                         changed_only=self._changed_only)\n\nsklearn/utils/_pprint.py:170: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobject = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\ncontext = {140737410032640: 1}, maxlevels = None, level = 0, changed_only = True\n\n    def _safe_repr(object, context, maxlevels, level, changed_only=False):\n        \"\"\"Same as the builtin _safe_repr, with added support for Estimator\n        objects.\"\"\"\n        typ = type(object)\n    \n        if typ in pprint._builtin_scalars:\n            return repr(object), True, False\n    \n        r = getattr(typ, \"__repr__\", None)\n        if issubclass(typ, dict) and r is dict.__repr__:\n            if not object:\n                return \"{}\", True, False\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            saferepr = _safe_repr\n            items = sorted(object.items(), key=pprint._safe_tuple)\n            for k, v in items:\n                krepr, kreadable, krecur = saferepr(\n                    k, context, maxlevels, level, changed_only=changed_only)\n                vrepr, vreadable, vrecur = saferepr(\n                    v, context, maxlevels, level, changed_only=changed_only)\n                append(\"%s: %s\" % (krepr, vrepr))\n                readable = readable and kreadable and vreadable\n                if krecur or vrecur:\n                    recursive = True\n            del context[objid]\n            return \"{%s}\" % \", \".join(components), readable, recursive\n    \n        if (issubclass(typ, list) and r is list.__repr__) or \\\n           (issubclass(typ, tuple) and r is tuple.__repr__):\n            if issubclass(typ, list):\n                if not object:\n                    return \"[]\", True, False\n                format = \"[%s]\"\n            elif len(object) == 1:\n                format = \"(%s,)\"\n            else:\n                if not object:\n                    return \"()\", True, False\n                format = \"(%s)\"\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return format % \"...\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            for o in object:\n                orepr, oreadable, orecur = _safe_repr(\n                    o, context, maxlevels, level, changed_only=changed_only)\n                append(orepr)\n                if not oreadable:\n                    readable = False\n                if orecur:\n                    recursive = True\n            del context[objid]\n            return format % \", \".join(components), readable, recursive\n    \n        if issubclass(typ, BaseEstimator):\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            if changed_only:\n>               params = _changed_params(object)\n\nsklearn/utils/_pprint.py:413: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nestimator = DummyEstimatorWithArrayParam(Cs=array([0.1, 1. ]))\n\n    def _changed_params(estimator):\n        \"\"\"Return dict (param_name: value) of parameters that were given to\n        estimator with non-default values.\"\"\"\n    \n        params = estimator.get_params(deep=False)\n        filtered_params = {}\n        init_func = getattr(estimator.__init__, 'deprecated_original',\n                            estimator.__init__)\n        init_params = signature(init_func).parameters\n        init_params = {name: param.default for name, param in init_params.items()}\n        for k, v in params.items():\n>           if (v != init_params[k] and\n                    not (is_scalar_nan(init_params[k]) and is_scalar_nan(v))):\nE                   ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()\n\nsklearn/utils/_pprint.py:98: ValueError\n_________________ test_repr_array_params_changed_only_multidim _________________\n\n    def test_repr_array_params_changed_only_multidim():\n        \"\"\"Test that repr works with multi-dimensional array parameters.\n    \n        This is an additional regression test for the same bug but with\n        multi-dimensional numpy arrays.\n        \"\"\"\n        set_config(print_changed_only=True)\n    \n        try:\n            # Create an estimator with a 2D array parameter\n            est = DummyEstimatorWithArrayParam(Cs=np.array([[0.1, 0.5], [1.0, 2.0]]))\n    \n            # This should not raise ValueError\n>           repr_str = repr(est)\n\nsklearn/utils/tests/test_pprint_array_params.py:66: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def __repr__(self):\n        from .utils._pprint import _EstimatorPrettyPrinter\n    \n        N_CHAR_MAX = 700  # number of non-whitespace or newline chars\n        N_MAX_ELEMENTS_TO_SHOW = 30  # number of elements to show in sequences\n    \n        # use ellipsis for sequences with a lot of elements\n        pp = _EstimatorPrettyPrinter(\n            compact=True, indent=1, indent_at_name=True,\n            n_max_elements_to_show=N_MAX_ELEMENTS_TO_SHOW)\n    \n>       repr_ = pp.pformat(self)\n\nsklearn/base.py:247: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def pformat(self, object):\n        sio = _StringIO()\n>       self._format(object, sio, 0, 0, {}, 0)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:144: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\nstream = <_io.StringIO object at 0x7ffffe2388b8>, indent = 0, allowance = 0\ncontext = {}, level = 0\n\n    def _format(self, object, stream, indent, allowance, context, level):\n        objid = id(object)\n        if objid in context:\n            stream.write(_recursion(object))\n            self._recursive = True\n            self._readable = False\n            return\n>       rep = self._repr(object, context, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:161: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {}, level = 0\n\n    def _repr(self, object, context, level):\n        repr, readable, recursive = self.format(object, context.copy(),\n>                                               self._depth, level)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/pprint.py:393: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <sklearn.utils._pprint._EstimatorPrettyPrinter object at 0x7ffffb43ad30>\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {140737408903712: 1}, maxlevels = None, level = 0\n\n    def format(self, object, context, maxlevels, level):\n        return _safe_repr(object, context, maxlevels, level,\n>                         changed_only=self._changed_only)\n\nsklearn/utils/_pprint.py:170: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobject = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\ncontext = {140737408903712: 1}, maxlevels = None, level = 0, changed_only = True\n\n    def _safe_repr(object, context, maxlevels, level, changed_only=False):\n        \"\"\"Same as the builtin _safe_repr, with added support for Estimator\n        objects.\"\"\"\n        typ = type(object)\n    \n        if typ in pprint._builtin_scalars:\n            return repr(object), True, False\n    \n        r = getattr(typ, \"__repr__\", None)\n        if issubclass(typ, dict) and r is dict.__repr__:\n            if not object:\n                return \"{}\", True, False\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            saferepr = _safe_repr\n            items = sorted(object.items(), key=pprint._safe_tuple)\n            for k, v in items:\n                krepr, kreadable, krecur = saferepr(\n                    k, context, maxlevels, level, changed_only=changed_only)\n                vrepr, vreadable, vrecur = saferepr(\n                    v, context, maxlevels, level, changed_only=changed_only)\n                append(\"%s: %s\" % (krepr, vrepr))\n                readable = readable and kreadable and vreadable\n                if krecur or vrecur:\n                    recursive = True\n            del context[objid]\n            return \"{%s}\" % \", \".join(components), readable, recursive\n    \n        if (issubclass(typ, list) and r is list.__repr__) or \\\n           (issubclass(typ, tuple) and r is tuple.__repr__):\n            if issubclass(typ, list):\n                if not object:\n                    return \"[]\", True, False\n                format = \"[%s]\"\n            elif len(object) == 1:\n                format = \"(%s,)\"\n            else:\n                if not object:\n                    return \"()\", True, False\n                format = \"(%s)\"\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return format % \"...\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            components = []\n            append = components.append\n            level += 1\n            for o in object:\n                orepr, oreadable, orecur = _safe_repr(\n                    o, context, maxlevels, level, changed_only=changed_only)\n                append(orepr)\n                if not oreadable:\n                    readable = False\n                if orecur:\n                    recursive = True\n            del context[objid]\n            return format % \", \".join(components), readable, recursive\n    \n        if issubclass(typ, BaseEstimator):\n            objid = id(object)\n            if maxlevels and level >= maxlevels:\n                return \"{...}\", False, objid in context\n            if objid in context:\n                return pprint._recursion(object), False, True\n            context[objid] = 1\n            readable = True\n            recursive = False\n            if changed_only:\n>               params = _changed_params(object)\n\nsklearn/utils/_pprint.py:413: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nestimator = DummyEstimatorWithArrayParam(Cs=array([[0.1, 0.5],\n       [1. , 2. ]]))\n\n    def _changed_params(estimator):\n        \"\"\"Return dict (param_name: value) of parameters that were given to\n        estimator with non-default values.\"\"\"\n    \n        params = estimator.get_params(deep=False)\n        filtered_params = {}\n        init_func = getattr(estimator.__init__, 'deprecated_original',\n                            estimator.__init__)\n        init_params = signature(init_func).parameters\n        init_params = {name: param.default for name, param in init_params.items()}\n        for k, v in params.items():\n>           if (v != init_params[k] and\n                    not (is_scalar_nan(init_params[k]) and is_scalar_nan(v))):\nE                   ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()\n\nsklearn/utils/_pprint.py:98: ValueError\n=========================== short test summary info ============================\nFAILED sklearn/utils/tests/test_pprint_array_params.py::test_repr_array_params_changed_only\nFAILED sklearn/utils/tests/test_pprint_array_params.py::test_repr_array_params_changed_only_multidim\n========================= 2 failed, 1 passed in 0.34s ==========================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/sklearn/utils/tests/test_pprint_array_params.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "sklearn/utils/tests/test_pprint_array_params.py::test_repr_array_params_changed_only": {
+        "exception_frames": [
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 24,
+            "func": "test_repr_array_params_changed_only",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 236,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 24,
+            "func": "test_repr_array_params_changed_only",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 24,
+            "func": "set_config",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 236,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 2,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 75,
+            "func": "KeyValTuple",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 82,
+            "func": "KeyValTupleParam",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 104,
+            "func": "_EstimatorPrettyPrinter",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 155,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 168,
+            "func": "format",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 332,
+            "func": "_safe_repr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 87,
+            "func": "_changed_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 176,
+            "func": "get_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 149,
+            "func": "_get_param_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 163,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 96,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      },
+      "sklearn/utils/tests/test_pprint_array_params.py::test_repr_array_params_changed_only_multidim": {
+        "exception_frames": [
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 53,
+            "func": "test_repr_array_params_changed_only_multidim",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 236,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 168,
+            "func": "format",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 332,
+            "func": "_safe_repr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 87,
+            "func": "_changed_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 176,
+            "func": "get_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 149,
+            "func": "_get_param_names",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 53,
+            "func": "test_repr_array_params_changed_only_multidim",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 24,
+            "func": "set_config",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/tests/test_pprint_array_params.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 236,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 155,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 168,
+            "func": "format",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 332,
+            "func": "_safe_repr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 87,
+            "func": "_changed_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 176,
+            "func": "get_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 149,
+            "func": "_get_param_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 163,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/utils/_pprint.py",
+            "line": 96,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-13584",
+  "messages": []
+}

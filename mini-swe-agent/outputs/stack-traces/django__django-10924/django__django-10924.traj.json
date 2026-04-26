@@ -3,104 +3,394 @@
     "exit_status": "Submitted",
     "submission": "diff --git a/tests/forms_tests/field_tests/test_filepathfield_callable.py b/tests/forms_tests/field_tests/test_filepathfield_callable.py\nnew file mode 100644\nindex 0000000000..5e40a5af2a\n--- /dev/null\n+++ b/tests/forms_tests/field_tests/test_filepathfield_callable.py\n@@ -0,0 +1,103 @@\n+\"\"\"\n+Tests for FilePathField with callable path.\n+\"\"\"\n+import os\n+import os.path\n+\n+from django.forms import FilePathField, ValidationError\n+from django.test import SimpleTestCase\n+\n+PATH = os.path.dirname(os.path.abspath(__file__))\n+TEST_DIR = os.path.join(PATH, 'filepathfield_test_dir') + '/'\n+\n+\n+def fix_os_paths(x, prefix=PATH):\n+    if isinstance(x, str):\n+        if x.startswith(prefix):\n+            x = x[len(prefix):]\n+        return x.replace('\\\\', '/')\n+    elif isinstance(x, tuple):\n+        return tuple(fix_os_paths(list(x), prefix))\n+    elif isinstance(x, list):\n+        return [fix_os_paths(y, prefix) for y in x]\n+    else:\n+        return x\n+\n+\n+class FilePathFieldCallablePathTest(SimpleTestCase):\n+    \"\"\"\n+    Tests for FilePathField path parameter accepting callables.\n+    \n+    The path parameter should be callable, allowing for dynamic path resolution\n+    based on settings or other runtime values.\n+    \"\"\"\n+\n+    def test_callable_path(self):\n+        \"\"\"\n+        FilePathField should accept a callable as the path parameter.\n+        \n+        When a callable is passed, it should be called to resolve the path\n+        before using it to populate choices.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        f = FilePathField(path=get_path)\n+        # The choices should be populated using the resolved path\n+        self.assertEqual(len(f.choices), 5)  # README + 4 .py files\n+        # Check that the choices contain expected items\n+        choices_values = [c[0] for c in f.choices]\n+        self.assertTrue(any('README' in c for c in choices_values))\n+        self.assertTrue(any('a.py' in c for c in choices_values))\n+        \n+    def test_callable_path_clean(self):\n+        \"\"\"\n+        FilePathField with callable path should validate correctly.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        f = FilePathField(path=get_path)\n+        # Valid choice should pass\n+        valid_choice = TEST_DIR + 'a.py'\n+        self.assertEqual(fix_os_paths(f.clean(valid_choice)), \n+                         fix_os_paths(valid_choice))\n+        \n+        # Invalid choice should fail\n+        with self.assertRaises(ValidationError):\n+            f.clean('nonexistent.py')\n+\n+    def test_callable_path_with_os_path_join(self):\n+        \"\"\"\n+        FilePathField should work with os.path.join() as a callable.\n+        \n+        This is a common use case for combining a settings-based directory\n+        with a subdirectory.\n+        \"\"\"\n+        def get_path():\n+            return os.path.join(TEST_DIR, '')\n+        \n+        f = FilePathField(path=get_path)\n+        # The choices should be populated using the resolved path\n+        self.assertEqual(len(f.choices), 5)\n+        \n+    def test_callable_path_with_lambda(self):\n+        \"\"\"\n+        FilePathField should accept a lambda as the path parameter.\n+        \"\"\"\n+        f = FilePathField(path=lambda: TEST_DIR)\n+        self.assertEqual(len(f.choices), 5)\n+        \n+    def test_callable_path_recursive(self):\n+        \"\"\"\n+        FilePathField with callable path should work with recursive=True.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        f = FilePathField(path=get_path, recursive=True, match=r'^.*?\\.py$')\n+        # Should include files in subdirectories\n+        self.assertGreater(len(f.choices), 5)\n+        choices_values = [c[0] for c in f.choices]\n+        # Check that subdirectory files are included\n+        self.assertTrue(any('c/' in c for c in choices_values))\ndiff --git a/tests/model_fields/test_filepathfield.py b/tests/model_fields/test_filepathfield.py\nnew file mode 100644\nindex 0000000000..0beaca7e00\n--- /dev/null\n+++ b/tests/model_fields/test_filepathfield.py\n@@ -0,0 +1,54 @@\n+\"\"\"\n+Tests for model field FilePathField with callable path.\n+\"\"\"\n+import os\n+import os.path\n+\n+from django.db import models\n+from django.test import SimpleTestCase\n+\n+PATH = os.path.dirname(os.path.abspath(__file__))\n+TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), \n+                        '..', 'forms_tests', 'field_tests', 'filepathfield_test_dir') + '/'\n+\n+\n+class FilePathFieldCallablePathTest(SimpleTestCase):\n+    \"\"\"\n+    Tests for model field FilePathField path parameter accepting callables.\n+    \"\"\"\n+\n+    def test_callable_path_in_model_field(self):\n+        \"\"\"\n+        Model field FilePathField should accept a callable as the path parameter.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        field = models.FilePathField(path=get_path)\n+        # The field should store the callable, not the resolved path\n+        self.assertEqual(field.path, get_path)\n+        \n+    def test_callable_path_formfield(self):\n+        \"\"\"\n+        Model field FilePathField with callable path should pass the callable\n+        to its form field.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        field = models.FilePathField(path=get_path)\n+        form_field = field.formfield()\n+        # The form field should receive the callable\n+        self.assertEqual(form_field.path, get_path)\n+\n+    def test_callable_path_deconstruct(self):\n+        \"\"\"\n+        Model field FilePathField with callable path should be deconstructable.\n+        \"\"\"\n+        def get_path():\n+            return TEST_DIR\n+        \n+        field = models.FilePathField(path=get_path)\n+        name, path, args, kwargs = field.deconstruct()\n+        # The path in kwargs should be the callable itself\n+        self.assertEqual(kwargs['path'], get_path)\n",
     "stack_traces": [],
-    "test_output": "test_callable_path (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_clean (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_recursive (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_with_lambda (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_with_os_path_join (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_deconstruct (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ok\ntest_callable_path_formfield (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_in_model_field (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ok\n\n======================================================================\nERROR: test_callable_path (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 45, in test_callable_path\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_clean (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 60, in test_callable_path_clean\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_recursive (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 98, in test_callable_path_recursive\n    f = FilePathField(path=get_path, recursive=True, match=r'^.*?\\.py$')\n  File \"/testbed/django/forms/fields.py\", line 1094, in __init__\n    for root, dirs, files in sorted(os.walk(self.path)):\n  File \"/opt/miniconda3/envs/testbed/lib/python3.6/os.py\", line 335, in walk\n    top = fspath(top)\nTypeError: expected str, bytes or os.PathLike object, not function\n\n======================================================================\nERROR: test_callable_path_with_lambda (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 88, in test_callable_path_with_lambda\n    f = FilePathField(path=lambda: TEST_DIR)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_with_os_path_join (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 80, in test_callable_path_with_os_path_join\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_formfield (model_fields.test_filepathfield.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_fields/test_filepathfield.py\", line 40, in test_callable_path_formfield\n    form_field = field.formfield()\n  File \"/testbed/django/db/models/fields/__init__.py\", line 1718, in formfield\n    **kwargs,\n  File \"/testbed/django/db/models/fields/__init__.py\", line 890, in formfield\n    return form_class(**defaults)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n----------------------------------------------------------------------\nRan 8 tests in 0.002s\n\nFAILED (errors=6)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 forms_tests.field_tests.test_filepathfield_callable model_fields.test_filepathfield` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application forms_tests\nImporting application model_fields\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "test_output": "test_callable_path (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_clean (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_recursive (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_with_lambda (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_with_os_path_join (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_deconstruct (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ok\ntest_callable_path_formfield (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ERROR\ntest_callable_path_in_model_field (model_fields.test_filepathfield.FilePathFieldCallablePathTest) ... ok\n\n======================================================================\nERROR: test_callable_path (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 45, in test_callable_path\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_clean (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 60, in test_callable_path_clean\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_recursive (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 98, in test_callable_path_recursive\n    f = FilePathField(path=get_path, recursive=True, match=r'^.*?\\.py$')\n  File \"/testbed/django/forms/fields.py\", line 1094, in __init__\n    for root, dirs, files in sorted(os.walk(self.path)):\n  File \"/opt/miniconda3/envs/testbed/lib/python3.6/os.py\", line 335, in walk\n    top = fspath(top)\nTypeError: expected str, bytes or os.PathLike object, not function\n\n======================================================================\nERROR: test_callable_path_with_lambda (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 88, in test_callable_path_with_lambda\n    f = FilePathField(path=lambda: TEST_DIR)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_with_os_path_join (forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/field_tests/test_filepathfield_callable.py\", line 80, in test_callable_path_with_os_path_join\n    f = FilePathField(path=get_path)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n======================================================================\nERROR: test_callable_path_formfield (model_fields.test_filepathfield.FilePathFieldCallablePathTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_fields/test_filepathfield.py\", line 40, in test_callable_path_formfield\n    form_field = field.formfield()\n  File \"/testbed/django/db/models/fields/__init__.py\", line 1718, in formfield\n    **kwargs,\n  File \"/testbed/django/db/models/fields/__init__.py\", line 890, in formfield\n    return form_class(**defaults)\n  File \"/testbed/django/forms/fields.py\", line 1109, in __init__\n    for f in os.scandir(self.path):\nTypeError: scandir: path should be string, bytes, os.PathLike or None, not function\n\n----------------------------------------------------------------------\nRan 8 tests in 0.005s\n\nFAILED (errors=6)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 forms_tests.field_tests.test_filepathfield_callable model_fields.test_filepathfield` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application forms_tests\nImporting application model_fields\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
     "settrace_traces": {
-      "model_fields.test_filepathfield.FilePathFieldCallablePathTest.test_callable_path_formfield": [
-        {
-          "file": "tests/model_fields/test_filepathfield.py",
-          "line": 31,
-          "func": "test_callable_path_formfield",
-          "is_test": true
-        },
-        {
-          "file": "django/db/models/fields/__init__.py",
-          "line": 1710,
-          "func": "formfield",
-          "is_test": false
-        },
-        {
-          "file": "django/db/models/fields/__init__.py",
-          "line": 854,
-          "func": "formfield",
-          "is_test": false
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ],
-      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path": [
-        {
-          "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
-          "line": 35,
-          "func": "test_callable_path",
-          "is_test": true
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ],
-      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_clean": [
-        {
-          "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
-          "line": 53,
-          "func": "test_callable_path_clean",
-          "is_test": true
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ],
-      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_recursive": [
-        {
-          "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
-          "line": 91,
-          "func": "test_callable_path_recursive",
-          "is_test": true
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ],
-      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_with_lambda": [
-        {
-          "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
-          "line": 84,
-          "func": "test_callable_path_with_lambda",
-          "is_test": true
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ],
-      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_with_os_path_join": [
-        {
-          "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
-          "line": 70,
-          "func": "test_callable_path_with_os_path_join",
-          "is_test": true
-        },
-        {
-          "file": "django/forms/fields.py",
-          "line": 1079,
-          "func": "__init__",
-          "is_test": false
-        }
-      ]
+      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 35,
+            "func": "test_callable_path",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 35,
+            "func": "test_callable_path",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_clean": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 53,
+            "func": "test_callable_path_clean",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 53,
+            "func": "test_callable_path_clean",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_recursive": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 91,
+            "func": "test_callable_path_recursive",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 91,
+            "func": "test_callable_path_recursive",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_with_lambda": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 84,
+            "func": "test_callable_path_with_lambda",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 84,
+            "func": "test_callable_path_with_lambda",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "forms_tests.field_tests.test_filepathfield_callable.FilePathFieldCallablePathTest.test_callable_path_with_os_path_join": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 70,
+            "func": "test_callable_path_with_os_path_join",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/field_tests/test_filepathfield_callable.py",
+            "line": 70,
+            "func": "test_callable_path_with_os_path_join",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "model_fields.test_filepathfield.FilePathFieldCallablePathTest.test_callable_path_formfield": {
+        "exception_frames": [
+          {
+            "file": "tests/model_fields/test_filepathfield.py",
+            "line": 31,
+            "func": "test_callable_path_formfield",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1710,
+            "func": "formfield",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 854,
+            "func": "formfield",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_fields/test_filepathfield.py",
+            "line": 31,
+            "func": "test_callable_path_formfield",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1664,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1710,
+            "func": "formfield",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 202,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 204,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 11,
+            "func": "capfirst",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 788,
+            "func": "has_default",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 1079,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 557,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 166,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 777,
+            "func": "_set_choices",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      }
     }
   },
   "instance_id": "django__django-10924",
