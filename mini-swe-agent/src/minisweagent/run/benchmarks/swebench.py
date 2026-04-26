@@ -238,7 +238,7 @@ def process_instance(
         # PART 4: Generate Stack Traces and Coverage
         if result: # if there's a patch
             try:
-                apply_patch_to_env(env, result) # apply the diff
+                # apply_patch_to_env(env, result) # apply the diff
                 test_files = extract_test_files_from_patch(result) # parse the diff to extract the test file paths
                 if test_files:
                     repo_id = instance.get("repo", "")
@@ -250,13 +250,21 @@ def process_instance(
                     extra_info["stack_traces"] = traces
                     extra_info["test_output"] = raw_output
 
+                    # re-run only failing tests under sys.settrace for deep call frames
+                    settrace = run_settrace_on_failing_tests(env, raw_output, repo_id, test_files)
+                    if settrace:
+                        extra_info["settrace_traces"] = settrace
+
                     # re-run under coverage to capture source-level execution data
-                    cov_cmd = get_coverage_command(repo_id, version, test_files)
-                    if cov_cmd:
-                        env.execute({"command": cov_cmd})
-                        coverage = collect_coverage_data(env)
-                        if coverage:
-                            extra_info["coverage"] = coverage
+                    # cov_cmd = get_coverage_command(repo_id, version, test_files)
+                    # if cov_cmd:
+                    #     cov_out = env.execute({"command": cov_cmd})
+                    #     logger.debug(f"Coverage command output for {instance_id}: {cov_out.get('output', '')[-500:]}")
+                    #     coverage = collect_coverage_data(env)
+                    #     if coverage:
+                    #         extra_info["coverage"] = coverage
+                    #     else:
+                    #         logger.warning(f"Coverage collection returned empty data for {instance_id}")
             except Exception as trace_err:
                 logger.warning(f"Stack trace generation failed for {instance_id}: {trace_err}")
 
@@ -533,11 +541,16 @@ def get_function_bodies(env, signatures_raw: str) -> str:
 
     return "\n\n".join(results)
 
-def apply_patch_to_env(env: Environment, patch_str: str) -> None:
-    """Write patch to container and apply it with git apply."""
-    env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
-    out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1 || true"})
-    logger.debug(f"git apply output: {out.get('output', '')}")
+# def apply_patch_to_env(env: Environment, patch_str: str) -> None:
+#     """Write patch to container and apply it with git apply."""
+#     env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
+#     out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1"})
+#     logger.debug(f"git apply output: {out.get('output', '')}")
+#     if out.get("returncode", 0) != 0:
+#         # git apply refuses to create files that already exist; fall back to patch which overwrites
+#         logger.debug("git apply failed, retrying with patch -p1 --force")
+#         out = env.execute({"command": "cd /testbed && patch -p1 --force < /tmp/model.patch 2>&1 || true"})
+#         logger.debug(f"patch output: {out.get('output', '')}")
 
 
 def extract_test_files_from_patch(patch_str: str) -> list[str]:
@@ -556,6 +569,226 @@ _SYMPY_REPOS = {"sympy/sympy"}
 _SPHINX_REPOS = {"sphinx-doc/sphinx"}
 _PYTHON_REPOS = {"swe-bench/humaneval", "nielstron/humaneval_fix"}
 
+_NON_PYTEST_REPOS = _DJANGO_REPOS | _SYMPY_REPOS | _SPHINX_REPOS | _PYTHON_REPOS
+
+# Script written into the container to re-run failing tests under sys.settrace.
+# Reads test node IDs from /tmp/settrace_ids.json, captures the 10 innermost
+# /testbed/ source frames (non-test, non-third-party) at the first exception
+# event per test, writes results to /tmp/settrace_results.json.
+_SETTRACE_RUNNER = """\
+import sys, json
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                self._stack.append((id(frame), {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                }))
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self.frames is None and self._stack:
+            self.frames = [info for _, info in self._stack]
+        return self
+
+
+class TracerPlugin:
+    def __init__(self):
+        self._tracer = _Tracer()
+        self.results = {}
+
+    def pytest_runtest_call(self, item):
+        self._tracer.reset()
+        sys.settrace(self._tracer)
+
+    def pytest_runtest_logreport(self, report):
+        sys.settrace(None)
+        if report.when == "call" and report.failed:
+            self.results[report.nodeid] = self._tracer.frames or []
+
+
+import pytest
+
+plugin = TracerPlugin()
+pytest.main(["--no-header", "-q", "--tb=no"] + TEST_IDS, plugins=[plugin])
+Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
+"""
+
+# Django variant: patches unittest.TestCase.run so the tracer works with Django's
+# own test runner (runtests.py). Reads dotted test IDs from /tmp/settrace_ids.json,
+# derives the module names to pass to runtests.py, and records frames for each
+# failing test via an atexit handler.
+_DJANGO_SETTRACE_RUNNER = """\
+import sys, json, unittest, atexit, runpy
+from pathlib import Path
+
+failing_ids = json.loads(Path("/tmp/settrace_ids.json").read_text())
+# Each ID is "module.Class.method"; the Django module is everything except the last two parts.
+modules = list({".".join(tid.split(".")[:-2]) for tid in failing_ids if tid.count(".") >= 2})
+
+sys.path.insert(0, "/testbed/tests")
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                self._stack.append((id(frame), {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                }))
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self.frames is None and self._stack:
+            self.frames = [info for _, info in self._stack]
+        return self
+
+
+_tracer = _Tracer()
+_results = {}
+_orig_run = unittest.TestCase.run
+
+
+def _patched_run(self, result=None):
+    _tracer.reset()
+    sys.settrace(_tracer)
+    n_before = (len(result.failures) + len(result.errors)) if result else 0
+    try:
+        _orig_run(self, result)
+    finally:
+        sys.settrace(None)
+        if result is not None and len(result.failures) + len(result.errors) > n_before and _tracer.frames:
+            key = f"{self.__class__.__module__}.{self.__class__.__name__}.{self._testMethodName}"
+            _results[key] = _tracer.frames
+
+
+unittest.TestCase.run = _patched_run
+atexit.register(lambda: Path("/tmp/settrace_results.json").write_text(json.dumps(_results, indent=2)))
+
+sys.argv = ["runtests.py", "--verbosity", "0", "--settings=test_sqlite", "--parallel", "1"] + modules
+runpy.run_path("/testbed/tests/runtests.py", run_name="__main__")
+"""
+
+
+def _extract_failing_test_ids_pytest(raw_output: str) -> list[str]:
+    """Parse pytest FAILED lines into node IDs (requires '::' separator)."""
+    ids = []
+    for match in re.finditer(r"^FAILED (.+?)(?:\s+-\s+.*)?$", raw_output, re.MULTILINE):
+        node_id = match.group(1).strip()
+        if "::" in node_id:
+            ids.append(node_id)
+    return ids
+
+
+def _extract_failing_test_ids_django(raw_output: str) -> list[str]:
+    """Parse Django/unittest FAIL:/ERROR: lines into dotted IDs (module.Class.method)."""
+    ids = []
+    for match in re.finditer(r"^(?:FAIL|ERROR): (\w+) \(([^)]+)\)", raw_output, re.MULTILINE):
+        method, class_path = match.group(1), match.group(2)
+        ids.append(f"{class_path}.{method}")
+    return ids
+
+
+_CONDA_PYTHON = "conda run -n testbed python"
+
+
+def _run_settrace_pytest(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/dev/null || true"})
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_settrace_django(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _DJANGO_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/dev/null || true"})
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_settrace_sympy(env: Environment, test_files: list[str]) -> dict:
+    """Re-run Sympy test files under settrace via pytest (Sympy tests are pytest-compatible)."""
+    full_paths = [f"/testbed/{f.lstrip('/')}" for f in test_files]
+    return _run_settrace_pytest(env, full_paths)
+
+
+def run_settrace_on_failing_tests(
+    env: Environment, raw_output: str, repo_id: str, test_files: list[str] | None = None
+) -> dict:
+    """Dispatch settrace to the right runner and return per-test innermost source frames."""
+    if repo_id in _DJANGO_REPOS:
+        failing_ids = _extract_failing_test_ids_django(raw_output)
+        return _run_settrace_django(env, failing_ids) if failing_ids else {}
+    if repo_id in _SYMPY_REPOS:
+        return _run_settrace_sympy(env, test_files) if test_files else {}
+    if repo_id in (_SPHINX_REPOS | _PYTHON_REPOS):
+        return {}  # custom runners not supported
+    failing_ids = _extract_failing_test_ids_pytest(raw_output)
+    return _run_settrace_pytest(env, failing_ids) if failing_ids else {}
+
 
 def _django_paths_to_modules(test_files: list[str]) -> list[str]:
     """Convert file paths like tests/auth/test_basic.py to Django module notation auth.test_basic."""
@@ -570,33 +803,38 @@ def _django_paths_to_modules(test_files: list[str]) -> list[str]:
 
 def get_test_command(repo: str, version: str, test_files: list[str]) -> str | None:
     """Return the shell command to run the given test files for the repo, or None if unknown."""
+    _pytest = f"{_CONDA_PYTHON} -m pytest"
+
     if repo in _DJANGO_REPOS:
         modules = _django_paths_to_modules(test_files)
         if not modules:
             return None
         modules_arg = " ".join(modules)
-        return f"cd /testbed && ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 {modules_arg} 2>&1 || true"
+        return f"cd /testbed && {_CONDA_PYTHON} ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 {modules_arg} 2>&1 || true"
 
     if repo in _SYMPY_REPOS:
         files_arg = " ".join(test_files)
-        return f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning' bin/test -C --verbose {files_arg} 2>&1 || true"
+        return f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning' {_CONDA_PYTHON} bin/test -C --verbose {files_arg} 2>&1 || true"
 
     if repo in _SPHINX_REPOS:
         files_arg = " ".join(test_files)
         return f"cd /testbed && tox -epy39 -v -- {files_arg} 2>&1 || true"
 
     if repo in _PYTHON_REPOS:
-        # Run each file directly; join outputs
-        cmds = " && ".join(f"python /testbed/{f}" for f in test_files)
+        cmds = " && ".join(f"{_CONDA_PYTHON} /testbed/{f}" for f in test_files)
         return f"{cmds} 2>&1 || true"
 
     # Default: pytest (covers astropy, matplotlib, scikit-learn, requests, xarray, etc.)
+    # --tb=long: full tracebacks; -r f: force FAILED summary lines even if setup.cfg uses -q;
+    # no -x so all failures are collected for settrace extraction.
     files_arg = " ".join(f"/testbed/{f}" for f in test_files)
-    return f"cd /testbed && python -m pytest --tb=long -x {files_arg} 2>&1 || true"
+    return f"cd /testbed && {_pytest} --tb=long -r f {files_arg} 2>&1 || true"
 
 
 def get_coverage_command(repo: str, version: str, test_files: list[str]) -> str | None:
     """Return a shell command that runs tests under coverage and exports /tmp/coverage.json."""
+    # Ensure coverage is installed; errors are suppressed so missing pip doesn't abort the chain
+    install_prefix = "pip install coverage -q 2>/dev/null || true"
     cov_suffix = " && coverage json -o /tmp/coverage.json 2>/dev/null || true"
 
     if repo in _DJANGO_REPOS:
@@ -605,28 +843,35 @@ def get_coverage_command(repo: str, version: str, test_files: list[str]) -> str 
             return None
         modules_arg = " ".join(modules)
         return (
-            f"cd /testbed && coverage run tests/runtests.py --verbosity 2 --settings=test_sqlite"
+            f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
+            f" tests/runtests.py --verbosity 2 --settings=test_sqlite"
             f" --parallel 1 {modules_arg} 2>&1 || true{cov_suffix}"
         )
 
     if repo in _SYMPY_REPOS:
         files_arg = " ".join(test_files)
         return (
-            f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning'"
-            f" coverage run bin/test -C --verbose {files_arg} 2>&1 || true{cov_suffix}"
+            f"{install_prefix} && cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning'"
+            f" coverage run --source=/testbed bin/test -C --verbose {files_arg} 2>&1 || true{cov_suffix}"
         )
 
     if repo in _SPHINX_REPOS:
         files_arg = " ".join(test_files)
-        return f"cd /testbed && coverage run -m pytest {files_arg} 2>&1 || true{cov_suffix}"
+        return (
+            f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
+            f" -m pytest {files_arg} 2>&1 || true{cov_suffix}"
+        )
 
     if repo in _PYTHON_REPOS:
-        cmds = " && ".join(f"coverage run /testbed/{f}" for f in test_files)
-        return f"{cmds} 2>&1 || true{cov_suffix}"
+        cmds = " && ".join(f"coverage run --source=/testbed /testbed/{f}" for f in test_files)
+        return f"{install_prefix} && {cmds} 2>&1 || true{cov_suffix}"
 
     # Default: pytest
     files_arg = " ".join(f"/testbed/{f}" for f in test_files)
-    return f"cd /testbed && coverage run -m pytest --tb=long -x {files_arg} 2>&1 || true{cov_suffix}"
+    return (
+        f"{install_prefix} && cd /testbed && coverage run --source=/testbed"
+        f" -m pytest --tb=long -x {files_arg} 2>&1 || true{cov_suffix}"
+    )
 
 
 def collect_coverage_data(env: Environment) -> dict:
@@ -666,11 +911,13 @@ def run_tests_in_env(env: Environment, test_files: list[str], repo: str = "", ve
 
 
 def extract_stack_traces(raw_output: str) -> list[str]:
-    """Extract Python tracebacks and pytest failure blocks from raw pytest output."""
-    traces = []
-    traces.extend(re.findall(r"(Traceback \(most recent call last\):.*?)(?=\n\+|$)", raw_output, re.DOTALL))
-    traces.extend(re.findall(r"(_+ [^_]+ _+.*?)(?=\n={3,}|$)", raw_output, re.DOTALL))
-    return traces
+    """Extract pytest failure blocks from raw pytest output.
+
+    Matches sections delimited by '_____ test_name _____' headers. Each block
+    already contains the full traceback, so a separate traceback pass is not needed
+    (and a naive Traceback regex without a correct lookahead produces one giant match).
+    """
+    return re.findall(r"(_{5,} [^\n]+ _{5,}.*?)(?=\n={3,}|\Z)", raw_output, re.DOTALL)
 
 
 # fmt: off
