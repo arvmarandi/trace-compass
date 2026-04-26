@@ -1,0 +1,94 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/defer/tests.py b/tests/defer/tests.py\nindex 4058fadde9..0111abf90d 100644\n--- a/tests/defer/tests.py\n+++ b/tests/defer/tests.py\n@@ -52,6 +52,34 @@ class DeferTests(AssertionMixin, TestCase):\n         self.assert_delayed(qs.defer(\"name\").only(\"value\")[0], 2)\n         self.assert_delayed(qs.only(\"name\").defer(\"value\")[0], 2)\n \n+    def test_only_defer_clearing_field(self):\n+        \"\"\"\n+        only().defer() should properly clear a field that was added by only().\n+        When a field is added via only() and then removed via defer(), the\n+        result should be that only the pk is loaded (plus any required FK ids).\n+        \"\"\"\n+        qs = Primary.objects.all()\n+        # only(\"name\").defer(\"name\") should defer all fields except pk.\n+        # Primary has 4 fields: id (pk), name, value, related (FK).\n+        # After only(\"name\").defer(\"name\"), we should have 3 deferred fields.\n+        self.assert_delayed(qs.only(\"name\").defer(\"name\")[0], 3)\n+        # Verify with multiple defer calls.\n+        self.assert_delayed(qs.only(\"name\").defer(\"name\").defer(\"value\")[0], 3)\n+\n+    def test_only_defer_clearing_field_selects_only_pk(self):\n+        \"\"\"\n+        Regression test for defer() after only() clearing all fields.\n+        When a field is added via only() and then removed via defer(),\n+        the resulting SQL should only select the pk field.\n+        \"\"\"\n+        # Verify that only().defer(field) results in the deferred field\n+        # not being in the immediate loading set.\n+        qs = Primary.objects.only(\"name\").defer(\"name\")\n+        # After only(\"name\").defer(\"name\"), deferred_loading should be\n+        # (set(), False), meaning no immediate loading fields except pk.\n+        # This should result in only pk being loaded.\n+        self.assert_delayed(qs[0], 3)\n+\n     def test_defer_on_an_already_deferred_field(self):\n         qs = Primary.objects.all()\n         self.assert_delayed(qs.defer(\"name\")[0], 1)\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_defer_baseclass_when_subclass_has_added_field (defer.tests.BigChildDeferTests) ... ok\ntest_defer_subclass (defer.tests.BigChildDeferTests) ... ok\ntest_defer_subclass_both (defer.tests.BigChildDeferTests) ... ok\ntest_only_baseclass_when_subclass_has_added_field (defer.tests.BigChildDeferTests) ... ok\ntest_only_subclass (defer.tests.BigChildDeferTests) ... ok\ntest_defer (defer.tests.DeferTests) ... ok\ntest_defer_baseclass_when_subclass_has_no_added_fields (defer.tests.DeferTests) ... ok\ntest_defer_extra (defer.tests.DeferTests) ... ok\ntest_defer_foreign_keys_are_deferred_and_not_traversed (defer.tests.DeferTests) ... ok\ntest_defer_none_to_clear_deferred_set (defer.tests.DeferTests) ... ok\ntest_defer_of_overridden_scalar (defer.tests.DeferTests) ... ok\ntest_defer_on_an_already_deferred_field (defer.tests.DeferTests) ... ok\ntest_defer_only_chaining (defer.tests.DeferTests) ... ok\ntest_defer_select_related_raises_invalid_query (defer.tests.DeferTests) ... ok\ntest_defer_values_does_not_defer (defer.tests.DeferTests) ... ok\ntest_defer_with_select_related (defer.tests.DeferTests) ... ok\ntest_get (defer.tests.DeferTests) ... ok\ntest_only (defer.tests.DeferTests) ... ok\ntest_only_baseclass_when_subclass_has_no_added_fields (defer.tests.DeferTests) ... ok\ntest_only_defer_clearing_field (defer.tests.DeferTests)\nonly().defer() should properly clear a field that was added by only(). ... FAIL\ntest_only_defer_clearing_field_selects_only_pk (defer.tests.DeferTests)\nRegression test for defer() after only() clearing all fields. ... FAIL\ntest_only_none_raises_error (defer.tests.DeferTests) ... ok\ntest_only_select_related_raises_invalid_query (defer.tests.DeferTests) ... ok\ntest_only_values_does_not_defer (defer.tests.DeferTests) ... ok\ntest_only_with_select_related (defer.tests.DeferTests) ... ok\ntest_saving_object_with_deferred_field (defer.tests.DeferTests) ... ok\ntest_custom_refresh_on_deferred_loading (defer.tests.TestDefer2) ... ok\ntest_defer_inheritance_pk_chaining (defer.tests.TestDefer2)\nWhen an inherited model is fetched from the DB, its PK is also fetched. ... ok\ntest_defer_proxy (defer.tests.TestDefer2)\nEnsure select_related together with only on a proxy model behaves ... ok\ntest_eq (defer.tests.TestDefer2) ... ok\ntest_refresh_not_loading_deferred_fields (defer.tests.TestDefer2) ... ok\n\n======================================================================\nFAIL: test_only_defer_clearing_field (defer.tests.DeferTests)\nonly().defer() should properly clear a field that was added by only().\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/defer/tests.py\", line 65, in test_only_defer_clearing_field\n    self.assert_delayed(qs.only(\"name\").defer(\"name\")[0], 3)\n  File \"/testbed/tests/defer/tests.py\", line 18, in assert_delayed\n    self.assertEqual(count, num)\nAssertionError: 0 != 3\n\n======================================================================\nFAIL: test_only_defer_clearing_field_selects_only_pk (defer.tests.DeferTests)\nRegression test for defer() after only() clearing all fields.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/defer/tests.py\", line 81, in test_only_defer_clearing_field_selects_only_pk\n    self.assert_delayed(qs[0], 3)\n  File \"/testbed/tests/defer/tests.py\", line 18, in assert_delayed\n    self.assertEqual(count, num)\nAssertionError: 0 != 3\n\n----------------------------------------------------------------------\nRan 31 tests in 0.022s\n\nFAILED (failures=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 defer.tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application defer\nFound 31 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, defer, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table defer_secondary\n    Creating table defer_primary\n    Creating table defer_child\n    Creating table defer_bigchild\n    Creating table defer_shadowparent\n    Creating table defer_shadowchild\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "defer.tests.DeferTests.test_only_defer_clearing_field": [
+        {
+          "file": "tests/defer/tests.py",
+          "line": 55,
+          "func": "test_only_defer_clearing_field",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1227,
+          "func": "only",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1325,
+          "func": "_chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1337,
+          "func": "_clone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 342,
+          "func": "chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 291,
+          "func": "clone",
+          "is_test": false
+        }
+      ],
+      "defer.tests.DeferTests.test_only_defer_clearing_field_selects_only_pk": [
+        {
+          "file": "tests/defer/tests.py",
+          "line": 69,
+          "func": "test_only_defer_clearing_field_selects_only_pk",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/manager.py",
+          "line": 84,
+          "func": "manager_method",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1227,
+          "func": "only",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1325,
+          "func": "_chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 1337,
+          "func": "_clone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 342,
+          "func": "chain",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/sql/query.py",
+          "line": 291,
+          "func": "clone",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-14667",
+  "messages": []
+}

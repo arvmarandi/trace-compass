@@ -1,0 +1,44 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/schema/tests_bug.py b/tests/schema/tests_bug.py\nnew file mode 100644\nindex 0000000000..5a7b8c10ca\n--- /dev/null\n+++ b/tests/schema/tests_bug.py\n@@ -0,0 +1,84 @@\n+\"\"\"\n+Test for the bug: Migration crashes deleting an index_together if there is a \n+unique_together on the same fields.\n+\n+See: https://code.djangoproject.com/ticket/29298\n+\n+The bug occurs because:\n+1. When deleting index_together, _delete_composed_index is called with {'index': True}\n+2. This finds BOTH the index constraint AND the unique constraint (which is also an index)\n+3. It raises ValueError because it expects exactly 1 constraint\n+\n+The fix would be to exclude unique constraints when looking for index constraints,\n+and to exclude index constraints when looking for unique constraints.\n+\"\"\"\n+from django.db import connection, models\n+from django.test import TransactionTestCase, skipUnlessDBFeature\n+from django.test.utils import isolate_apps\n+\n+\n+class DeleteIndexTogetherWithUniqueTogetherTests(TransactionTestCase):\n+    \"\"\"\n+    Tests for the bug where deleting an index_together crashes when there's\n+    also a unique_together on the same fields.\n+    \n+    The issue is that _delete_composed_index finds both constraints (unique and index)\n+    and raises ValueError because it expects exactly one constraint.\n+    \"\"\"\n+    available_apps = []\n+    \n+    def tearDown(self):\n+        # Clean up any leftover tables\n+        for model in getattr(self, '_test_models', []):\n+            try:\n+                with connection.schema_editor() as editor:\n+                    editor.delete_model(model)\n+            except Exception:\n+                pass\n+\n+    @skipUnlessDBFeature('allows_multiple_constraints_on_same_fields')\n+    @isolate_apps('schema')\n+    def test_delete_index_together_when_unique_together_exists(self):\n+        \"\"\"\n+        Test that deleting an index_together works when unique_together exists\n+        on the same fields.\n+        \n+        This reproduces the bug where:\n+        1. Create a model with both index_together and unique_together on the same fields\n+        2. Try to delete the index_together\n+        3. This should not crash with \"ValueError: Found wrong number (2) of constraints\"\n+        \n+        The fix: When looking for an index to delete, we should exclude unique constraints.\n+        \"\"\"\n+        self._test_models = []\n+        \n+        class TestModel(models.Model):\n+            field1 = models.CharField(max_length=100)\n+            field2 = models.CharField(max_length=100)\n+            \n+            class Meta:\n+                app_label = 'schema'\n+                unique_together = [('field1', 'field2')]\n+                index_together = [('field1', 'field2')]\n+        \n+        self._test_models.append(TestModel)\n+        \n+        # Create the table\n+        with connection.schema_editor() as editor:\n+            editor.create_model(TestModel)\n+        \n+        # Try to delete the index_together - this should work, not crash\n+        # The bug causes this to raise:\n+        # ValueError: Found wrong number (2) of constraints for schema_testmodel(field1, field2)\n+        with connection.schema_editor() as editor:\n+            editor.alter_index_together(\n+                TestModel,\n+                [('field1', 'field2')],  # old_index_together\n+                []  # new_index_together\n+            )\n+        \n+        # Verify the index_together is gone (the index was removed)\n+        self.assertEqual(TestModel._meta.index_together, [])\n+        \n+        # Verify the unique_together is still there (which is the correct behavior)\n+        self.assertEqual(TestModel._meta.unique_together, [('field1', 'field2')])\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_delete_index_together_when_unique_together_exists (schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests) ... ERROR\n\n======================================================================\nERROR: test_delete_index_together_when_unique_together_exists (schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/testcases.py\", line 1215, in skip_wrapper\n    return test_func(*args, **kwargs)\n  File \"/testbed/django/test/utils.py\", line 381, in inner\n    return func(*args, **kwargs)\n  File \"/testbed/tests/schema/tests_bug.py\", line 77, in test_delete_index_together_when_unique_together_exists\n    []  # new_index_together\n  File \"/testbed/django/db/backends/base/schema.py\", line 396, in alter_index_together\n    self._delete_composed_index(model, fields, {'index': True}, self.sql_delete_index)\n  File \"/testbed/django/db/backends/base/schema.py\", line 414, in _delete_composed_index\n    \", \".join(columns),\nValueError: Found wrong number (2) of constraints for schema_testmodel(field1, field2)\n\n----------------------------------------------------------------------\nRan 1 test in 0.011s\n\nFAILED (errors=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 schema.tests_bug` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application schema\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, schema, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests.test_delete_index_together_when_unique_together_exists": [
+        {
+          "file": "django/test/testcases.py",
+          "line": 1200,
+          "func": "skip_wrapper",
+          "is_test": true
+        },
+        {
+          "file": "django/test/utils.py",
+          "line": 376,
+          "func": "inner",
+          "is_test": true
+        },
+        {
+          "file": "django/test/utils.py",
+          "line": 335,
+          "func": "__enter__",
+          "is_test": true
+        },
+        {
+          "file": "django/test/utils.py",
+          "line": 834,
+          "func": "enable",
+          "is_test": true
+        },
+        {
+          "file": "django/apps/registry.py",
+          "line": 20,
+          "func": "__init__",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-12708",
+  "messages": []
+}

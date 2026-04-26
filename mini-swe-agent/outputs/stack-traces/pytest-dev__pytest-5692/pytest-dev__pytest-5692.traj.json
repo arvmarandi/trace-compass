@@ -1,0 +1,128 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/testing/test_junitxml_hostname_timestamp.py b/testing/test_junitxml_hostname_timestamp.py\nnew file mode 100644\nindex 000000000..c9ebd1e36\n--- /dev/null\n+++ b/testing/test_junitxml_hostname_timestamp.py\n@@ -0,0 +1,100 @@\n+\"\"\"Tests for hostname and timestamp properties in JUnit XML reports\n+\n+These tests verify that the JUnit XML testsuite element includes the\n+hostname and timestamp attributes as required by the JUnit XML schema.\n+\n+This test file should:\n+- FAIL when run against the buggy codebase (hostname/timestamp missing)\n+- PASS once the bug is fixed (hostname/timestamp present)\n+\n+To ensure we're testing the correct (testbed) junitxml module, we load it\n+by file path and import its contents into our namespace.\n+\"\"\"\n+import os\n+import socket\n+import sys\n+import tempfile\n+from datetime import datetime\n+from xml.dom import minidom\n+from importlib.machinery import SourceFileLoader\n+\n+import pytest\n+\n+# Load the testbed's junitxml module directly from file\n+# This bypasses the normal import mechanism that might use cached modules\n+testbed_junitxml_path = '/testbed/src/_pytest/junitxml.py'\n+\n+# Create a new module with a unique name\n+junitxml_loader = SourceFileLoader('_pytest_junitxml_testbed', testbed_junitxml_path)\n+junitxml_module = junitxml_loader.load_module()\n+\n+# Get the LogXML class from the testbed's module\n+LogXML = junitxml_module.LogXML\n+\n+\n+def run_test_and_check_xml():\n+    \"\"\"Helper to run a test session and return the XML content\"\"\"\n+    with tempfile.TemporaryDirectory() as tmpdir:\n+        logfile = os.path.join(tmpdir, 'junit.xml')\n+        xml = LogXML(logfile, 'pytest')\n+        \n+        # Simulate session\n+        xml.pytest_sessionstart()\n+        xml.pytest_sessionfinish()\n+        \n+        # Parse the generated XML\n+        with open(logfile, 'r') as f:\n+            content = f.read()\n+        \n+        xmldoc = minidom.parseString(content)\n+        testsuite_nodes = xmldoc.getElementsByTagName(\"testsuite\")\n+        assert len(testsuite_nodes) == 1\n+        return testsuite_nodes[0], content\n+\n+\n+class TestJunitxmlHostnameTimestamp:\n+    \"\"\"Test that hostname and timestamp are present in JUnit XML testsuite element\"\"\"\n+\n+    def test_testsuite_has_hostname(self):\n+        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        hostname = testsuite.getAttributeNode(\"hostname\")\n+        assert hostname is not None, (\n+            \"hostname attribute should be present on testsuite element.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        assert hostname.value == socket.gethostname(), (\n+            f\"hostname should be '{socket.gethostname()}', got '{hostname.value}'\"\n+        )\n+\n+    def test_testsuite_has_timestamp(self):\n+        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        timestamp = testsuite.getAttributeNode(\"timestamp\")\n+        assert timestamp is not None, (\n+            \"timestamp attribute should be present on testsuite element.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        assert timestamp.value, \"timestamp should not be empty\"\n+\n+    def test_timestamp_is_iso_format(self):\n+        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        timestamp = testsuite.getAttributeNode(\"timestamp\")\n+        assert timestamp is not None, (\n+            \"timestamp attribute should be present.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        \n+        # Verify it's a valid ISO format timestamp\n+        # Expected format: \"YYYY-MM-DDTHH:MM:SS\" (at minimum)\n+        timestamp_value = timestamp.value\n+        try:\n+            datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))\n+        except ValueError:\n+            assert False, f\"timestamp '{timestamp_value}' is not in valid ISO 8601 format\"\n+\n+\n+# Allow running this test file directly with Python\n+if __name__ == '__main__':\n+    sys.exit(pytest.main([__file__, '-v', '-c', '/dev/null']))\n",
+    "stack_traces": [
+      "__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_hostname ___________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe874730>\n\n    def test_testsuite_has_hostname(self):\n        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        hostname = testsuite.getAttributeNode(\"hostname\")\n>       assert hostname is not None, (\n            \"hostname attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: hostname attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:62: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_timestamp __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffeafec40>\n\n    def test_testsuite_has_timestamp(self):\n        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:74: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_timestamp_is_iso_format __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe8d67f0>\n\n    def test_timestamp_is_iso_format(self):\n        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:84: AssertionError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f /testbed/testing/test_junitxml_hostname_timestamp.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-5.0.2.dev185+g29e336bd9, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, inifile: tox.ini\ncollected 3 items\n\ntesting/test_junitxml_hostname_timestamp.py FFF                          [100%]\n\n=================================== FAILURES ===================================\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_hostname ___________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe874730>\n\n    def test_testsuite_has_hostname(self):\n        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        hostname = testsuite.getAttributeNode(\"hostname\")\n>       assert hostname is not None, (\n            \"hostname attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: hostname attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:62: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_timestamp __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffeafec40>\n\n    def test_testsuite_has_timestamp(self):\n        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:74: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_timestamp_is_iso_format __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe8d67f0>\n\n    def test_timestamp_is_iso_format(self):\n        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:84: AssertionError\n=========================== short test summary info ============================\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_hostname\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_timestamp\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_timestamp_is_iso_format\n=========================== 3 failed in 0.03 seconds ===========================\n\n",
+    "settrace_traces": {
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_hostname": [
+        {
+          "file": "src/_pytest/runner.py",
+          "line": 113,
+          "func": "pytest_runtest_call",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 1426,
+          "func": "runtest",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 151,
+          "func": "pytest_pyfunc_call",
+          "is_test": false
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 58,
+          "func": "test_testsuite_has_hostname",
+          "is_test": true
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 35,
+          "func": "run_test_and_check_xml",
+          "is_test": true
+        },
+        {
+          "file": "src/_pytest/junitxml.py",
+          "line": 643,
+          "func": "pytest_sessionfinish",
+          "is_test": false
+        }
+      ],
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_timestamp": [
+        {
+          "file": "src/_pytest/runner.py",
+          "line": 113,
+          "func": "pytest_runtest_call",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 1426,
+          "func": "runtest",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 151,
+          "func": "pytest_pyfunc_call",
+          "is_test": false
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 70,
+          "func": "test_testsuite_has_timestamp",
+          "is_test": true
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 35,
+          "func": "run_test_and_check_xml",
+          "is_test": true
+        },
+        {
+          "file": "src/_pytest/junitxml.py",
+          "line": 643,
+          "func": "pytest_sessionfinish",
+          "is_test": false
+        }
+      ],
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_timestamp_is_iso_format": [
+        {
+          "file": "src/_pytest/runner.py",
+          "line": 113,
+          "func": "pytest_runtest_call",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 1426,
+          "func": "runtest",
+          "is_test": false
+        },
+        {
+          "file": "src/_pytest/python.py",
+          "line": 151,
+          "func": "pytest_pyfunc_call",
+          "is_test": false
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 80,
+          "func": "test_timestamp_is_iso_format",
+          "is_test": true
+        },
+        {
+          "file": "testing/test_junitxml_hostname_timestamp.py",
+          "line": 35,
+          "func": "run_test_and_check_xml",
+          "is_test": true
+        },
+        {
+          "file": "src/_pytest/junitxml.py",
+          "line": 643,
+          "func": "pytest_sessionfinish",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "pytest-dev__pytest-5692",
+  "messages": []
+}

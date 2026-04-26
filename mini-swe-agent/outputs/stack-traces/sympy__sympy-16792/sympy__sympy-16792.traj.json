@@ -1,0 +1,50 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/external/tests/test_autowrap.py b/sympy/external/tests/test_autowrap.py\nindex adaa654e4..5794813f6 100644\n--- a/sympy/external/tests/test_autowrap.py\n+++ b/sympy/external/tests/test_autowrap.py\n@@ -307,3 +307,75 @@ def test_ufuncify_numpy():\n     # C compiler, which is needed.\n     has_module('Cython')\n     runtest_ufuncify('C99', 'numpy')\n+\n+\n+def test_autowrap_matrix_argument_not_in_expression():\n+    \"\"\"Regression test for the issue where MatrixSymbol arguments that\n+    don't appear in the expression are incorrectly handled in C code\n+    generation.\n+    \n+    Previously, when a MatrixSymbol was passed as an argument but didn't\n+    appear in the expression, the generated C code would have:\n+        double autofunc(double x)\n+    instead of the correct:\n+        double autofunc(double *x)\n+    \n+    This caused errors like:\n+        TypeError: only size-1 arrays can be converted to Python scalars\n+    \"\"\"\n+    from sympy import MatrixSymbol\n+    \n+    has_module('numpy')\n+    has_module('Cython')\n+    \n+    x = MatrixSymbol('x', 2, 1)\n+    expr = 1.0  # x doesn't appear in expr\n+    \n+    # Create the autowrap function - this should not error\n+    f = autowrap(expr, args=(x,), backend='cython')\n+    \n+    # Call with a proper numpy array - should return 1.0 without error\n+    result = f(numpy.array([[1.0], [2.0]]))\n+    \n+    # The function should return 1.0\n+    assert result == 1.0\n+\n+\n+def test_codegen_matrix_argument_not_in_expression():\n+    \"\"\"Test at the codegen level that MatrixSymbol in args but not in expr\n+    is correctly handled as a pointer.\n+    \"\"\"\n+    from sympy import MatrixSymbol\n+    from sympy.utilities.codegen import C99CodeGen, make_routine\n+    from sympy.core.compatibility import StringIO\n+    \n+    def get_string(dump_fn, routines, prefix=\"file\", **kwargs):\n+        output = StringIO()\n+        dump_fn(routines, output, prefix, **kwargs)\n+        source = output.getvalue()\n+        output.close()\n+        return source\n+    \n+    x = MatrixSymbol('x', 2, 1)\n+    expr = 1.0  # x doesn't appear in expr\n+    \n+    # Create a routine with the expression and argument sequence\n+    routine = make_routine(\"autofunc\", expr, argument_sequence=(x,))\n+    \n+    # Generate the C code using C99CodeGen\n+    code_gen = C99CodeGen()\n+    source = get_string(code_gen.dump_c, [routine])\n+    \n+    # The bug was that the generated code had:\n+    # double autofunc(double x) {\n+    # instead of:\n+    # double autofunc(double *x) {\n+    # Check that 'double *x' appears in the function signature\n+    assert \"double *x\" in source, (\n+        \"Expected 'double *x' in the generated C code signature. \"\n+        \"The MatrixSymbol x should be passed as a pointer, not a scalar.\"\n+    )\n+    \n+    # Verify the return value is correct\n+    assert \"return autofunc_result\" in source\n+    assert \"autofunc_result = 1.0\" in source\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/external/tests/test_autowrap.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        9714642\nhash randomization: on (PYTHONHASHSEED=206410930)\n\nsympy/external/tests/test_autowrap.py[18] \ntest_issue_15230 Couldn't import f2py. s\ntest_wrap_twice_f95_f2py Couldn't import f2py. s\ntest_autowrap_trace_f95_f2py Couldn't import f2py. s\ntest_autowrap_matrix_vector_f95_f2py Couldn't import f2py. s\ntest_autowrap_matrix_matrix_f95_f2py Couldn't import f2py. s\ntest_ufuncify_f95_f2py Couldn't import f2py. s\ntest_issue_15337_f95_f2py Couldn't import f2py. s\ntest_wrap_twice_c_cython Couldn't import Cython. s\ntest_autowrap_trace_C_Cython Couldn't import Cython. s\ntest_autowrap_matrix_vector_C_cython Couldn't import Cython. s\ntest_autowrap_matrix_matrix_C_cython Couldn't import Cython. s\ntest_ufuncify_C_Cython Couldn't import Cython. s\ntest_issue_10274_C_cython Couldn't import Cython. s\ntest_issue_15337_C_cython Couldn't import Cython. s\ntest_autowrap_custom_printer Couldn't import Cython. s\ntest_ufuncify_numpy Couldn't import Cython. s\ntest_autowrap_matrix_argument_not_in_expression Couldn't import numpy. s\ntest_codegen_matrix_argument_not_in_expression F                          [FAIL]\n\n\n________________________________________________________________________________\n sympy/external/tests/test_autowrap.py:test_codegen_matrix_argument_not_in_expression \nTraceback (most recent call last):\n  File \"/testbed/sympy/external/tests/test_autowrap.py\", line 374, in test_codegen_matrix_argument_not_in_expression\n    assert \"double *x\" in source, (\nAssertionError: Expected 'double *x' in the generated C code signature. The MatrixSymbol x should be passed as a pointer, not a scalar.\n\n======= tests finished: 0 passed, 1 failed, 17 skipped, in 0.03 seconds ========\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/external/tests/test_autowrap.py::test_codegen_matrix_argument_not_in_expression": [
+        {
+          "file": "sympy/external/tests/test_autowrap.py",
+          "line": 344,
+          "func": "test_codegen_matrix_argument_not_in_expression",
+          "is_test": true
+        },
+        {
+          "file": "sympy/utilities/codegen.py",
+          "line": 2146,
+          "func": "make_routine",
+          "is_test": false
+        },
+        {
+          "file": "sympy/utilities/codegen.py",
+          "line": 577,
+          "func": "routine",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 432,
+          "func": "atoms",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 2047,
+          "func": "__next__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 2020,
+          "func": "_preorder_traversal",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "sympy__sympy-16792",
+  "messages": []
+}

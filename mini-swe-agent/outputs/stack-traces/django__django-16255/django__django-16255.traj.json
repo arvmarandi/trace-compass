@@ -1,0 +1,58 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/sitemaps_tests/urls/http.py b/tests/sitemaps_tests/urls/http.py\nindex 9a468de476..cf8b279efd 100644\n--- a/tests/sitemaps_tests/urls/http.py\n+++ b/tests/sitemaps_tests/urls/http.py\n@@ -425,6 +425,34 @@ urlpatterns = [\n     ),\n ]\n \n+\n+\n+class EmptySitemapCallableLastmod(Sitemap):\n+    \"\"\"A sitemap with callable lastmod but empty items.\"\"\"\n+\n+    location = \"/location/\"\n+\n+    def items(self):\n+        return []  # Empty list - no items\n+\n+    def lastmod(self, obj):\n+        \"\"\"Callable lastmod that would return a date for each item.\"\"\"\n+        return datetime(2013, 3, 13, 10, 0, 0)\n+\n+\n+empty_callable_lastmod_sitemaps = {\n+    \"empty-callable-lastmod\": EmptySitemapCallableLastmod,\n+}\n+\n+urlpatterns += [\n+    path(\n+        \"empty-callable-lastmod/index.xml\",\n+        views.index,\n+        {\"sitemaps\": empty_callable_lastmod_sitemaps},\n+        name=\"django.contrib.sitemaps.views.index\",\n+    ),\n+]\n+\n urlpatterns += i18n_patterns(\n     path(\"i18n/testmodel/<int:id>/\", testmodelview, name=\"i18n_testmodel\"),\n )\ndiff --git a/tests/sitemaps_tests/test_empty_items.py b/tests/sitemaps_tests/test_empty_items.py\nnew file mode 100644\nindex 0000000000..3fca09eb17\n--- /dev/null\n+++ b/tests/sitemaps_tests/test_empty_items.py\n@@ -0,0 +1,54 @@\n+\"\"\"\n+Tests for sitemaps with empty items that have callable lastmod.\n+\n+This tests the fix for the bug where sitemaps with callable lastmod\n+but no items raise ValueError on get_latest_lastmod().\n+See: https://code.djangoproject.com/ticket/XXXXX\n+\"\"\"\n+from datetime import datetime\n+\n+from django.contrib.sitemaps import Sitemap\n+from django.test import TestCase, override_settings\n+\n+from .base import SitemapTestsBase\n+\n+\n+class EmptySitemapCallableLastmod(Sitemap):\n+    \"\"\"A sitemap with callable lastmod but empty items.\"\"\"\n+    \n+    location = \"/location/\"\n+    \n+    def items(self):\n+        return []  # Empty list - no items\n+    \n+    def lastmod(self, obj):\n+        \"\"\"Callable lastmod that would return a date for each item.\"\"\"\n+        return datetime(2013, 3, 13, 10, 0, 0)\n+\n+\n+class GetLatestLastmodTests(SitemapTestsBase):\n+    \"\"\"Tests for get_latest_lastmod() edge cases.\"\"\"\n+    \n+    def test_callable_lastmod_empty_items(self):\n+        \"\"\"\n+        A sitemap with callable lastmod but empty items should not\n+        raise ValueError on get_latest_lastmod().\n+        \n+        The bug was that when items() returns an empty sequence, calling\n+        max() on an empty list raises ValueError. The fix is to catch \n+        ValueError in addition to TypeError.\n+        \"\"\"\n+        sitemap = EmptySitemapCallableLastmod()\n+        # This should return None, not raise ValueError\n+        result = sitemap.get_latest_lastmod()\n+        self.assertIsNone(result)\n+\n+    def test_callable_lastmod_empty_items_index_view(self):\n+        \"\"\"\n+        The sitemap index view should handle sitemaps with callable lastmod\n+        but empty items gracefully.\n+        \"\"\"\n+        empty_sitemap = {\"empty-callable-lastmod\": EmptySitemapCallableLastmod}\n+        response = self.client.get(\"/empty-callable-lastmod/index.xml\")\n+        # The response should be valid XML and not raise an error\n+        self.assertEqual(response.status_code, 200)\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not ... ERROR\ntest_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod ... ERROR\n\n======================================================================\nERROR: test_callable_lastmod_empty_items (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nA sitemap with callable lastmod but empty items should not\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 43, in test_callable_lastmod_empty_items\n    result = sitemap.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n======================================================================\nERROR: test_callable_lastmod_empty_items_index_view (sitemaps_tests.test_empty_items.GetLatestLastmodTests)\nThe sitemap index view should handle sitemaps with callable lastmod\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/sitemaps_tests/test_empty_items.py\", line 52, in test_callable_lastmod_empty_items_index_view\n    response = self.client.get(\"/empty-callable-lastmod/index.xml\")\n  File \"/testbed/django/test/client.py\", line 839, in get\n    response = super().get(path, data=data, secure=secure, **extra)\n  File \"/testbed/django/test/client.py\", line 427, in get\n    return self.generic(\n  File \"/testbed/django/test/client.py\", line 544, in generic\n    return self.request(**r)\n  File \"/testbed/django/test/client.py\", line 813, in request\n    self.check_exception(response)\n  File \"/testbed/django/test/client.py\", line 666, in check_exception\n    raise exc_value\n  File \"/testbed/django/core/handlers/exception.py\", line 55, in inner\n    response = get_response(request)\n  File \"/testbed/django/core/handlers/base.py\", line 197, in _get_response\n    response = wrapped_callback(request, *callback_args, **callback_kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 34, in inner\n    response = func(request, *args, **kwargs)\n  File \"/testbed/django/contrib/sitemaps/views.py\", line 76, in index\n    site_lastmod = site.get_latest_lastmod()\n  File \"/testbed/django/contrib/sitemaps/__init__.py\", line 170, in get_latest_lastmod\n    return max([self.lastmod(item) for item in self.items()])\nValueError: max() arg is an empty sequence\n\n----------------------------------------------------------------------\nRan 2 tests in 0.025s\n\nFAILED (errors=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 sitemaps_tests.urls.http sitemaps_tests.test_empty_items` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application sitemaps_tests\nFound 2 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, sessions, sitemaps_tests, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table sitemaps_tests_testmodel\n    Creating table sitemaps_tests_i18ntestmodel\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items": [
+        {
+          "file": "tests/sitemaps_tests/test_empty_items.py",
+          "line": 32,
+          "func": "test_callable_lastmod_empty_items",
+          "is_test": true
+        },
+        {
+          "file": "django/contrib/sitemaps/__init__.py",
+          "line": 165,
+          "func": "get_latest_lastmod",
+          "is_test": false
+        }
+      ],
+      "sitemaps_tests.test_empty_items.GetLatestLastmodTests.test_callable_lastmod_empty_items_index_view": [
+        {
+          "file": "tests/sitemaps_tests/test_empty_items.py",
+          "line": 46,
+          "func": "test_callable_lastmod_empty_items_index_view",
+          "is_test": true
+        },
+        {
+          "file": "django/test/client.py",
+          "line": 836,
+          "func": "get",
+          "is_test": true
+        },
+        {
+          "file": "django/test/client.py",
+          "line": 424,
+          "func": "get",
+          "is_test": true
+        },
+        {
+          "file": "django/test/client.py",
+          "line": 512,
+          "func": "generic",
+          "is_test": true
+        },
+        {
+          "file": "django/utils/functional.py",
+          "line": 291,
+          "func": "__getattribute__",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-16255",
+  "messages": []
+}

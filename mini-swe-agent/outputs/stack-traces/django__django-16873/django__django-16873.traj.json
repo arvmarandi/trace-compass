@@ -1,0 +1,52 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/template_tests/filter_tests/test_join_autoescape.py b/tests/template_tests/filter_tests/test_join_autoescape.py\nnew file mode 100644\nindex 0000000000..cb48568af3\n--- /dev/null\n+++ b/tests/template_tests/filter_tests/test_join_autoescape.py\n@@ -0,0 +1,79 @@\n+\"\"\"\n+Tests for the join filter when autoescape is off.\n+These tests verify that the joining string is not escaped when autoescape is off.\n+\"\"\"\n+from django.template.defaultfilters import join\n+from django.test import SimpleTestCase\n+\n+from ..utils import setup\n+\n+\n+class JoinAutoescapeTests(SimpleTestCase):\n+    \"\"\"\n+    Test cases for the join filter with autoescape off.\n+    These tests verify the bug where the joining string is always escaped\n+    even when autoescape is off.\n+    \"\"\"\n+\n+    @setup({\n+        \"join_autoescape01\": '{% autoescape off %}{{ some_list|join:some_var }}{% endautoescape %}'\n+    })\n+    def test_join_with_autoescape_off_and_variable_joiner(self):\n+        \"\"\"\n+        When autoescape is off and the joiner is a variable,\n+        both the list items AND the joiner should not be escaped.\n+        \"\"\"\n+        some_list = [\"<p>Hello World!</p>\", \"beta & me\", \"<script>Hi!</script>\"]\n+        some_var = \"<br/>\"\n+        output = self.engine.render_to_string(\n+            \"join_autoescape01\",\n+            {\"some_list\": some_list, \"some_var\": some_var}\n+        )\n+        # With autoescape off, the joiner should NOT be escaped\n+        # Expected: '<p>Hello World!</p><br/>beta & me<br/><script>Hi!</script>'\n+        # Buggy: '<p>Hello World!</p>&lt;br/&gt;beta & me&lt;br/&gt;<script>Hi!</script>'\n+        self.assertEqual(output, some_var.join(some_list))\n+\n+    @setup({\n+        \"join_autoescape02\": '{{ some_list|join:some_var }}'\n+    })\n+    def test_join_with_autoescape_on_and_variable_joiner(self):\n+        \"\"\"\n+        When autoescape is on (default) and the joiner is a variable,\n+        both the list items AND the joiner should be escaped.\n+        \"\"\"\n+        from django.template.defaultfilters import escape\n+        some_list = [\"<p>Hello World!</p>\", \"beta & me\", \"<script>Hi!</script>\"]\n+        some_var = \"<br/>\"\n+        output = self.engine.render_to_string(\n+            \"join_autoescape02\",\n+            {\"some_list\": some_list, \"some_var\": some_var}\n+        )\n+        # With autoescape on, the joiner should be escaped\n+        self.assertEqual(output, escape(some_var.join(some_list)))\n+\n+\n+class JoinFunctionAutoescapeTests(SimpleTestCase):\n+    \"\"\"\n+    Test cases for the join filter function with autoescape parameter.\n+    \"\"\"\n+\n+    def test_join_with_autoescape_false_does_not_escape_joiner(self):\n+        \"\"\"\n+        When autoescape=False, the joining string should NOT be escaped,\n+        but list items should also NOT be escaped.\n+        \"\"\"\n+        result = join([\"<a>\", \"<img>\", \"</a>\"], \"<br>\", autoescape=False)\n+        # With autoescape=False, neither list items nor joiner should be escaped\n+        # Expected: '<a><br><img><br></a>'\n+        # Buggy: '<a>&lt;br&gt;<img>&lt;br&gt;</a>'\n+        self.assertEqual(result, \"<a><br><img><br></a>\")\n+\n+    def test_join_with_autoescape_true_escapes_joiner(self):\n+        \"\"\"\n+        When autoescape=True (default), both list items AND the joiner\n+        should be escaped.\n+        \"\"\"\n+        result = join([\"<a>\", \"<img>\", \"</a>\"], \"<br>\")\n+        # With autoescape=True, both list items and joiner should be escaped\n+        self.assertEqual(result, \"&lt;a&gt;&lt;br&gt;&lt;img&gt;&lt;br&gt;&lt;/a&gt;\")\n",
+    "stack_traces": [],
+    "test_output": "test_join_with_autoescape_off_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner)\nWhen autoescape is off and the joiner is a variable, ... FAIL\ntest_join_with_autoescape_on_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_on_and_variable_joiner)\nWhen autoescape is on (default) and the joiner is a variable, ... ok\ntest_join_with_autoescape_false_does_not_escape_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner)\nWhen autoescape=False, the joining string should NOT be escaped, ... FAIL\ntest_join_with_autoescape_true_escapes_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_true_escapes_joiner)\nWhen autoescape=True (default), both list items AND the joiner ... ok\n\n======================================================================\nFAIL: test_join_with_autoescape_off_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner)\nWhen autoescape is off and the joiner is a variable,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 443, in inner\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/testbed/tests/template_tests/utils.py\", line 58, in inner\n    func(self)\n  File \"/testbed/tests/template_tests/filter_tests/test_join_autoescape.py\", line 35, in test_join_with_autoescape_off_and_variable_joiner\n    self.assertEqual(output, some_var.join(some_list))\nAssertionError: '<p>Hello World!</p>&lt;br/&gt;beta & me&lt;br/&gt;<script>Hi!</script>' != '<p>Hello World!</p><br/>beta & me<br/><script>Hi!</script>'\n\n======================================================================\nFAIL: test_join_with_autoescape_false_does_not_escape_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner)\nWhen autoescape=False, the joining string should NOT be escaped,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/template_tests/filter_tests/test_join_autoescape.py\", line 70, in test_join_with_autoescape_false_does_not_escape_joiner\n    self.assertEqual(result, \"<a><br><img><br></a>\")\nAssertionError: '<a>&lt;br&gt;<img>&lt;br&gt;</a>' != '<a><br><img><br></a>'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.006s\n\nFAILED (failures=2)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 template_tests.filter_tests.test_join_autoescape` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application template_tests\nFound 4 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner": [
+        {
+          "file": "tests/template_tests/filter_tests/test_join_autoescape.py",
+          "line": 61,
+          "func": "test_join_with_autoescape_false_does_not_escape_joiner",
+          "is_test": true
+        }
+      ],
+      "template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner": [
+        {
+          "file": "django/test/utils.py",
+          "line": 438,
+          "func": "inner",
+          "is_test": true
+        },
+        {
+          "file": "django/test/utils.py",
+          "line": 404,
+          "func": "__enter__",
+          "is_test": true
+        },
+        {
+          "file": "django/test/utils.py",
+          "line": 469,
+          "func": "enable",
+          "is_test": true
+        },
+        {
+          "file": "django/dispatch/dispatcher.py",
+          "line": 159,
+          "func": "send",
+          "is_test": false
+        },
+        {
+          "file": "django/test/signals.py",
+          "line": 115,
+          "func": "storages_changed",
+          "is_test": true
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-16873",
+  "messages": []
+}

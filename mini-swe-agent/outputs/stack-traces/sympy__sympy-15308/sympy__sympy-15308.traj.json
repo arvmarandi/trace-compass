@@ -1,0 +1,222 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/matrices/expressions/tests/test_trace_latex.py b/sympy/matrices/expressions/tests/test_trace_latex.py\nnew file mode 100644\nindex 0000000000..8185a8e8c2\n--- /dev/null\n+++ b/sympy/matrices/expressions/tests/test_trace_latex.py\n@@ -0,0 +1,150 @@\n+\"\"\"\n+Test LaTeX printing for Trace and other matrix expressions.\n+\n+These tests are designed to expose the bug where LaTeX printing\n+for Matrix Expressions (like Trace) does not use proper LaTeX formatting.\n+\n+The bug: When calling latex() on a Trace object, it returns Python str()\n+representation instead of proper LaTeX, and the inner expression is not\n+properly printed with LaTeX either.\n+\n+Example:\n+    >>> from sympy import *\n+    >>> A = MatrixSymbol(\"A\", n, n)\n+    >>> latex(trace(A**2))\n+    'Trace(A**2)'  # Bug: should be like '\\operatorname{Tr}\\left(A^{2}\\right)'\n+    \n+The inner expression A**2 is also not being printed with LaTeX (it shows\n+'A**2' instead of 'A^{2}').\n+\"\"\"\n+\n+from sympy import Symbol, latex\n+from sympy.matrices.expressions import (\n+    MatrixSymbol, Trace, MatPow, MatMul, MatAdd, Inverse, Transpose, Adjoint\n+)\n+\n+\n+def test_Trace_latex_printing():\n+    \"\"\"Test that Trace is properly printed in LaTeX format.\n+    \n+    The output should use LaTeX formatting like \\\\operatorname{Tr} or \\\\text{Tr},\n+    not Python str representation like \"Trace(A)\".\n+    \"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    \n+    result = latex(Trace(A))\n+    # The current bug produces 'Trace(A)' which is not proper LaTeX\n+    # Expected: something like \"\\\\operatorname{Tr}(A)\" or \"\\\\text{Tr}(A)\"\n+    assert result != 'Trace(A)', f\"Trace should use LaTeX formatting, got: {result}\"\n+    # The LaTeX output should contain 'Tr' somewhere (standard notation for trace)\n+    assert 'Tr' in result, f\"Expected 'Tr' in LaTeX output, got: {result}\"\n+\n+\n+def test_Trace_of_MatPow_latex():\n+    \"\"\"Test that Trace(MatPow) uses proper LaTeX for both Trace and MatPow.\n+    \n+    The inner expression A**2 should be printed as 'A^{2}' not 'A**2'.\n+    \"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    \n+    # Test trace of a matrix power\n+    result = latex(Trace(A**2))\n+    # The current bug produces 'Trace(A**2)' which is not proper LaTeX\n+    assert result != 'Trace(A**2)', f\"Trace(A**2) should use LaTeX formatting, got: {result}\"\n+    # The LaTeX output should use proper superscript notation for the power\n+    # The inner expression A**2 should be printed as 'A^{2}' not 'A**2'\n+    assert 'A^{2}' in result, f\"Expected A^{{2}} in LaTeX output, got: {result}\"\n+\n+\n+def test_Trace_of_MatMul_latex():\n+    \"\"\"Test that Trace(MatMul) uses proper LaTeX for inner expression.\n+    \n+    The inner product A*B should use proper LaTeX (like 'A B' or 'A \\\\cdot B').\n+    \"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    B = MatrixSymbol('B', n, n)\n+    \n+    # Test trace of a matrix product\n+    result = latex(Trace(A * B))\n+    # Should not use Python str representation\n+    assert result != 'Trace(A*B)', f\"Trace(A*B) should use LaTeX, got: {result}\"\n+    # The inner product should use proper LaTeX (space-separated for matrix product)\n+    assert 'A B' in result or 'AB' in result, \\\n+        f\"Expected proper LaTeX for A*B, got: {result}\"\n+\n+\n+def test_Trace_of_Inverse_latex():\n+    \"\"\"Test that Trace(Inverse) uses proper LaTeX for inner expression.\n+    \n+    The inverse should be printed with proper LaTeX notation A^{-1}.\n+    \"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    \n+    # Test trace of an inverse\n+    result = latex(Trace(Inverse(A)))\n+    # Should not use Python str representation\n+    assert result != 'Trace(A^-1)', f\"Trace(Inverse(A)) should use LaTeX, got: {result}\"\n+    # The inverse should be printed with proper LaTeX notation\n+    assert 'A^{-1}' in result, f\"Expected A^{{-1}} in LaTeX output, got: {result}\"\n+\n+\n+def test_Trace_of_Adjoint_latex():\n+    \"\"\"Test that Trace(Adjoint) uses proper LaTeX for inner expression.\n+    \n+    The adjoint should use proper LaTeX \\\\dagger notation.\n+    \"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    \n+    # Test trace of an adjoint\n+    result = latex(Trace(Adjoint(A)))\n+    # Should not use Python str representation\n+    assert result != 'Trace(Adjoint(A))', f\"Trace(Adjoint(A)) should use LaTeX, got: {result}\"\n+    # The adjoint should use proper LaTeX \\dagger notation\n+    assert '\\\\dagger' in result, f\"Expected \\\\dagger in LaTeX output, got: {result}\"\n+\n+\n+def test_nested_matrix_expressions_latex():\n+    \"\"\"Test that nested matrix expressions are properly printed in LaTeX.\"\"\"\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    B = MatrixSymbol('B', n, n)\n+    \n+    # Trace of product of transposes: Trace(A.T * B.T)\n+    result = latex(Trace(Transpose(A) * Transpose(B)))\n+    # Should use proper LaTeX notation, not Python str representation\n+    assert 'Trace' not in result or result.startswith('\\\\'), \\\n+        f\"Trace should use LaTeX notation, got: {result}\"\n+\n+\n+if __name__ == '__main__':\n+    # Run tests manually to see the current (buggy) behavior\n+    n = Symbol('n')\n+    A = MatrixSymbol('A', n, n)\n+    B = MatrixSymbol('B', n, n)\n+    \n+    print(\"Testing LaTeX printing for Trace...\")\n+    print()\n+    \n+    print(\"latex(Trace(A)) =\", repr(latex(Trace(A))))\n+    print(\"Expected: LaTeX format with \\\\operatorname{Tr} or similar\")\n+    print()\n+    \n+    print(\"latex(Trace(A**2)) =\", repr(latex(Trace(A**2))))\n+    print(\"Expected: LaTeX format with A^{2} (not A**2)\")\n+    print()\n+    \n+    print(\"latex(Trace(A*B)) =\", repr(latex(Trace(A*B))))\n+    print(\"Expected: LaTeX format with A B or AB\")\n+    print()\n+    \n+    print(\"latex(Trace(Inverse(A))) =\", repr(latex(Trace(Inverse(A)))))\n+    print(\"Expected: LaTeX format with A^{-1}\")\n+    print()\n+    \n+    print(\"latex(Trace(Adjoint(A))) =\", repr(latex(Trace(Adjoint(A)))))\n+    print(\"Expected: LaTeX format with \\\\dagger\")\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/matrices/expressions/tests/test_trace_latex.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        19248926\nhash randomization: on (PYTHONHASHSEED=2233526835)\n\nsympy/matrices/expressions/tests/test_trace_latex.py[6] \ntest_Trace_latex_printing F\ntest_Trace_of_MatPow_latex F\ntest_Trace_of_MatMul_latex F\ntest_Trace_of_Inverse_latex F\ntest_Trace_of_Adjoint_latex F\ntest_nested_matrix_expressions_latex F                                    [FAIL]\n\n\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_Trace_latex_printing \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 39, in test_Trace_latex_printing\n    assert result != 'Trace(A)', f\"Trace should use LaTeX formatting, got: {result}\"\nAssertionError: Trace should use LaTeX formatting, got: Trace(A)\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_Trace_of_MatPow_latex \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 55, in test_Trace_of_MatPow_latex\n    assert result != 'Trace(A**2)', f\"Trace(A**2) should use LaTeX formatting, got: {result}\"\nAssertionError: Trace(A**2) should use LaTeX formatting, got: Trace(A**2)\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_Trace_of_MatMul_latex \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 73, in test_Trace_of_MatMul_latex\n    assert result != 'Trace(A*B)', f\"Trace(A*B) should use LaTeX, got: {result}\"\nAssertionError: Trace(A*B) should use LaTeX, got: Trace(A*B)\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_Trace_of_Inverse_latex \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 90, in test_Trace_of_Inverse_latex\n    assert result != 'Trace(A^-1)', f\"Trace(Inverse(A)) should use LaTeX, got: {result}\"\nAssertionError: Trace(Inverse(A)) should use LaTeX, got: Trace(A^-1)\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_Trace_of_Adjoint_latex \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 106, in test_Trace_of_Adjoint_latex\n    assert result != 'Trace(Adjoint(A))', f\"Trace(Adjoint(A)) should use LaTeX, got: {result}\"\nAssertionError: Trace(Adjoint(A)) should use LaTeX, got: Trace(Adjoint(A))\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_trace_latex.py:test_nested_matrix_expressions_latex \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_trace_latex.py\", line 120, in test_nested_matrix_expressions_latex\n    assert 'Trace' not in result or result.startswith('\\\\'), \\\nAssertionError: Trace should use LaTeX notation, got: Trace(A.T*B.T)\n\n============= tests finished: 0 passed, 6 failed, in 0.01 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_Trace_latex_printing": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 27,
+          "func": "test_Trace_latex_printing",
+          "is_test": true
+        }
+      ],
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_Trace_of_MatPow_latex": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 44,
+          "func": "test_Trace_of_MatPow_latex",
+          "is_test": true
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 20,
+          "func": "__sympifyit_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/decorators.py",
+          "line": 122,
+          "func": "binary_op_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 127,
+          "func": "__pow__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matpow.py",
+          "line": 52,
+          "func": "doit",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/assumptions.py",
+          "line": 242,
+          "func": "getit",
+          "is_test": false
+        }
+      ],
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_Trace_of_MatMul_latex": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 61,
+          "func": "test_Trace_of_MatMul_latex",
+          "is_test": true
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 20,
+          "func": "__sympifyit_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/decorators.py",
+          "line": 122,
+          "func": "binary_op_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 107,
+          "func": "__mul__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matmul.py",
+          "line": 118,
+          "func": "doit",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 10,
+          "func": "exhaustive_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 93,
+          "func": "switch_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 83,
+          "func": "do_one_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matmul.py",
+          "line": 252,
+          "func": "combine_powers",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 297,
+          "func": "__eq__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 379,
+          "func": "_sympify",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 78,
+          "func": "sympify",
+          "is_test": false
+        }
+      ],
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_Trace_of_Inverse_latex": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 79,
+          "func": "test_Trace_of_Inverse_latex",
+          "is_test": true
+        }
+      ],
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_Trace_of_Adjoint_latex": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 95,
+          "func": "test_Trace_of_Adjoint_latex",
+          "is_test": true
+        }
+      ],
+      "sympy/matrices/expressions/tests/test_trace_latex.py::test_nested_matrix_expressions_latex": [
+        {
+          "file": "sympy/matrices/expressions/tests/test_trace_latex.py",
+          "line": 111,
+          "func": "test_nested_matrix_expressions_latex",
+          "is_test": true
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 20,
+          "func": "__sympifyit_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/decorators.py",
+          "line": 122,
+          "func": "binary_op_wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matexpr.py",
+          "line": 107,
+          "func": "__mul__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matmul.py",
+          "line": 118,
+          "func": "doit",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 10,
+          "func": "exhaustive_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 93,
+          "func": "switch_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/strategies/core.py",
+          "line": 83,
+          "func": "do_one_rl",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/expressions/matmul.py",
+          "line": 252,
+          "func": "combine_powers",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 297,
+          "func": "__eq__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 379,
+          "func": "_sympify",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 78,
+          "func": "sympify",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "sympy__sympy-15308",
+  "messages": []
+}

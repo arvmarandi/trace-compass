@@ -1,0 +1,38 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/lookup/tests.py b/tests/lookup/tests.py\nindex a603824c0d..00cab3f94b 100644\n--- a/tests/lookup/tests.py\n+++ b/tests/lookup/tests.py\n@@ -956,3 +956,46 @@ class LookupTests(TestCase):\n             ),\n         )\n         self.assertEqual(qs.get(has_author_alias_match=True), tag)\n+\n+    def test_exact_query_rhs_with_selected_columns(self):\n+        \"\"\"\n+        Test that when filtering on a query with selected columns (using .values()),\n+        the GROUP BY clause is preserved and the correct results are returned.\n+        \n+        Regression test for ticket #30771.\n+        \"\"\"\n+        from django.db.models import Max\n+        \n+        # Create another author with the same name to test grouping\n+        author1_clone = Author.objects.create(name=self.au1.name)\n+        \n+        # Create a query that groups by 'name' and gets max id for each name\n+        # This query uses .values() which sets the select fields\n+        authors_max_ids = Author.objects.filter(\n+            name=self.au1.name,\n+        ).values(\n+            'name',\n+        ).annotate(\n+            max_id=Max('id'),\n+        ).values('max_id')\n+        \n+        # The subquery should select max_id and group by name\n+        # When used in a filter, the GROUP BY should be preserved\n+        authors = Author.objects.filter(id=authors_max_ids[:1])\n+        \n+        # The bug would cause the subquery to return the wrong result\n+        # because the GROUP BY would be incorrectly set to just 'id'\n+        # instead of preserving 'name' in the GROUP BY\n+        # \n+        # With the bug:\n+        # - The subquery would have GROUP BY id instead of GROUP BY name\n+        # - This would return the wrong max_id (just the individual id)\n+        #\n+        # With the fix:\n+        # - The subquery preserves GROUP BY name\n+        # - Returns the correct max_id for all authors named 'Author 1'\n+        \n+        result = authors.get()\n+        # The result should be the author with the highest id among\n+        # authors with the same name\n+        self.assertEqual(result.id, max(self.au1.id, author1_clone.id))\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_chain_date_time_lookups (lookup.tests.LookupTests) ... ok\ntest_count (lookup.tests.LookupTests) ... ok\ntest_custom_field_none_rhs (lookup.tests.LookupTests) ... ok\ntest_custom_lookup_none_rhs (lookup.tests.LookupTests)\nLookup.can_use_none_as_rhs=True allows None as a lookup value. ... ok\ntest_error_messages (lookup.tests.LookupTests) ... ok\ntest_escaping (lookup.tests.LookupTests) ... ok\ntest_exact_exists (lookup.tests.LookupTests) ... ok\ntest_exact_none_transform (lookup.tests.LookupTests)\nTransforms are used for __exact=None. ... ok\ntest_exact_query_rhs_with_selected_columns (lookup.tests.LookupTests) ... FAIL\ntest_exact_sliced_queryset_limit_one (lookup.tests.LookupTests) ... ok\ntest_exact_sliced_queryset_limit_one_offset (lookup.tests.LookupTests) ... ok\ntest_exact_sliced_queryset_not_limited_to_one (lookup.tests.LookupTests) ... ok\ntest_exclude (lookup.tests.LookupTests) ... ok\ntest_exists (lookup.tests.LookupTests) ... ok\ntest_get_next_previous_by (lookup.tests.LookupTests) ... ok\ntest_in (lookup.tests.LookupTests) ... ok\ntest_in_bulk (lookup.tests.LookupTests) ... ok\ntest_in_bulk_lots_of_ids (lookup.tests.LookupTests) ... ok\ntest_in_bulk_non_unique_field (lookup.tests.LookupTests) ... ok\ntest_in_bulk_with_field (lookup.tests.LookupTests) ... ok\ntest_in_different_database (lookup.tests.LookupTests) ... ok\ntest_in_keeps_value_ordering (lookup.tests.LookupTests) ... ok\ntest_iterator (lookup.tests.LookupTests) ... ok\ntest_lookup_collision (lookup.tests.LookupTests) ... ok\ntest_lookup_date_as_str (lookup.tests.LookupTests) ... ok\ntest_lookup_int_as_str (lookup.tests.LookupTests) ... ok\ntest_nested_outerref_lhs (lookup.tests.LookupTests) ... ok\ntest_none (lookup.tests.LookupTests) ... ok\ntest_nonfield_lookups (lookup.tests.LookupTests) ... ok\ntest_pattern_lookups_with_substr (lookup.tests.LookupTests) ... ok\ntest_regex (lookup.tests.LookupTests) ... ok\ntest_regex_backreferencing (lookup.tests.LookupTests) ... ok\ntest_regex_non_ascii (lookup.tests.LookupTests) ... ok\ntest_regex_non_string (lookup.tests.LookupTests) ... ok\ntest_regex_null (lookup.tests.LookupTests) ... ok\ntest_relation_nested_lookup_error (lookup.tests.LookupTests) ... ok\ntest_unsupported_lookups (lookup.tests.LookupTests) ... ok\ntest_values (lookup.tests.LookupTests) ... ok\ntest_values_list (lookup.tests.LookupTests) ... ok\n\n======================================================================\nFAIL: test_exact_query_rhs_with_selected_columns (lookup.tests.LookupTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/lookup/tests.py\", line 1001, in test_exact_query_rhs_with_selected_columns\n    self.assertEqual(result.id, max(self.au1.id, author1_clone.id))\nAssertionError: 1 != 3\n\n----------------------------------------------------------------------\nRan 39 tests in 0.113s\n\nFAILED (failures=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 lookup.tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application lookup\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, lookup, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table lookup_alarm\n    Creating table lookup_author\n    Creating table lookup_article\n    Creating table lookup_tag\n    Creating table lookup_season\n    Creating table lookup_game\n    Creating table lookup_player\n    Creating table lookup_product\n    Creating table lookup_stock\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "lookup.tests.LookupTests.test_exact_query_rhs_with_selected_columns": [
+        {
+          "file": "tests/lookup/tests.py",
+          "line": 960,
+          "func": "test_exact_query_rhs_with_selected_columns",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/manager.py",
+          "line": 81,
+          "func": "manager_method",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 426,
+          "func": "create",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/base.py",
+          "line": 402,
+          "func": "__init__",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-11797",
+  "messages": []
+}

@@ -3,7 +3,129 @@
     "exit_status": "Submitted",
     "submission": "diff --git a/sympy/physics/units/tests/test_orthogonal_units_bug.py b/sympy/physics/units/tests/test_orthogonal_units_bug.py\nnew file mode 100644\nindex 0000000000..b6b398df98\n--- /dev/null\n+++ b/sympy/physics/units/tests/test_orthogonal_units_bug.py\n@@ -0,0 +1,92 @@\n+\"\"\"\n+Test for the bug where convert_to combines orthogonal units incorrectly.\n+\n+See: https://github.com/sympy/sympy/issues/...\n+\n+The issue is that `convert_to(joule*second, joule)` returns a wrong result\n+instead of either:\n+1. Returning the original expression unchanged\n+2. Raising an error\n+\n+joule*second has dimensions of energy*time (action/angular momentum)\n+joule has dimensions of energy\n+\n+These are incompatible dimensions, so conversion should not be allowed.\n+\n+The bug: convert_to allows conversion when target dimensions are a subset\n+of source dimensions, which leads to incorrect fractional exponents.\n+\"\"\"\n+\n+from sympy.physics.units import (\n+    convert_to, hour, joule, kilogram, meter, minute, second\n+)\n+\n+\n+def test_convert_to_incompatible_dimensions_returns_unchanged():\n+    \"\"\"\n+    Test that convert_to returns the original expression when trying to\n+    convert between incompatible dimensions.\n+\n+    joule*second has dimensions of energy*time (action/angular momentum)\n+    joule has dimensions of energy\n+\n+    These are incompatible, so the original expression should be returned.\n+    \"\"\"\n+    # This is the main bug described in the PR\n+    expr = joule * second\n+    result = convert_to(expr, joule)\n+\n+    # The result should be the original expression unchanged,\n+    # NOT some incorrect power of joule\n+    assert result == expr, f\"Expected {expr}, got {result}\"\n+\n+\n+def test_convert_to_joule_second_to_joule_specific_values():\n+    \"\"\"\n+    Specific test case from the PR: joule*second to joule.\n+    The bug was that this returned joule**(7/9) or similar.\n+    \"\"\"\n+    result = convert_to(joule*second, joule)\n+    # It should be the original expression\n+    assert result == joule*second, f\"Expected joule*second, got {result}\"\n+\n+\n+def test_convert_to_same_dimension_still_works():\n+    \"\"\"\n+    Verify that valid conversions still work correctly.\n+    \"\"\"\n+    # Same dimension conversion - should work\n+    result = convert_to(joule*second, joule*second)\n+    assert result == joule*second\n+\n+    # Convert to base units - this is valid (energy*time = kg*m^2/s)\n+    result = convert_to(joule*second, kilogram*meter**2/second)\n+    assert result == kilogram*meter**2/second\n+\n+\n+def test_convert_to_joule_to_joule_works():\n+    \"\"\"\n+    Simple conversion of joule to base units - should work.\n+    \"\"\"\n+    result = convert_to(joule, kilogram*meter**2/second**2)\n+    assert result == kilogram*meter**2/second**2\n+\n+\n+def test_convert_to_second_to_minute_works():\n+    \"\"\"\n+    Simple time conversion - should work.\n+    \"\"\"\n+    result = convert_to(second, minute)\n+    assert result == minute/60\n+\n+\n+def test_convert_to_hour_to_joule_incompatible():\n+    \"\"\"\n+    Converting hour (time) to joule (energy) should not work.\n+\n+    time cannot be converted to energy - dimensions don't match.\n+    \"\"\"\n+    expr = hour\n+    result = convert_to(hour, joule)\n+    # Should return unchanged since dimensions are incompatible\n+    assert result == hour, f\"Expected {hour}, got {result}\"\n",
     "stack_traces": [],
-    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/physics/units/tests/test_orthogonal_units_bug.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        21505395\nhash randomization: on (PYTHONHASHSEED=874684716)\n\nsympy/physics/units/tests/test_orthogonal_units_bug.py[6] \ntest_convert_to_incompatible_dimensions_returns_unchanged F\ntest_convert_to_joule_second_to_joule_specific_values F\ntest_convert_to_same_dimension_still_works ok\ntest_convert_to_joule_to_joule_works ok\ntest_convert_to_second_to_minute_works ok\ntest_convert_to_hour_to_joule_incompatible F                              [FAIL]\n\n\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_incompatible_dimensions_returns_unchanged \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 41, in test_convert_to_incompatible_dimensions_returns_unchanged\n    assert result == expr, f\"Expected {expr}, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_joule_second_to_joule_specific_values \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 51, in test_convert_to_joule_second_to_joule_specific_values\n    assert result == joule*second, f\"Expected joule*second, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_hour_to_joule_incompatible \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 92, in test_convert_to_hour_to_joule_incompatible\n    assert result == hour, f\"Expected {hour}, got {result}\"\nAssertionError: Expected hour, got 3600*10**(2/3)/joule**(2/9)\n\n============= tests finished: 3 passed, 3 failed, in 0.23 seconds ==============\nDO *NOT* COMMIT!\n\n"
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/physics/units/tests/test_orthogonal_units_bug.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        85390567\nhash randomization: on (PYTHONHASHSEED=3521503190)\n\nsympy/physics/units/tests/test_orthogonal_units_bug.py[6] \ntest_convert_to_incompatible_dimensions_returns_unchanged F\ntest_convert_to_joule_second_to_joule_specific_values F\ntest_convert_to_same_dimension_still_works ok\ntest_convert_to_joule_to_joule_works ok\ntest_convert_to_second_to_minute_works ok\ntest_convert_to_hour_to_joule_incompatible F                              [FAIL]\n\n\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_incompatible_dimensions_returns_unchanged \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 41, in test_convert_to_incompatible_dimensions_returns_unchanged\n    assert result == expr, f\"Expected {expr}, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_joule_second_to_joule_specific_values \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 51, in test_convert_to_joule_second_to_joule_specific_values\n    assert result == joule*second, f\"Expected joule*second, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_hour_to_joule_incompatible \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 92, in test_convert_to_hour_to_joule_incompatible\n    assert result == hour, f\"Expected {hour}, got {result}\"\nAssertionError: Expected hour, got 3600*10**(2/3)/joule**(2/9)\n\n============= tests finished: 3 passed, 3 failed, in 0.20 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_incompatible_dimensions_returns_unchanged": [
+        {
+          "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+          "line": 25,
+          "func": "test_convert_to_incompatible_dimensions_returns_unchanged",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/units/util.py",
+          "line": 37,
+          "func": "convert_to",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 69,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 1163,
+          "func": "has",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 1210,
+          "func": "<genexpr>",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 1212,
+          "func": "_has",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 1221,
+          "func": "<genexpr>",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_joule_second_to_joule_specific_values": [
+        {
+          "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+          "line": 44,
+          "func": "test_convert_to_joule_second_to_joule_specific_values",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/units/util.py",
+          "line": 37,
+          "func": "convert_to",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/basic.py",
+          "line": 1236,
+          "func": "replace",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 487,
+          "func": "_sympify",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 92,
+          "func": "sympify",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_hour_to_joule_incompatible": [
+        {
+          "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+          "line": 83,
+          "func": "test_convert_to_hour_to_joule_incompatible",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/units/util.py",
+          "line": 37,
+          "func": "convert_to",
+          "is_test": false
+        },
+        {
+          "file": "sympy/physics/units/util.py",
+          "line": 13,
+          "func": "_get_conversion_matrix_for_expr",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/dense.py",
+          "line": 297,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/dense.py",
+          "line": 300,
+          "func": "_new",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/matrices.py",
+          "line": 881,
+          "func": "_handle_creation_inputs",
+          "is_test": false
+        },
+        {
+          "file": "sympy/matrices/matrices.py",
+          "line": 981,
+          "func": "<genexpr>",
+          "is_test": false
+        }
+      ]
+    }
   },
   "instance_id": "sympy__sympy-20442",
   "messages": []

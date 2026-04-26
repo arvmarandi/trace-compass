@@ -1,0 +1,236 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sklearn/mixture/tests/test_clusterer_interface.py b/sklearn/mixture/tests/test_clusterer_interface.py\nnew file mode 100644\nindex 000000000..5d5c58680\n--- /dev/null\n+++ b/sklearn/mixture/tests/test_clusterer_interface.py\n@@ -0,0 +1,167 @@\n+\"\"\"\n+Test that mixture models have a clusterer-compatible interface.\n+\n+These tests verify that mixture models follow the clusterer API pattern:\n+1. Support n_clusters as an alias for n_components\n+2. Store labels_ attribute after fitting\n+3. Have a fit_predict method (already exists)\n+\n+These tests should FAIL on the current codebase and PASS after the fix.\n+\"\"\"\n+\n+import numpy as np\n+import pytest\n+\n+from sklearn.mixture import GaussianMixture\n+from sklearn.mixture import BayesianGaussianMixture\n+\n+\n+def generate_data(n_samples=100, n_features=2, random_state=0):\n+    \"\"\"Generate simple test data with two clusters.\"\"\"\n+    rng = np.random.RandomState(random_state)\n+    # Generate two well-separated clusters\n+    cluster1 = rng.randn(n_samples, n_features) + np.array([5, 5])\n+    cluster2 = rng.randn(n_samples, n_features) + np.array([-5, -5])\n+    X = np.vstack([cluster1, cluster2])\n+    return X\n+\n+\n+class TestNClustersAlias:\n+    \"\"\"Test that n_clusters works as an alias for n_components.\"\"\"\n+    \n+    def test_n_clusters_parameter_exists(self):\n+        \"\"\"Test that GaussianMixture accepts n_clusters parameter.\"\"\"\n+        # This should work - n_clusters should be accepted as an alias\n+        gm = GaussianMixture(n_clusters=2, random_state=0)\n+        assert gm.n_components == 2, \\\n+            \"n_clusters should be aliased to n_components\"\n+    \n+    def test_n_clusters_with_bayesian_gaussian_mixture(self):\n+        \"\"\"Test that BayesianGaussianMixture accepts n_clusters parameter.\"\"\"\n+        bgm = BayesianGaussianMixture(n_clusters=3, random_state=0)\n+        assert bgm.n_components == 3, \\\n+            \"n_clusters should be aliased to n_components in BayesianGaussianMixture\"\n+    \n+    def test_n_clusters_attribute_exists_after_init(self):\n+        \"\"\"Test that n_clusters attribute is accessible.\"\"\"\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        # n_clusters should be accessible as an alias for n_components\n+        assert hasattr(gm, 'n_clusters'), \\\n+            \"GaussianMixture should have n_clusters attribute for clusterer compatibility\"\n+        assert gm.n_clusters == gm.n_components\n+\n+\n+class TestLabelsAttribute:\n+    \"\"\"Test that labels_ attribute is stored after fit.\"\"\"\n+    \n+    def test_labels_attribute_after_fit(self):\n+        \"\"\"Test that labels_ is stored after fit().\"\"\"\n+        X = generate_data()\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        gm.fit(X)\n+        \n+        assert hasattr(gm, 'labels_'), \\\n+            \"GaussianMixture should store labels_ after fit()\"\n+        \n+        # Labels should have correct shape\n+        assert gm.labels_.shape == (X.shape[0],), \\\n+            f\"labels_ should have shape ({X.shape[0]},), got {gm.labels_.shape}\"\n+    \n+    def test_labels_attribute_values(self):\n+        \"\"\"Test that labels_ contain valid cluster indices.\"\"\"\n+        X = generate_data()\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        gm.fit(X)\n+        \n+        # All labels should be valid cluster indices\n+        assert gm.labels_.min() >= 0, \"Labels should be non-negative\"\n+        assert gm.labels_.max() < gm.n_components, \\\n+            f\"Labels should be less than n_components ({gm.n_components})\"\n+    \n+    def test_labels_match_predict(self):\n+        \"\"\"Test that labels_ matches predict() output.\"\"\"\n+        X = generate_data()\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        gm.fit(X)\n+        \n+        predicted = gm.predict(X)\n+        np.testing.assert_array_equal(\n+            gm.labels_, predicted,\n+            err_msg=\"labels_ should match predict() output\"\n+        )\n+    \n+    def test_labels_for_bayesian_gaussian_mixture(self):\n+        \"\"\"Test that BayesianGaussianMixture also stores labels_.\"\"\"\n+        X = generate_data()\n+        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n+        bgm.fit(X)\n+        \n+        assert hasattr(bgm, 'labels_'), \\\n+            \"BayesianGaussianMixture should store labels_ after fit()\"\n+\n+\n+class TestFitPredict:\n+    \"\"\"Test that fit_predict method exists and works.\"\"\"\n+    \n+    def test_fit_predict_method_exists(self):\n+        \"\"\"Test that GaussianMixture has fit_predict method.\"\"\"\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        assert hasattr(gm, 'fit_predict'), \\\n+            \"GaussianMixture should have fit_predict method for clusterer compatibility\"\n+    \n+    def test_fit_predict_returns_labels(self):\n+        \"\"\"Test that fit_predict returns labels.\"\"\"\n+        X = generate_data()\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        labels = gm.fit_predict(X)\n+        \n+        assert labels is not None, \"fit_predict should return labels\"\n+        assert labels.shape == (X.shape[0],), \\\n+            f\"fit_predict should return labels of shape ({X.shape[0]},)\"\n+    \n+    def test_fit_predict_matches_labels_attribute(self):\n+        \"\"\"Test that fit_predict returns same labels as stored in labels_.\"\"\"\n+        X = generate_data()\n+        gm = GaussianMixture(n_components=2, random_state=0)\n+        labels = gm.fit_predict(X)\n+        \n+        np.testing.assert_array_equal(\n+            labels, gm.labels_,\n+            err_msg=\"fit_predict return value should match labels_ attribute\"\n+        )\n+    \n+    def test_fit_predict_for_bayesian_gaussian_mixture(self):\n+        \"\"\"Test that BayesianGaussianMixture also has fit_predict.\"\"\"\n+        X = generate_data()\n+        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n+        \n+        assert hasattr(bgm, 'fit_predict'), \\\n+            \"BayesianGaussianMixture should have fit_predict method\"\n+        \n+        labels = bgm.fit_predict(X)\n+        assert labels.shape == (X.shape[0],)\n+\n+\n+class TestClustererCompatibility:\n+    \"\"\"Test overall clusterer-like interface.\"\"\"\n+    \n+    def test_basic_clusterer_workflow(self):\n+        \"\"\"Test that mixture models can be used like clusterers.\"\"\"\n+        X = generate_data()\n+        \n+        # Create and fit like a clusterer\n+        gm = GaussianMixture(n_clusters=2, random_state=0)\n+        \n+        # fit_predict should work (clusterer-like interface)\n+        labels = gm.fit_predict(X)\n+        \n+        # labels_ should be stored (clusterer-like attribute)\n+        assert hasattr(gm, 'labels_'), \\\n+            \"After fit_predict, labels_ should be accessible\"\n+        \n+        # Verify consistency\n+        np.testing.assert_array_equal(labels, gm.labels_)\n+        \n+        # New data prediction should work\n+        new_labels = gm.predict(X)\n+        np.testing.assert_array_equal(new_labels, gm.labels_)\n",
+    "stack_traces": [
+      "_____________ TestNClustersAlias.test_n_clusters_parameter_exists ______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b5b3ba8>\n\n    def test_n_clusters_parameter_exists(self):\n        \"\"\"Test that GaussianMixture accepts n_clusters parameter.\"\"\"\n        # This should work - n_clusters should be accepted as an alias\n>       gm = GaussianMixture(n_clusters=2, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:35: TypeError\n______ TestNClustersAlias.test_n_clusters_with_bayesian_gaussian_mixture _______\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b3fc358>\n\n    def test_n_clusters_with_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture accepts n_clusters parameter.\"\"\"\n>       bgm = BayesianGaussianMixture(n_clusters=3, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:41: TypeError\n________ TestNClustersAlias.test_n_clusters_attribute_exists_after_init ________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b59c668>\n\n    def test_n_clusters_attribute_exists_after_init(self):\n        \"\"\"Test that n_clusters attribute is accessible.\"\"\"\n        gm = GaussianMixture(n_components=2, random_state=0)\n        # n_clusters should be accessible as an alias for n_components\n>       assert hasattr(gm, 'n_clusters'), \\\n            \"GaussianMixture should have n_clusters attribute for clusterer compatibility\"\nE       AssertionError: GaussianMixture should have n_clusters attribute for clusterer compatibility\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'n_clusters')\n\nsklearn/mixture/tests/test_clusterer_interface.py:49: AssertionError\n_____________ TestLabelsAttribute.test_labels_attribute_after_fit ______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b59d630>\n\n    def test_labels_attribute_after_fit(self):\n        \"\"\"Test that labels_ is stored after fit().\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n>       assert hasattr(gm, 'labels_'), \\\n            \"GaussianMixture should store labels_ after fit()\"\nE       AssertionError: GaussianMixture should store labels_ after fit()\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'labels_')\n\nsklearn/mixture/tests/test_clusterer_interface.py:63: AssertionError\n_______________ TestLabelsAttribute.test_labels_attribute_values _______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b5a9fd0>\n\n    def test_labels_attribute_values(self):\n        \"\"\"Test that labels_ contain valid cluster indices.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n        # All labels should be valid cluster indices\n>       assert gm.labels_.min() >= 0, \"Labels should be non-negative\"\nE       AttributeError: 'GaussianMixture' object has no attribute 'labels_'\n\nsklearn/mixture/tests/test_clusterer_interface.py:77: AttributeError\n________________ TestLabelsAttribute.test_labels_match_predict _________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b593da0>\n\n    def test_labels_match_predict(self):\n        \"\"\"Test that labels_ matches predict() output.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n        predicted = gm.predict(X)\n        np.testing.assert_array_equal(\n>           gm.labels_, predicted,\n            err_msg=\"labels_ should match predict() output\"\n        )\nE       AttributeError: 'GaussianMixture' object has no attribute 'labels_'\n\nsklearn/mixture/tests/test_clusterer_interface.py:89: AttributeError\n________ TestLabelsAttribute.test_labels_for_bayesian_gaussian_mixture _________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b508320>\n\n    def test_labels_for_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture also stores labels_.\"\"\"\n        X = generate_data()\n        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n        bgm.fit(X)\n    \n>       assert hasattr(bgm, 'labels_'), \\\n            \"BayesianGaussianMixture should store labels_ after fit()\"\nE       AssertionError: BayesianGaussianMixture should store labels_ after fit()\nE       assert False\nE        +  where False = hasattr(BayesianGaussianMixture(covariance_prior=None, covariance_type='full',\\n            degrees_of_freedom_prior=None, init...rt=False,\\n            weight_concentration_prior=None,\\n            weight_concentration_prior_type='dirichlet_process'), 'labels_')\n\nsklearn/mixture/tests/test_clusterer_interface.py:99: AssertionError\n________________ TestFitPredict.test_fit_predict_method_exists _________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b5a3a20>\n\n    def test_fit_predict_method_exists(self):\n        \"\"\"Test that GaussianMixture has fit_predict method.\"\"\"\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       assert hasattr(gm, 'fit_predict'), \\\n            \"GaussianMixture should have fit_predict method for clusterer compatibility\"\nE       AssertionError: GaussianMixture should have fit_predict method for clusterer compatibility\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'fit_predict')\n\nsklearn/mixture/tests/test_clusterer_interface.py:109: AssertionError\n________________ TestFitPredict.test_fit_predict_returns_labels ________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b3fc978>\n\n    def test_fit_predict_returns_labels(self):\n        \"\"\"Test that fit_predict returns labels.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       labels = gm.fit_predict(X)\nE       AttributeError: 'GaussianMixture' object has no attribute 'fit_predict'\n\nsklearn/mixture/tests/test_clusterer_interface.py:116: AttributeError\n___________ TestFitPredict.test_fit_predict_matches_labels_attribute ___________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b59c4a8>\n\n    def test_fit_predict_matches_labels_attribute(self):\n        \"\"\"Test that fit_predict returns same labels as stored in labels_.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       labels = gm.fit_predict(X)\nE       AttributeError: 'GaussianMixture' object has no attribute 'fit_predict'\n\nsklearn/mixture/tests/test_clusterer_interface.py:126: AttributeError\n________ TestFitPredict.test_fit_predict_for_bayesian_gaussian_mixture _________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b58beb8>\n\n    def test_fit_predict_for_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture also has fit_predict.\"\"\"\n        X = generate_data()\n        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n    \n>       assert hasattr(bgm, 'fit_predict'), \\\n            \"BayesianGaussianMixture should have fit_predict method\"\nE       AssertionError: BayesianGaussianMixture should have fit_predict method\nE       assert False\nE        +  where False = hasattr(BayesianGaussianMixture(covariance_prior=None, covariance_type='full',\\n            degrees_of_freedom_prior=None, init...rt=False,\\n            weight_concentration_prior=None,\\n            weight_concentration_prior_type='dirichlet_process'), 'fit_predict')\n\nsklearn/mixture/tests/test_clusterer_interface.py:138: AssertionError\n___________ TestClustererCompatibility.test_basic_clusterer_workflow ___________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestClustererCompatibility object at 0x7fff9b3edf28>\n\n    def test_basic_clusterer_workflow(self):\n        \"\"\"Test that mixture models can be used like clusterers.\"\"\"\n        X = generate_data()\n    \n        # Create and fit like a clusterer\n>       gm = GaussianMixture(n_clusters=2, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:153: TypeError"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 12 items\n\nsklearn/mixture/tests/test_clusterer_interface.py FFFFFFFFFFFF           [100%]\n\n=================================== FAILURES ===================================\n_____________ TestNClustersAlias.test_n_clusters_parameter_exists ______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b5b3ba8>\n\n    def test_n_clusters_parameter_exists(self):\n        \"\"\"Test that GaussianMixture accepts n_clusters parameter.\"\"\"\n        # This should work - n_clusters should be accepted as an alias\n>       gm = GaussianMixture(n_clusters=2, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:35: TypeError\n______ TestNClustersAlias.test_n_clusters_with_bayesian_gaussian_mixture _______\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b3fc358>\n\n    def test_n_clusters_with_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture accepts n_clusters parameter.\"\"\"\n>       bgm = BayesianGaussianMixture(n_clusters=3, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:41: TypeError\n________ TestNClustersAlias.test_n_clusters_attribute_exists_after_init ________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestNClustersAlias object at 0x7fff9b59c668>\n\n    def test_n_clusters_attribute_exists_after_init(self):\n        \"\"\"Test that n_clusters attribute is accessible.\"\"\"\n        gm = GaussianMixture(n_components=2, random_state=0)\n        # n_clusters should be accessible as an alias for n_components\n>       assert hasattr(gm, 'n_clusters'), \\\n            \"GaussianMixture should have n_clusters attribute for clusterer compatibility\"\nE       AssertionError: GaussianMixture should have n_clusters attribute for clusterer compatibility\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'n_clusters')\n\nsklearn/mixture/tests/test_clusterer_interface.py:49: AssertionError\n_____________ TestLabelsAttribute.test_labels_attribute_after_fit ______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b59d630>\n\n    def test_labels_attribute_after_fit(self):\n        \"\"\"Test that labels_ is stored after fit().\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n>       assert hasattr(gm, 'labels_'), \\\n            \"GaussianMixture should store labels_ after fit()\"\nE       AssertionError: GaussianMixture should store labels_ after fit()\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'labels_')\n\nsklearn/mixture/tests/test_clusterer_interface.py:63: AssertionError\n_______________ TestLabelsAttribute.test_labels_attribute_values _______________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b5a9fd0>\n\n    def test_labels_attribute_values(self):\n        \"\"\"Test that labels_ contain valid cluster indices.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n        # All labels should be valid cluster indices\n>       assert gm.labels_.min() >= 0, \"Labels should be non-negative\"\nE       AttributeError: 'GaussianMixture' object has no attribute 'labels_'\n\nsklearn/mixture/tests/test_clusterer_interface.py:77: AttributeError\n________________ TestLabelsAttribute.test_labels_match_predict _________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b593da0>\n\n    def test_labels_match_predict(self):\n        \"\"\"Test that labels_ matches predict() output.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n        gm.fit(X)\n    \n        predicted = gm.predict(X)\n        np.testing.assert_array_equal(\n>           gm.labels_, predicted,\n            err_msg=\"labels_ should match predict() output\"\n        )\nE       AttributeError: 'GaussianMixture' object has no attribute 'labels_'\n\nsklearn/mixture/tests/test_clusterer_interface.py:89: AttributeError\n________ TestLabelsAttribute.test_labels_for_bayesian_gaussian_mixture _________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestLabelsAttribute object at 0x7fff9b508320>\n\n    def test_labels_for_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture also stores labels_.\"\"\"\n        X = generate_data()\n        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n        bgm.fit(X)\n    \n>       assert hasattr(bgm, 'labels_'), \\\n            \"BayesianGaussianMixture should store labels_ after fit()\"\nE       AssertionError: BayesianGaussianMixture should store labels_ after fit()\nE       assert False\nE        +  where False = hasattr(BayesianGaussianMixture(covariance_prior=None, covariance_type='full',\\n            degrees_of_freedom_prior=None, init...rt=False,\\n            weight_concentration_prior=None,\\n            weight_concentration_prior_type='dirichlet_process'), 'labels_')\n\nsklearn/mixture/tests/test_clusterer_interface.py:99: AssertionError\n________________ TestFitPredict.test_fit_predict_method_exists _________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b5a3a20>\n\n    def test_fit_predict_method_exists(self):\n        \"\"\"Test that GaussianMixture has fit_predict method.\"\"\"\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       assert hasattr(gm, 'fit_predict'), \\\n            \"GaussianMixture should have fit_predict method for clusterer compatibility\"\nE       AssertionError: GaussianMixture should have fit_predict method for clusterer compatibility\nE       assert False\nE        +  where False = hasattr(GaussianMixture(covariance_type='full', init_params='kmeans', max_iter=100,\\n        means_init=None, n_components=2, n...andom_state=0, reg_covar=1e-06, tol=0.001, verbose=0,\\n        verbose_interval=10, warm_start=False, weights_init=None), 'fit_predict')\n\nsklearn/mixture/tests/test_clusterer_interface.py:109: AssertionError\n________________ TestFitPredict.test_fit_predict_returns_labels ________________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b3fc978>\n\n    def test_fit_predict_returns_labels(self):\n        \"\"\"Test that fit_predict returns labels.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       labels = gm.fit_predict(X)\nE       AttributeError: 'GaussianMixture' object has no attribute 'fit_predict'\n\nsklearn/mixture/tests/test_clusterer_interface.py:116: AttributeError\n___________ TestFitPredict.test_fit_predict_matches_labels_attribute ___________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b59c4a8>\n\n    def test_fit_predict_matches_labels_attribute(self):\n        \"\"\"Test that fit_predict returns same labels as stored in labels_.\"\"\"\n        X = generate_data()\n        gm = GaussianMixture(n_components=2, random_state=0)\n>       labels = gm.fit_predict(X)\nE       AttributeError: 'GaussianMixture' object has no attribute 'fit_predict'\n\nsklearn/mixture/tests/test_clusterer_interface.py:126: AttributeError\n________ TestFitPredict.test_fit_predict_for_bayesian_gaussian_mixture _________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestFitPredict object at 0x7fff9b58beb8>\n\n    def test_fit_predict_for_bayesian_gaussian_mixture(self):\n        \"\"\"Test that BayesianGaussianMixture also has fit_predict.\"\"\"\n        X = generate_data()\n        bgm = BayesianGaussianMixture(n_components=2, random_state=0)\n    \n>       assert hasattr(bgm, 'fit_predict'), \\\n            \"BayesianGaussianMixture should have fit_predict method\"\nE       AssertionError: BayesianGaussianMixture should have fit_predict method\nE       assert False\nE        +  where False = hasattr(BayesianGaussianMixture(covariance_prior=None, covariance_type='full',\\n            degrees_of_freedom_prior=None, init...rt=False,\\n            weight_concentration_prior=None,\\n            weight_concentration_prior_type='dirichlet_process'), 'fit_predict')\n\nsklearn/mixture/tests/test_clusterer_interface.py:138: AssertionError\n___________ TestClustererCompatibility.test_basic_clusterer_workflow ___________\n\nself = <sklearn.mixture.tests.test_clusterer_interface.TestClustererCompatibility object at 0x7fff9b3edf28>\n\n    def test_basic_clusterer_workflow(self):\n        \"\"\"Test that mixture models can be used like clusterers.\"\"\"\n        X = generate_data()\n    \n        # Create and fit like a clusterer\n>       gm = GaussianMixture(n_clusters=2, random_state=0)\nE       TypeError: __init__() got an unexpected keyword argument 'n_clusters'\n\nsklearn/mixture/tests/test_clusterer_interface.py:153: TypeError\n=========================== short test summary info ============================\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_parameter_exists\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_with_bayesian_gaussian_mixture\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_attribute_exists_after_init\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_attribute_after_fit\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_attribute_values\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_match_predict\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_for_bayesian_gaussian_mixture\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_method_exists\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_returns_labels\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_matches_labels_attribute\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_for_bayesian_gaussian_mixture\nFAILED sklearn/mixture/tests/test_clusterer_interface.py::TestClustererCompatibility::test_basic_clusterer_workflow\n============================== 12 failed in 0.59s ==============================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f /testbed/sklearn/mixture/tests/test_clusterer_interface.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_parameter_exists": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 32,
+          "func": "test_n_clusters_parameter_exists",
+          "is_test": true
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_with_bayesian_gaussian_mixture": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 39,
+          "func": "test_n_clusters_with_bayesian_gaussian_mixture",
+          "is_test": true
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestNClustersAlias::test_n_clusters_attribute_exists_after_init": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 45,
+          "func": "test_n_clusters_attribute_exists_after_init",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 273,
+          "func": "__repr__",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 213,
+          "func": "get_params",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 186,
+          "func": "_get_param_names",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_attribute_after_fit": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 57,
+          "func": "test_labels_attribute_after_fit",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 172,
+          "func": "fit",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 41,
+          "func": "_check_X",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/utils/validation.py",
+          "line": 345,
+          "func": "check_array",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_attribute_values": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 70,
+          "func": "test_labels_attribute_values",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 172,
+          "func": "fit",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 41,
+          "func": "_check_X",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/utils/validation.py",
+          "line": 345,
+          "func": "check_array",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_match_predict": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 81,
+          "func": "test_labels_match_predict",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 172,
+          "func": "fit",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 41,
+          "func": "_check_X",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/utils/validation.py",
+          "line": 345,
+          "func": "check_array",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestLabelsAttribute::test_labels_for_bayesian_gaussian_mixture": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 93,
+          "func": "test_labels_for_bayesian_gaussian_mixture",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 172,
+          "func": "fit",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/mixture/base.py",
+          "line": 41,
+          "func": "_check_X",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/utils/validation.py",
+          "line": 345,
+          "func": "check_array",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_method_exists": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 106,
+          "func": "test_fit_predict_method_exists",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 273,
+          "func": "__repr__",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 213,
+          "func": "get_params",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 186,
+          "func": "_get_param_names",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_returns_labels": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 112,
+          "func": "test_fit_predict_returns_labels",
+          "is_test": true
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_matches_labels_attribute": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 122,
+          "func": "test_fit_predict_matches_labels_attribute",
+          "is_test": true
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestFitPredict::test_fit_predict_for_bayesian_gaussian_mixture": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 133,
+          "func": "test_fit_predict_for_bayesian_gaussian_mixture",
+          "is_test": true
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 273,
+          "func": "__repr__",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 213,
+          "func": "get_params",
+          "is_test": false
+        },
+        {
+          "file": "sklearn/base.py",
+          "line": 186,
+          "func": "_get_param_names",
+          "is_test": false
+        }
+      ],
+      "sklearn/mixture/tests/test_clusterer_interface.py::TestClustererCompatibility::test_basic_clusterer_workflow": [
+        {
+          "file": "sklearn/mixture/tests/test_clusterer_interface.py",
+          "line": 148,
+          "func": "test_basic_clusterer_workflow",
+          "is_test": true
+        }
+      ]
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-11281",
+  "messages": []
+}

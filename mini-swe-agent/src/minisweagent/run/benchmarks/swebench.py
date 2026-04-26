@@ -761,6 +761,86 @@ runpy.run_path("/testbed/tests/runtests.py", run_name="__main__")
 """
 
 
+# Sphinx variant: identical to _SETTRACE_RUNNER but without --noconftest, because
+# sphinx tests rely on fixtures defined in conftest.py (e.g. the `app` fixture via
+# @pytest.mark.sphinx). Without conftest those fixtures are missing and tests fail
+# during setup rather than call, so the tracer never fires.
+_SPHINX_SETTRACE_RUNNER = """\
+import sys, json
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                self._stack.append((id(frame), {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                }))
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+class TracerPlugin:
+    def __init__(self):
+        self._tracer = _Tracer()
+        self.results = {}
+
+    def pytest_runtest_call(self, item):
+        self._tracer.reset()
+        sys.settrace(self._tracer)
+
+    def pytest_runtest_logreport(self, report):
+        sys.settrace(None)
+        if report.when == "call" and report.failed:
+            self.results[report.nodeid] = self._tracer.frames or []
+
+
+import pytest
+
+plugin = TracerPlugin()
+try:
+    pytest.main(["-q", "--tb=no", "--override-ini=addopts="] + TEST_IDS, plugins=[plugin])
+except Exception as e:
+    sys.stderr.write(f"settrace pytest.main raised: {e}\\n")
+finally:
+    Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
+"""
+
 # Sympy variant: imports each failing test function directly from its module and
 # runs it under sys.settrace. Sympy uses its own bin/test runner (no pytest),
 # so we cannot use pytest.main here. Instead we parse the failing test IDs from
@@ -860,9 +940,14 @@ def _extract_failing_test_ids_pytest(raw_output: str) -> list[str]:
 
 
 def _extract_failing_test_ids_sympy(raw_output: str) -> list[str]:
-    """Parse sympy bin/test failure headers into file::func IDs."""
+    """Parse sympy bin/test failure headers into file::func IDs.
+
+    The actual format is a line of underscores followed by the test path on the next line:
+        ________________________________________________________________________________
+         sympy/path/to/test.py:func_name
+    """
     ids = []
-    for match in re.finditer(r"_{5,} (\S+\.py):(\w+) _{5,}", raw_output):
+    for match in re.finditer(r"_{5,}\n\s+(\S+\.py):(\w+)\s*\n", raw_output):
         ids.append(f"{match.group(1)}::{match.group(2)}")
     return ids
 
@@ -906,6 +991,21 @@ def _run_settrace_django(env: Environment, failing_ids: list[str]) -> dict:
         return {}
 
 
+def _run_settrace_sphinx(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SPHINX_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
 def _run_settrace_sympy(env: Environment, failing_ids: list[str]) -> dict:
     ids_json = json.dumps(failing_ids)
     env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
@@ -931,8 +1031,13 @@ def run_settrace_on_failing_tests(
     if repo_id in _SYMPY_REPOS:
         failing_ids = _extract_failing_test_ids_sympy(raw_output)
         return _run_settrace_sympy(env, failing_ids) if failing_ids else {}
-    if repo_id in (_SPHINX_REPOS | _PYTHON_REPOS):
+    if repo_id in _PYTHON_REPOS:
         return {}  # custom runners not supported
+    if repo_id in _SPHINX_REPOS:
+        # Sphinx tests need conftest.py for the `app` fixture, so use the sphinx-specific
+        # runner that omits --noconftest (unlike the default pytest runner).
+        failing_ids = _extract_failing_test_ids_pytest(raw_output)
+        return _run_settrace_sphinx(env, failing_ids) if failing_ids else {}
     failing_ids = _extract_failing_test_ids_pytest(raw_output)
     return _run_settrace_pytest(env, failing_ids) if failing_ids else {}
 
@@ -964,8 +1069,8 @@ def get_test_command(repo: str, version: str, test_files: list[str]) -> str | No
         return f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning' {_CONDA_PYTHON} bin/test -C --verbose {files_arg} 2>&1 || true"
 
     if repo in _SPHINX_REPOS:
-        files_arg = " ".join(test_files)
-        return f"cd /testbed && tox -epy39 -v -- {files_arg} 2>&1 || true"
+        files_arg = " ".join(f"/testbed/{f}" for f in test_files)
+        return f"cd /testbed && {_pytest} --tb=long -r f {files_arg} 2>&1 || true"
 
     if repo in _PYTHON_REPOS:
         cmds = " && ".join(f"{_CONDA_PYTHON} /testbed/{f}" for f in test_files)
@@ -1123,9 +1228,9 @@ def main(
     if _preds_path.exists():
         _preds_ids = set(json.loads(_preds_path.read_text()).keys())
         instances = [i for i in instances if i["instance_id"] in _preds_ids]
-        if len(instances) > 10:
+        if len(instances) > 75:
             random.seed(42)
-            instances = random.sample(instances, 10)
+            instances = random.sample(instances, 75)
         logger.info(f"Sampled {len(instances)} instances from preds.json")
 
     logger.info(f"Running on {len(instances)} instances...")

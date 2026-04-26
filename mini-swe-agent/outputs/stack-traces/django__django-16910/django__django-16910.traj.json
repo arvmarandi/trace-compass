@@ -1,0 +1,84 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/select_related_onetoone/tests.py b/tests/select_related_onetoone/tests.py\nindex 8bdfb83fe8..990ed2d4e8 100644\n--- a/tests/select_related_onetoone/tests.py\n+++ b/tests/select_related_onetoone/tests.py\n@@ -296,3 +296,92 @@ class ReverseSelectRelatedValidationTests(SimpleTestCase):\n                     relation=FilteredRelation(\"userprofile\")\n                 ).select_related(\"foobar\")\n             )\n+\n+\n+class SelectRelatedOnlyTests(TestCase):\n+    \"\"\"\n+    Tests for select_related() with only() on reverse OneToOneField relations.\n+    Regression test for ticket #34740.\n+    \"\"\"\n+\n+    def test_only_with_select_related_reverse_onetoone(self):\n+        \"\"\"\n+        only() should work with select_related() on a reverse OneToOneField.\n+        \"\"\"\n+        user = User.objects.create(username=\"test\", email=\"test@example.com\")\n+        UserProfile.objects.create(user=user, city=\"Test City\", state=\"TS\")\n+\n+        # Query with only() and select_related() on reverse OneToOneField\n+        obj = User.objects.select_related('userprofile').only(\n+            'username', 'userprofile__city'\n+        ).get(username=\"test\")\n+\n+        # Check that username is not deferred\n+        self.assertNotIn('username', obj.get_deferred_fields())\n+        # Check that email IS deferred\n+        self.assertIn('email', obj.get_deferred_fields())\n+\n+        # Check that city is not deferred on userprofile\n+        self.assertNotIn('city', obj.userprofile.get_deferred_fields())\n+        # Check that state IS deferred\n+        self.assertIn('state', obj.userprofile.get_deferred_fields())\n+\n+    def test_only_with_select_related_reverse_onetoone_primary_key(self):\n+        \"\"\"\n+        only() should work with select_related() on a reverse OneToOneField\n+        where the forward relation has primary_key=True.\n+        \"\"\"\n+        user = User.objects.create(username=\"test\")\n+        results = UserStatResult.objects.create(results=\"test results\")\n+        UserStat.objects.create(user=user, posts=100, results=results)\n+\n+        # Query with only() and select_related() on reverse OneToOneField\n+        # (UserStat has user as primary_key=True)\n+        obj = User.objects.select_related('userstat').only(\n+            'username', 'userstat__posts'\n+        ).get(username=\"test\")\n+\n+        # Check that username is not deferred\n+        self.assertNotIn('username', obj.get_deferred_fields())\n+        # Check that email IS deferred\n+        self.assertIn('email', obj.get_deferred_fields())\n+\n+        # Check that posts is not deferred on userstat\n+        self.assertNotIn('posts', obj.userstat.get_deferred_fields())\n+        # Check that results_id IS deferred (ForeignKey to UserStatResult)\n+        self.assertIn('results', obj.userstat.get_deferred_fields())\n+\n+\n+class SelectRelatedOnlyQueryCountTests(TestCase):\n+    \"\"\"\n+    Tests for verifying query counts with select_related() and only()\n+    on reverse OneToOneField relations.\n+    \"\"\"\n+\n+    def test_only_with_select_related_reverse_onetoone_query_count(self):\n+        \"\"\"\n+        Verify that only() with select_related() on a reverse OneToOneField\n+        actually defers fields and causes additional queries when accessed.\n+        \"\"\"\n+        user = User.objects.create(username=\"test\", email=\"test@example.com\")\n+        UserProfile.objects.create(user=user, city=\"Test City\", state=\"TS\")\n+\n+        # Get object with only specified fields\n+        with self.assertNumQueries(1):\n+            obj = User.objects.select_related('userprofile').only(\n+                'username', 'userprofile__city'\n+            ).get(username=\"test\")\n+            # Accessing username should not cause a query\n+            self.assertEqual(obj.username, \"test\")\n+\n+        # Accessing city should not cause a query (it's in only())\n+        with self.assertNumQueries(0):\n+            self.assertEqual(obj.userprofile.city, \"Test City\")\n+\n+        # Accessing state should cause a query (it's deferred)\n+        with self.assertNumQueries(1):\n+            self.assertEqual(obj.userprofile.state, \"TS\")\n+\n+        # After accessing state once, it should be cached\n+        with self.assertNumQueries(0):\n+            self.assertEqual(obj.userprofile.state, \"TS\")\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_back_and_forward (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_back_and_forward) ... ok\ntest_basic (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_basic) ... ok\ntest_follow_from_child_class (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_follow_from_child_class) ... ok\ntest_follow_inheritance (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_follow_inheritance) ... ok\ntest_follow_next_level (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_follow_next_level) ... ok\ntest_follow_two (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_follow_two) ... ok\ntest_follow_two_next_level (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_follow_two_next_level) ... ok\ntest_forward_and_back (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_forward_and_back) ... ok\ntest_inheritance_deferred (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_inheritance_deferred) ... ok\ntest_inheritance_deferred2 (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_inheritance_deferred2) ... ok\ntest_missing_reverse (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_missing_reverse)\nTicket #13839: select_related() should NOT cache None ... ok\ntest_multiinheritance_two_subclasses (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_multiinheritance_two_subclasses) ... ok\ntest_multiple_subclass (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_multiple_subclass) ... ok\ntest_not_followed_by_default (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_not_followed_by_default) ... ok\ntest_nullable_missing_reverse (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_nullable_missing_reverse)\nTicket #13839: select_related() should NOT cache None ... ok\ntest_nullable_relation (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_nullable_relation) ... ok\ntest_onetoone_with_subclass (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_onetoone_with_subclass) ... ok\ntest_onetoone_with_two_subclasses (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_onetoone_with_two_subclasses) ... ok\ntest_parent_only (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_parent_only) ... ok\ntest_self_relation (select_related_onetoone.tests.ReverseSelectRelatedTestCase.test_self_relation) ... ok\ntest_only_with_select_related_reverse_onetoone_query_count (select_related_onetoone.tests.SelectRelatedOnlyQueryCountTests.test_only_with_select_related_reverse_onetoone_query_count)\nVerify that only() with select_related() on a reverse OneToOneField ... FAIL\ntest_only_with_select_related_reverse_onetoone (select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone)\nonly() should work with select_related() on a reverse OneToOneField. ... FAIL\ntest_only_with_select_related_reverse_onetoone_primary_key (select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone_primary_key)\nonly() should work with select_related() on a reverse OneToOneField ... FAIL\ntest_reverse_related_validation (select_related_onetoone.tests.ReverseSelectRelatedValidationTests.test_reverse_related_validation) ... ok\ntest_reverse_related_validation_with_filtered_relation (select_related_onetoone.tests.ReverseSelectRelatedValidationTests.test_reverse_related_validation_with_filtered_relation) ... ok\n\n======================================================================\nFAIL: test_only_with_select_related_reverse_onetoone_query_count (select_related_onetoone.tests.SelectRelatedOnlyQueryCountTests.test_only_with_select_related_reverse_onetoone_query_count)\nVerify that only() with select_related() on a reverse OneToOneField\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/select_related_onetoone/tests.py\", line 382, in test_only_with_select_related_reverse_onetoone_query_count\n    with self.assertNumQueries(1):\n  File \"/testbed/django/test/testcases.py\", line 96, in __exit__\n    self.test_case.assertEqual(\nAssertionError: 0 != 1 : 0 queries executed, 1 expected\nCaptured queries were:\n\n\n======================================================================\nFAIL: test_only_with_select_related_reverse_onetoone (select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone)\nonly() should work with select_related() on a reverse OneToOneField.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/select_related_onetoone/tests.py\", line 327, in test_only_with_select_related_reverse_onetoone\n    self.assertIn('state', obj.userprofile.get_deferred_fields())\nAssertionError: 'state' not found in set()\n\n======================================================================\nFAIL: test_only_with_select_related_reverse_onetoone_primary_key (select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone_primary_key)\nonly() should work with select_related() on a reverse OneToOneField\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/select_related_onetoone/tests.py\", line 352, in test_only_with_select_related_reverse_onetoone_primary_key\n    self.assertIn('results', obj.userstat.get_deferred_fields())\nAssertionError: 'results' not found in set()\n\n----------------------------------------------------------------------\nRan 25 tests in 0.023s\n\nFAILED (failures=3)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 select_related_onetoone.tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application select_related_onetoone\nFound 25 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, select_related_onetoone, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table select_related_onetoone_user\n    Creating table select_related_onetoone_userprofile\n    Creating table select_related_onetoone_userstatresult\n    Creating table select_related_onetoone_userstat\n    Creating table select_related_onetoone_statdetails\n    Creating table select_related_onetoone_advanceduserstat\n    Creating table select_related_onetoone_image\n    Creating table select_related_onetoone_product\n    Creating table select_related_onetoone_parent1\n    Creating table select_related_onetoone_parent2\n    Creating table select_related_onetoone_child1\n    Creating table select_related_onetoone_child2\n    Creating table select_related_onetoone_child3\n    Creating table select_related_onetoone_child4\n    Creating table select_related_onetoone_linkedlist\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone": [
+        {
+          "file": "tests/select_related_onetoone/tests.py",
+          "line": 307,
+          "func": "test_only_with_select_related_reverse_onetoone",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/manager.py",
+          "line": 85,
+          "func": "manager_method",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 643,
+          "func": "create",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/base.py",
+          "line": 460,
+          "func": "__init__",
+          "is_test": false
+        }
+      ],
+      "select_related_onetoone.tests.SelectRelatedOnlyTests.test_only_with_select_related_reverse_onetoone_primary_key": [
+        {
+          "file": "tests/select_related_onetoone/tests.py",
+          "line": 329,
+          "func": "test_only_with_select_related_reverse_onetoone_primary_key",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/manager.py",
+          "line": 85,
+          "func": "manager_method",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/query.py",
+          "line": 643,
+          "func": "create",
+          "is_test": false
+        },
+        {
+          "file": "django/db/models/base.py",
+          "line": 460,
+          "func": "__init__",
+          "is_test": false
+        }
+      ],
+      "select_related_onetoone.tests.SelectRelatedOnlyQueryCountTests.test_only_with_select_related_reverse_onetoone_query_count": [
+        {
+          "file": "tests/select_related_onetoone/tests.py",
+          "line": 361,
+          "func": "test_only_with_select_related_reverse_onetoone_query_count",
+          "is_test": false
+        },
+        {
+          "file": "django/test/testcases.py",
+          "line": 1174,
+          "func": "assertNumQueries",
+          "is_test": true
+        },
+        {
+          "file": "django/utils/connection.py",
+          "line": 56,
+          "func": "__getitem__",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "django__django-16910",
+  "messages": []
+}

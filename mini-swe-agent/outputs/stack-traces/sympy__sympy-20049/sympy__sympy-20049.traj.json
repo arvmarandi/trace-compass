@@ -1,0 +1,136 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/physics/vector/tests/test_point_vel_auto_calculation.py b/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\nnew file mode 100644\nindex 0000000000..3a6c203b9d\n--- /dev/null\n+++ b/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\n@@ -0,0 +1,158 @@\n+\"\"\"\n+Test cases for automatic velocity calculation from positions.\n+\n+This tests the feature where Point.vel() should calculate the velocity\n+automatically if the position of the point is defined relative to another\n+point with a known velocity.\n+\n+This follows the pattern established by ReferenceFrame.ang_vel_in() which\n+automatically calculates angular velocity when orientations are defined.\n+\"\"\"\n+\n+from sympy.physics.vector import dynamicsymbols, Point, ReferenceFrame\n+from sympy import Symbol\n+\n+def test_vel_from_pos_simple():\n+    \"\"\"\n+    Test that vel() calculates velocity from position when possible.\n+    \n+    This is the basic case from the PR description.\n+    \"\"\"\n+    q = dynamicsymbols('q')\n+    A = ReferenceFrame('A')\n+    B = A.orientnew('B', 'Axis', (q, A.x))\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    \n+    # Set the position of Q relative to P\n+    r = q * A.x + 2 * q * A.y\n+    Q.set_pos(P, r)\n+    \n+    # The velocity of Q in frame A should be calculable from the\n+    # time derivative of the position vector\n+    expected_vel = q.diff() * A.x + 2 * q.diff() * A.y\n+    \n+    # This should work without explicitly calling set_vel\n+    assert Q.vel(A) == expected_vel\n+\n+\n+def test_vel_from_pos_chained_points():\n+    \"\"\"\n+    Test that vel() works with a chain of points.\n+    \"\"\"\n+    q = dynamicsymbols('q')\n+    A = ReferenceFrame('A')\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    R = Point('R')\n+    \n+    # Set up a chain of positions\n+    r1 = q * A.x\n+    r2 = 2 * q * A.y\n+    Q.set_pos(P, r1)\n+    R.set_pos(Q, r2)\n+    \n+    # The velocity of R in frame A should be the time derivative of\n+    # the combined position\n+    expected_vel = q.diff() * A.x + 2 * q.diff() * A.y\n+    \n+    assert R.vel(A) == expected_vel\n+\n+\n+def test_vel_from_pos_with_base_point_velocity():\n+    \"\"\"\n+    Test that vel() correctly calculates velocity when the base point\n+    has a known velocity.\n+    \"\"\"\n+    q = dynamicsymbols('q')\n+    qd = dynamicsymbols('q', 1)  # q'\n+    A = ReferenceFrame('A')\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    \n+    # Set P's velocity\n+    P.set_vel(A, 3 * A.x)\n+    \n+    # Set Q's position relative to P\n+    r = q * A.y\n+    Q.set_pos(P, r)\n+    \n+    # Q's velocity in A should be P's velocity plus the time derivative\n+    # of the relative position\n+    expected_vel = 3 * A.x + qd * A.y\n+    \n+    assert Q.vel(A) == expected_vel\n+\n+\n+def test_vel_from_pos_with_oriented_frame():\n+    \"\"\"\n+    Test that vel() works correctly when position is defined in an\n+    oriented (rotating) frame.\n+    \"\"\"\n+    q = dynamicsymbols('q')\n+    qd = dynamicsymbols('q', 1)\n+    A = ReferenceFrame('A')\n+    B = A.orientnew('B', 'Axis', (q, A.z))\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    \n+    # Set Q's position relative to P in frame B\n+    r = B.x\n+    Q.set_pos(P, r)\n+    \n+    # The velocity of Q in frame A should account for the rotation\n+    # v = v_O + omega x r = 0 + q'*A.z x B.x = q'*B.y\n+    expected_vel = qd * B.y\n+    \n+    assert Q.vel(A) == expected_vel\n+\n+\n+def test_vel_from_pos_with_constant_symbol():\n+    \"\"\"\n+    Test that vel() works with symbolic position components (not just\n+    dynamicsymbols). When the symbol is constant, velocity is zero.\n+    \"\"\"\n+    a = Symbol('a')\n+    A = ReferenceFrame('A')\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    \n+    # When using a constant symbol, the derivative is zero\n+    r = a * A.x\n+    Q.set_pos(P, r)\n+    \n+    # The velocity should be 0 since 'a' is constant\n+    expected_vel = 0 * A.x  # Zero vector\n+    \n+    assert Q.vel(A) == expected_vel\n+\n+\n+def test_vel_raises_error_when_no_path():\n+    \"\"\"\n+    Test that vel() raises an error when velocity cannot be determined\n+    (no path from the point to a point with known velocity).\n+    \"\"\"\n+    A = ReferenceFrame('A')\n+    \n+    P = Point('P')\n+    Q = Point('Q')\n+    # Note: no position or velocity is set\n+    \n+    # Q's velocity cannot be determined\n+    from sympy.testing.pytest import raises\n+    raises(ValueError, lambda: Q.vel(A))\n+\n+\n+if __name__ == '__main__':\n+    test_vel_from_pos_simple()\n+    test_vel_from_pos_chained_points()\n+    test_vel_from_pos_with_base_point_velocity()\n+    test_vel_from_pos_with_oriented_frame()\n+    test_vel_from_pos_with_constant_symbol()\n+    test_vel_raises_error_when_no_path()\n+    print(\"All tests passed!\")\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/physics/vector/tests/test_point_vel_auto_calculation.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        36104863\nhash randomization: on (PYTHONHASHSEED=1929302655)\n\nsympy/physics/vector/tests/test_point_vel_auto_calculation.py[6] \ntest_vel_from_pos_simple E\ntest_vel_from_pos_chained_points E\ntest_vel_from_pos_with_base_point_velocity E\ntest_vel_from_pos_with_oriented_frame E\ntest_vel_from_pos_with_constant_symbol E\ntest_vel_raises_error_when_no_path ok                                     [FAIL]\n\n\n________________________________________________________________________________\n sympy/physics/vector/tests/test_point_vel_auto_calculation.py:test_vel_from_pos_simple \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\", line 37, in test_vel_from_pos_simple\n    assert Q.vel(A) == expected_vel\n  File \"/testbed/sympy/physics/vector/point.py\", line 522, in vel\n    raise ValueError('Velocity of point ' + self.name + ' has not been'\nValueError: Velocity of point Q has not been defined in ReferenceFrame A\n________________________________________________________________________________\n sympy/physics/vector/tests/test_point_vel_auto_calculation.py:test_vel_from_pos_chained_points \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\", line 61, in test_vel_from_pos_chained_points\n    assert R.vel(A) == expected_vel\n  File \"/testbed/sympy/physics/vector/point.py\", line 522, in vel\n    raise ValueError('Velocity of point ' + self.name + ' has not been'\nValueError: Velocity of point R has not been defined in ReferenceFrame A\n________________________________________________________________________________\n sympy/physics/vector/tests/test_point_vel_auto_calculation.py:test_vel_from_pos_with_base_point_velocity \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\", line 87, in test_vel_from_pos_with_base_point_velocity\n    assert Q.vel(A) == expected_vel\n  File \"/testbed/sympy/physics/vector/point.py\", line 522, in vel\n    raise ValueError('Velocity of point ' + self.name + ' has not been'\nValueError: Velocity of point Q has not been defined in ReferenceFrame A\n________________________________________________________________________________\n sympy/physics/vector/tests/test_point_vel_auto_calculation.py:test_vel_from_pos_with_oriented_frame \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\", line 111, in test_vel_from_pos_with_oriented_frame\n    assert Q.vel(A) == expected_vel\n  File \"/testbed/sympy/physics/vector/point.py\", line 522, in vel\n    raise ValueError('Velocity of point ' + self.name + ' has not been'\nValueError: Velocity of point Q has not been defined in ReferenceFrame A\n________________________________________________________________________________\n sympy/physics/vector/tests/test_point_vel_auto_calculation.py:test_vel_from_pos_with_constant_symbol \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/vector/tests/test_point_vel_auto_calculation.py\", line 132, in test_vel_from_pos_with_constant_symbol\n    assert Q.vel(A) == expected_vel\n  File \"/testbed/sympy/physics/vector/point.py\", line 522, in vel\n    raise ValueError('Velocity of point ' + self.name + ' has not been'\nValueError: Velocity of point Q has not been defined in ReferenceFrame A\n\n=========== tests finished: 1 passed, 5 exceptions, in 0.23 seconds ============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/physics/vector/tests/test_point_vel_auto_calculation.py::test_vel_from_pos_simple": [
+        {
+          "file": "sympy/physics/vector/tests/test_point_vel_auto_calculation.py",
+          "line": 15,
+          "func": "test_vel_from_pos_simple",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/vector/functions.py",
+          "line": 581,
+          "func": "dynamicsymbols",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/symbol.py",
+          "line": 534,
+          "func": "symbols",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 69,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/function.py",
+          "line": 441,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/function.py",
+          "line": 155,
+          "func": "__init__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/function.py",
+          "line": 117,
+          "func": "arity",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/vector/tests/test_point_vel_auto_calculation.py::test_vel_from_pos_chained_points": [
+        {
+          "file": "sympy/physics/vector/tests/test_point_vel_auto_calculation.py",
+          "line": 40,
+          "func": "test_vel_from_pos_chained_points",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/vector/functions.py",
+          "line": 581,
+          "func": "dynamicsymbols",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/compatibility.py",
+          "line": 221,
+          "func": "iterable",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/vector/tests/test_point_vel_auto_calculation.py::test_vel_from_pos_with_base_point_velocity": [
+        {
+          "file": "sympy/physics/vector/tests/test_point_vel_auto_calculation.py",
+          "line": 64,
+          "func": "test_vel_from_pos_with_base_point_velocity",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/vector/functions.py",
+          "line": 581,
+          "func": "dynamicsymbols",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/compatibility.py",
+          "line": 221,
+          "func": "iterable",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/vector/tests/test_point_vel_auto_calculation.py::test_vel_from_pos_with_oriented_frame": [
+        {
+          "file": "sympy/physics/vector/tests/test_point_vel_auto_calculation.py",
+          "line": 90,
+          "func": "test_vel_from_pos_with_oriented_frame",
+          "is_test": true
+        },
+        {
+          "file": "sympy/physics/vector/functions.py",
+          "line": 581,
+          "func": "dynamicsymbols",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/compatibility.py",
+          "line": 221,
+          "func": "iterable",
+          "is_test": false
+        }
+      ],
+      "sympy/physics/vector/tests/test_point_vel_auto_calculation.py::test_vel_from_pos_with_constant_symbol": [
+        {
+          "file": "sympy/physics/vector/tests/test_point_vel_auto_calculation.py",
+          "line": 114,
+          "func": "test_vel_from_pos_with_constant_symbol",
+          "is_test": true
+        },
+        {
+          "file": "sympy/core/decorators.py",
+          "line": 239,
+          "func": "_func",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/sympify.py",
+          "line": 90,
+          "func": "sympify",
+          "is_test": false
+        }
+      ]
+    }
+  },
+  "instance_id": "sympy__sympy-20049",
+  "messages": []
+}

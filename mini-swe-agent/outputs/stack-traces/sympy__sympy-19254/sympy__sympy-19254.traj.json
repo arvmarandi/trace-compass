@@ -1,0 +1,268 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/polys/tests/test_knuth_cohen_bound.py b/sympy/polys/tests/test_knuth_cohen_bound.py\nnew file mode 100644\nindex 0000000000..7506de589a\n--- /dev/null\n+++ b/sympy/polys/tests/test_knuth_cohen_bound.py\n@@ -0,0 +1,245 @@\n+\"\"\"\n+Tests for Knuth-Cohen bound functions in sympy.polys.factortools.\n+\n+These tests verify the Knuth-Cohen bound implementation for polynomial\n+factorization. The Knuth-Cohen bound provides a tighter bound than the\n+Mignotte bound, which improves efficiency in polynomial factorization algorithms.\n+\n+Reference: Research with Prof. Ag.Akritas on comparison of various polynomial\n+bounds including Mignotte and Knuth-Cohen.\n+\"\"\"\n+\n+from sympy import sqrt, simplify\n+from sympy.polys.rings import ring\n+from sympy.polys.domains import ZZ, QQ\n+from sympy import binomial\n+\n+\n+def test_dup_zz_knuth_cohen_bound_exists():\n+    \"\"\"Test that the Knuth-Cohen bound function exists for univariate polynomials.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test that the function exists\n+    assert hasattr(R, 'dup_zz_knuth_cohen_bound'), \\\n+        \"dup_zz_knuth_cohen_bound method should exist in polynomial ring\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_exists():\n+    \"\"\"Test that the Knuth-Cohen bound function exists for multivariate polynomials.\"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    # Test that the function exists\n+    assert hasattr(R, 'dmp_zz_knuth_cohen_bound'), \\\n+        \"dmp_zz_knuth_cohen_bound method should exist in polynomial ring\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_basic():\n+    \"\"\"Test basic Knuth-Cohen bound computation for univariate polynomials.\n+    \n+    The Knuth-Cohen bound for a polynomial f(x) = a_n*x^n + ... + a_0 is:\n+    \n+    B = 2^(1-n) * sqrt(binomial(2n, n)) * ||f||_2 / |a_n|\n+    \n+    where ||f||_2 = sqrt(sum(a_i^2)) is the L2 norm of coefficients.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 2*x^2 + 3*x + 4 (dense: [2, 3, 4])\n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Calculate expected value:\n+    # n = 2, a_n = 2\n+    # ||f||_2 = sqrt(2^2 + 3^2 + 4^2) = sqrt(4 + 9 + 16) = sqrt(29)\n+    # binomial(2n, n) = binomial(4, 2) = 6\n+    # B = 2^(1-2) * sqrt(6) * sqrt(29) / 2 = sqrt(174) / 4\n+    expected = sqrt(174) / 4\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    # The result should be the exact Knuth-Cohen bound value\n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_simple():\n+    \"\"\"Test Knuth-Cohen bound with a simpler polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = x^3 + 2*x^2 - 3*x + 1 (dense: [1, 2, -3, 1])\n+    f = x**3 + 2*x**2 - 3*x + 1\n+    \n+    # Calculate expected value:\n+    # n = 3, a_n = 1\n+    # ||f||_2 = sqrt(1 + 4 + 9 + 1) = sqrt(15)\n+    # binomial(2n, n) = binomial(6, 3) = 20\n+    # B = 2^(1-3) * sqrt(20) * sqrt(15) / 1 = 2^(-2) * 2*sqrt(5) * sqrt(15)\n+    #   = 0.25 * 2 * sqrt(75) = 0.5 * 5*sqrt(3) = 2.5*sqrt(3) = (5*sqrt(3))/2\n+    expected = (5 * sqrt(3)) / 2\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_basic():\n+    \"\"\"Test basic Knuth-Cohen bound for multivariate polynomials.\"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    # Test polynomial: f = 2*x^2 + 3*x + 4 (same as univariate but in multivariate ring)\n+    f = 2*x**2 + 3*x + 4\n+    \n+    # The multivariate version should give the same result as univariate\n+    # since y doesn't appear in the polynomial\n+    expected = sqrt(174) / 4\n+    \n+    result = R.dmp_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_equivalence():\n+    \"\"\"Test that Knuth-Cohen bound is tighter than Mignotte bound.\n+    \n+    The Knuth-Cohen bound should always be less than or equal to the \n+    Mignotte bound for the same polynomial, providing a tighter estimate.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 3*x^4 + 2*x^3 + x^2 + 4*x + 5\n+    f = 3*x**4 + 2*x**3 + x**2 + 4*x + 5\n+    \n+    knuth_cohen_bound = R.dup_zz_knuth_cohen_bound(f)\n+    mignotte_bound = R.dup_zz_mignotte_bound(f)\n+    \n+    # The Knuth-Cohen bound should be <= Mignotte bound\n+    # (This verifies it's a valid tighter bound)\n+    assert knuth_cohen_bound <= mignotte_bound, \\\n+        f\"Knuth-Cohen bound ({knuth_cohen_bound}) should be <= Mignotte bound ({mignotte_bound})\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_degree_one():\n+    \"\"\"Test Knuth-Cohen bound for degree 1 polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 5*x + 3 (dense: [5, 3])\n+    f = 5*x + 3\n+    \n+    # Calculate expected value:\n+    # n = 1, a_n = 5\n+    # ||f||_2 = sqrt(5^2 + 3^2) = sqrt(34)\n+    # binomial(2n, n) = binomial(2, 1) = 2\n+    # B = 2^(1-1) * sqrt(2) * sqrt(34) / 5 = 1 * sqrt(68) / 5 = 2*sqrt(17) / 5\n+    expected = (2 * sqrt(17)) / 5\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_leading_one():\n+    \"\"\"Test Knuth-Cohen bound for monic polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = x^3 + x^2 + x + 1 (dense: [1, 1, 1, 1], monic)\n+    f = x**3 + x**2 + x + 1\n+    \n+    # Calculate expected value:\n+    # n = 3, a_n = 1\n+    # ||f||_2 = sqrt(1 + 1 + 1 + 1) = sqrt(4) = 2\n+    # binomial(2n, n) = binomial(6, 3) = 20\n+    # B = 2^(1-3) * sqrt(20) * 2 / 1 = 0.25 * 2*sqrt(5) * 2 = sqrt(5)\n+    expected = sqrt(5)\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_consistency():\n+    \"\"\"Test Knuth-Cohen bound with polynomial that has leading zeros in dense form.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 4 (constant polynomial)\n+    f = 4\n+    \n+    # For constant polynomial:\n+    # n = 0, a_n = 4\n+    # ||f||_2 = sqrt(16) = 4\n+    # binomial(0, 0) = 1\n+    # B = 2^(1-0) * sqrt(1) * 4 / 4 = 2 * 1 * 1 = 2\n+    expected = 2\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_replaces_mignotte():\n+    \"\"\"Test that the Knuth-Cohen bound replaces the Mignotte bound for consistency.\n+    \n+    This test verifies that the new dup_zz_knuth_cohen_bound function \n+    follows the same API pattern as dup_zz_mignotte_bound.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Both functions should exist and be callable\n+    assert callable(getattr(R, 'dup_zz_knuth_cohen_bound', None)), \\\n+        \"dup_zz_knuth_cohen_bound should be callable\"\n+    assert callable(getattr(R, 'dup_zz_mignotte_bound', None)), \\\n+        \"dup_zz_mignotte_bound should be callable\"\n+    \n+    # Both should return valid results\n+    knuth_result = R.dup_zz_knuth_cohen_bound(f)\n+    mignotte_result = R.dup_zz_mignotte_bound(f)\n+    \n+    # Both should be positive numbers\n+    assert knuth_result > 0, f\"Knuth-Cohen bound should be positive, got {knuth_result}\"\n+    assert mignotte_result > 0, f\"Mignotte bound should be positive, got {mignotte_result}\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_replaces_mignotte():\n+    \"\"\"Test that the Knuth-Cohen bound replaces the Mignotte bound for consistency.\n+    \n+    This test verifies that the new dmp_zz_knuth_cohen_bound function \n+    follows the same API pattern as dmp_zz_mignotte_bound.\n+    \"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Both functions should exist and be callable\n+    assert callable(getattr(R, 'dmp_zz_knuth_cohen_bound', None)), \\\n+        \"dmp_zz_knuth_cohen_bound should be callable\"\n+    assert callable(getattr(R, 'dmp_zz_mignotte_bound', None)), \\\n+        \"dmp_zz_mignotte_bound should be callable\"\n+    \n+    # Both should return valid results\n+    knuth_result = R.dmp_zz_knuth_cohen_bound(f)\n+    mignotte_result = R.dmp_zz_mignotte_bound(f)\n+    \n+    # Both should be positive numbers\n+    assert knuth_result > 0, f\"Knuth-Cohen bound should be positive, got {knuth_result}\"\n+    assert mignotte_result > 0, f\"Mignotte bound should be positive, got {mignotte_result}\"\n+\n+\n+if __name__ == \"__main__\":\n+    # Run all tests\n+    test_dup_zz_knuth_cohen_bound_exists()\n+    test_dmp_zz_knuth_cohen_bound_exists()\n+    test_dup_zz_knuth_cohen_bound_basic()\n+    test_dup_zz_knuth_cohen_bound_simple()\n+    test_dmp_zz_knuth_cohen_bound_basic()\n+    test_dup_zz_knuth_cohen_bound_equivalence()\n+    test_dup_zz_knuth_cohen_bound_degree_one()\n+    test_dup_zz_knuth_cohen_bound_leading_one()\n+    test_dup_zz_knuth_cohen_bound_consistency()\n+    test_dup_zz_knuth_cohen_bound_replaces_mignotte()\n+    test_dmp_zz_knuth_cohen_bound_replaces_mignotte()\n+    print(\"All tests passed!\")\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/polys/tests/test_knuth_cohen_bound.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        51423755\nhash randomization: on (PYTHONHASHSEED=3589702241)\n\nsympy/polys/tests/test_knuth_cohen_bound.py[11] \ntest_dup_zz_knuth_cohen_bound_exists F\ntest_dmp_zz_knuth_cohen_bound_exists F\ntest_dup_zz_knuth_cohen_bound_basic E\ntest_dup_zz_knuth_cohen_bound_simple E\ntest_dmp_zz_knuth_cohen_bound_basic E\ntest_dup_zz_knuth_cohen_bound_equivalence E\ntest_dup_zz_knuth_cohen_bound_degree_one E\ntest_dup_zz_knuth_cohen_bound_leading_one E\ntest_dup_zz_knuth_cohen_bound_consistency E\ntest_dup_zz_knuth_cohen_bound_replaces_mignotte F\ntest_dmp_zz_knuth_cohen_bound_replaces_mignotte F                         [FAIL]\n\n\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_basic \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 57, in test_dup_zz_knuth_cohen_bound_basic\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_simple \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 79, in test_dup_zz_knuth_cohen_bound_simple\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_basic \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 96, in test_dmp_zz_knuth_cohen_bound_basic\n    result = R.dmp_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dmp_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_equivalence \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 113, in test_dup_zz_knuth_cohen_bound_equivalence\n    knuth_cohen_bound = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_degree_one \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 136, in test_dup_zz_knuth_cohen_bound_degree_one\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_leading_one \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 156, in test_dup_zz_knuth_cohen_bound_leading_one\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_consistency \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 176, in test_dup_zz_knuth_cohen_bound_consistency\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_exists \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 23, in test_dup_zz_knuth_cohen_bound_exists\n    assert hasattr(R, 'dup_zz_knuth_cohen_bound'), \\\nAssertionError: dup_zz_knuth_cohen_bound method should exist in polynomial ring\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_exists \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 32, in test_dmp_zz_knuth_cohen_bound_exists\n    assert hasattr(R, 'dmp_zz_knuth_cohen_bound'), \\\nAssertionError: dmp_zz_knuth_cohen_bound method should exist in polynomial ring\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_replaces_mignotte \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 193, in test_dup_zz_knuth_cohen_bound_replaces_mignotte\n    assert callable(getattr(R, 'dup_zz_knuth_cohen_bound', None)), \\\nAssertionError: dup_zz_knuth_cohen_bound should be callable\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_replaces_mignotte \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 218, in test_dmp_zz_knuth_cohen_bound_replaces_mignotte\n    assert callable(getattr(R, 'dmp_zz_knuth_cohen_bound', None)), \\\nAssertionError: dmp_zz_knuth_cohen_bound should be callable\n\n====== tests finished: 0 passed, 4 failed, 7 exceptions, in 0.01 seconds =======\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_basic": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 36,
+          "func": "test_dup_zz_knuth_cohen_bound_basic",
+          "is_test": true
+        },
+        {
+          "file": "sympy/functions/elementary/miscellaneous.py",
+          "line": 64,
+          "func": "sqrt",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 91,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/power.py",
+          "line": 267,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/numbers.py",
+          "line": 2301,
+          "func": "_eval_power",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/assumptions.py",
+          "line": 452,
+          "func": "getit",
+          "is_test": false
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_simple": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 64,
+          "func": "test_dup_zz_knuth_cohen_bound_simple",
+          "is_test": true
+        },
+        {
+          "file": "sympy/functions/elementary/miscellaneous.py",
+          "line": 64,
+          "func": "sqrt",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 91,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/power.py",
+          "line": 267,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/numbers.py",
+          "line": 2301,
+          "func": "_eval_power",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/assumptions.py",
+          "line": 452,
+          "func": "getit",
+          "is_test": false
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_basic": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 85,
+          "func": "test_dmp_zz_knuth_cohen_bound_basic",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_equivalence": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 102,
+          "func": "test_dup_zz_knuth_cohen_bound_equivalence",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_degree_one": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 122,
+          "func": "test_dup_zz_knuth_cohen_bound_degree_one",
+          "is_test": true
+        },
+        {
+          "file": "sympy/functions/elementary/miscellaneous.py",
+          "line": 64,
+          "func": "sqrt",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 91,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/power.py",
+          "line": 267,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/numbers.py",
+          "line": 2301,
+          "func": "_eval_power",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/assumptions.py",
+          "line": 452,
+          "func": "getit",
+          "is_test": false
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_leading_one": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 142,
+          "func": "test_dup_zz_knuth_cohen_bound_leading_one",
+          "is_test": true
+        },
+        {
+          "file": "sympy/functions/elementary/miscellaneous.py",
+          "line": 64,
+          "func": "sqrt",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 91,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/power.py",
+          "line": 267,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/numbers.py",
+          "line": 2301,
+          "func": "_eval_power",
+          "is_test": false
+        },
+        {
+          "file": "sympy/ntheory/factor_.py",
+          "line": 401,
+          "func": "perfect_power",
+          "is_test": false
+        },
+        {
+          "file": "sympy/ntheory/generate.py",
+          "line": 642,
+          "func": "primerange",
+          "is_test": false
+        },
+        {
+          "file": "sympy/ntheory/generate.py",
+          "line": 145,
+          "func": "primerange",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/cache.py",
+          "line": 91,
+          "func": "wrapper",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/function.py",
+          "line": 442,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/function.py",
+          "line": 211,
+          "func": "nargs",
+          "is_test": false
+        },
+        {
+          "file": "sympy/sets/sets.py",
+          "line": 1763,
+          "func": "__new__",
+          "is_test": false
+        },
+        {
+          "file": "sympy/core/compatibility.py",
+          "line": 567,
+          "func": "ordered",
+          "is_test": false
+        },
+        {
+          "file": "sympy/sets/sets.py",
+          "line": 75,
+          "func": "_infimum_key",
+          "is_test": false
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_consistency": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 162,
+          "func": "test_dup_zz_knuth_cohen_bound_consistency",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_exists": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 18,
+          "func": "test_dup_zz_knuth_cohen_bound_exists",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_exists": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 27,
+          "func": "test_dmp_zz_knuth_cohen_bound_exists",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_replaces_mignotte": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 182,
+          "func": "test_dup_zz_knuth_cohen_bound_replaces_mignotte",
+          "is_test": true
+        }
+      ],
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_replaces_mignotte": [
+        {
+          "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+          "line": 207,
+          "func": "test_dmp_zz_knuth_cohen_bound_replaces_mignotte",
+          "is_test": true
+        }
+      ]
+    }
+  },
+  "instance_id": "sympy__sympy-19254",
+  "messages": []
+}
