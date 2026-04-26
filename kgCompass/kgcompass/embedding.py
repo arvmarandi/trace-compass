@@ -1,11 +1,21 @@
 import traceback
 from transformers import AutoModel
 import numpy as np
+import torch
+
+def _get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
 
 class Embedding:
     _instance = None
     _model = None
     
+
     def __new__(cls):
         if cls._instance is None:
             print("创建新的 Embedding 实例")
@@ -13,7 +23,8 @@ class Embedding:
             
             try:
                 print("初始化 pipeline...")
-                cls._model = AutoModel.from_pretrained("jinaai/jina-embeddings-v2-base-code", trust_remote_code=True).to("cuda:0")
+                cls._model = AutoModel.from_pretrained("jinaai/jina-embeddings-v2-base-code", trust_remote_code=True).to(_get_device())
+                # cls._model = AutoModel.from_pretrained("jinaai/jina-embeddings-v2-base-code", trust_remote_code=True).to("mps")
                 print("embedding model 初始化成功")
             except Exception as e:
                 print(f"pipeline 初始化失败: {e}")

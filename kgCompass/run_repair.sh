@@ -11,13 +11,13 @@ fi
 export PYTHONPATH=$(pwd)
 
 # Set proxy if needed, and ensure localhost is excluded for Neo4j connection.
-export http_proxy=http://172.27.16.1:7890
-export https_proxy=http://172.27.16.1:7890
+# export http_proxy=http://172.27.16.1:7890
+# export https_proxy=http://172.27.16.1:7890
 unset all_proxy
 
 # --- Configuration ---
 INSTANCE_ID=$1
-MODEL_NAME="deepseek" # Hardcoded to deepseek
+MODEL_NAME="gemini" # Hardcoded to deepseek
 TEMPERATURE=${TEMPERATURE:-0.3}
 
 if [ -z "$INSTANCE_ID" ]; then
@@ -27,20 +27,37 @@ if [ -z "$INSTANCE_ID" ]; then
 fi
 
 # --- Repository Cloning ---
-declare -A REPO_URL_MAP
-REPO_URL_MAP["astropy__astropy"]="https://github.com/astropy/astropy.git"
-REPO_URL_MAP["django__django"]="https://github.com/django/django.git"
-REPO_URL_MAP["matplotlib__matplotlib"]="https://github.com/matplotlib/matplotlib.git"
-REPO_URL_MAP["mwaskom__seaborn"]="https://github.com/mwaskom/seaborn.git"
-REPO_URL_MAP["psf__requests"]="https://github.com/psf/requests.git"
-REPO_URL_MAP["pylint-dev__pylint"]="https://github.com/pylint-dev/pylint.git"
-REPO_URL_MAP["pytest-dev__pytest"]="https://github.com/pytest-dev/pytest.git"
-REPO_URL_MAP["scikit-learn__scikit-learn"]="https://github.com/scikit-learn/scikit-learn.git"
-REPO_URL_MAP["sphinx-doc__sphinx"]="https://github.com/sphinx-doc/sphinx.git"
-REPO_URL_MAP["sympy__sympy"]="https://github.com/sympy/sympy.git"
+# declare -A REPO_URL_MAP
+# REPO_URL_MAP["astropy__astropy"]="https://github.com/astropy/astropy.git"
+# REPO_URL_MAP["django__django"]="https://github.com/django/django.git"
+# REPO_URL_MAP["matplotlib__matplotlib"]="https://github.com/matplotlib/matplotlib.git"
+# REPO_URL_MAP["mwaskom__seaborn"]="https://github.com/mwaskom/seaborn.git"
+# REPO_URL_MAP["psf__requests"]="https://github.com/psf/requests.git"
+# REPO_URL_MAP["pylint-dev__pylint"]="https://github.com/pylint-dev/pylint.git"
+# REPO_URL_MAP["pytest-dev__pytest"]="https://github.com/pytest-dev/pytest.git"
+# REPO_URL_MAP["scikit-learn__scikit-learn"]="https://github.com/scikit-learn/scikit-learn.git"
+# REPO_URL_MAP["sphinx-doc__sphinx"]="https://github.com/sphinx-doc/sphinx.git"
+# REPO_URL_MAP["sympy__sympy"]="https://github.com/sympy/sympy.git"
+
+# REPO_IDENTIFIER=${INSTANCE_ID%-*}
+# CLONE_URL=${REPO_URL_MAP[$REPO_IDENTIFIER]}
 
 REPO_IDENTIFIER=${INSTANCE_ID%-*}
-CLONE_URL=${REPO_URL_MAP[$REPO_IDENTIFIER]}
+
+case "$REPO_IDENTIFIER" in
+  "astropy__astropy") CLONE_URL="https://github.com/astropy/astropy.git" ;;
+  "django__django") CLONE_URL="https://github.com/django/django.git" ;;
+  "matplotlib__matplotlib") CLONE_URL="https://github.com/matplotlib/matplotlib.git" ;;
+  "mwaskom__seaborn") CLONE_URL="https://github.com/mwaskom/seaborn.git" ;;
+  "psf__requests") CLONE_URL="https://github.com/psf/requests.git" ;;
+  "pylint-dev__pylint") CLONE_URL="https://github.com/pylint-dev/pylint.git" ;;
+  "pytest-dev__pytest") CLONE_URL="https://github.com/pytest-dev/pytest.git" ;;
+  "scikit-learn__scikit-learn") CLONE_URL="https://github.com/scikit-learn/scikit-learn.git" ;;
+  "sphinx-doc__sphinx") CLONE_URL="https://github.com/sphinx-doc/sphinx.git" ;;
+  "sympy__sympy") CLONE_URL="https://github.com/sympy/sympy.git" ;;
+  *) CLONE_URL="" ;;
+esac
+
 REPOS_DIR="./playground" # Store all cloned repos inside the project's playground directory
 REPO_PATH="${REPOS_DIR}/${REPO_IDENTIFIER}"
 
@@ -98,7 +115,7 @@ if [ -f "$KG_RESULT_FILE" ]; then
     echo "✅ KG location file already exists, skipping."
 else
     # Assumes fl.py writes its output to a JSON file.
-    python3 kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
+    python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
     echo "✅ KG location saved to $KG_RESULT_FILE"
 fi
 
@@ -109,7 +126,7 @@ if [ -f "$LLM_RESULT_FILE" ]; then
     echo "✅ LLM location file already exists, skipping."
 else
     # Assumes llm_loc.py can take --instance_id to process a single instance.
-    python3 kgcompass/llm_loc.py "$LLM_LOCATIONS_DIR" --instance_id "$INSTANCE_ID"
+    python kgcompass/llm_loc.py "$LLM_LOCATIONS_DIR" --instance_id "$INSTANCE_ID"
     echo "✅ LLM location saved to $LLM_RESULT_FILE"
     echo "--- Generated LLM Location File ---"
     ls -l "$LLM_RESULT_FILE"
@@ -122,7 +139,7 @@ if [ -f "$FINAL_RESULT_FILE" ]; then
     echo "✅ Final location file already exists, skipping."
 else
     # Assumes fix_fl_line.py is adapted to work on single instances from specific dirs.
-    python3 kgcompass/fix_fl_line.py "$LLM_LOCATIONS_DIR" "$FINAL_LOCATIONS_DIR" --instance_id "$INSTANCE_ID"
+    python kgcompass/fix_fl_line.py "$LLM_LOCATIONS_DIR" "$FINAL_LOCATIONS_DIR" --instance_id "$INSTANCE_ID"
     echo "✅ Final location saved to $FINAL_RESULT_FILE"
 fi
 
@@ -135,7 +152,7 @@ if [ -f "$PATCH_FILE" ]; then
 else
     # Assumes repair.py uses the final location file to generate the patch.
     # Arguments have been corrected to match the updated repair.py script.
-    python3 kgcompass/repair.py "$FINAL_LOCATIONS_DIR" \
+    python kgcompass/repair.py "$FINAL_LOCATIONS_DIR" \
         --instance_id "$INSTANCE_ID" \
         --playground_dir "$REPOS_DIR" \
         --repo_identifier "$REPO_IDENTIFIER"
