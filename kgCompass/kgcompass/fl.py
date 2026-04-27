@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 from bs4 import BeautifulSoup
 import requests
 import traceback
@@ -40,6 +41,50 @@ from config import (
 )
 from language_factory import LanguageConfigFactory, ParserFactory, language_by_extension, EXT_LANG_MAP
 from functools import lru_cache
+
+
+def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
+    """Load settrace data for an instance and compute per-function trace scores.
+
+    Scores are in [0, 1]:
+      - exception_frames: 1/(depth_from_innermost+1)  (0=innermost, closest to crash)
+      - all_calls only:   1/(call_depth+1)             (0=called directly from test)
+    The max score across all tests is kept per (file_path, func_name) pair.
+    """
+    traj_path = Path(traces_dir) / instance_id / f"{instance_id}.traj.json"
+    if not traj_path.exists():
+        print(f"No trace file found at {traj_path}, skipping trace augmentation")
+        return {}
+
+    traj = json.loads(traj_path.read_text())
+    settrace = traj.get("info", {}).get("settrace_traces", {})
+    if not settrace:
+        print(f"No settrace_traces in {traj_path}, skipping trace augmentation")
+        return {}
+
+    scores = {}  # (file_path, func_name) -> float
+    for entry in settrace.values():
+        if isinstance(entry, dict):
+            exc_frames = entry.get("exception_frames", [])
+            all_calls  = entry.get("all_calls", [])
+        else:
+            exc_frames = entry
+            all_calls  = entry
+
+        for depth_from_inner, frame in enumerate(reversed(exc_frames)):
+            key = (frame.get("file", ""), frame.get("func", ""))
+            if key[0] and key[1]:
+                scores[key] = max(scores.get(key, 0.0), 1.0 / (depth_from_inner + 1))
+
+        for frame in all_calls:
+            key = (frame.get("file", ""), frame.get("func", ""))
+            if key[0] and key[1]:
+                call_depth = frame.get("call_depth", 0) or 0
+                scores[key] = max(scores.get(key, 0.0), 1.0 / (call_depth + 1))
+
+    print(f"Loaded trace scores for {len(scores)} (file, func) pairs from {traj_path}")
+    return scores
+
 
 class CodeAnalyzer:
     def __init__(self, config):
@@ -128,7 +173,14 @@ class CodeAnalyzer:
             if not target_sample:
                 return
             self._process_repository(target_sample)
-            
+
+            # Augment Method nodes with stack trace scores if a traces dir was provided
+            traces_dir = self.config.get('traces_dir')
+            if traces_dir:
+                trace_scores = _load_trace_scores(self.config['instance_id'], traces_dir)
+                if trace_scores:
+                    self.kg.set_trace_scores(trace_scores)
+
             # Get related entities
             related_entities = self.kg.get_all_similarities_to_root(limit=SEARCH_SPACE, max_hops=4, sort=True)
 
@@ -1498,6 +1550,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         benchmark_name_arg = sys.argv[4]
 
+    traces_dir_arg = None  # Optional stack-trace directory
+    if len(sys.argv) > 5:
+        traces_dir_arg = sys.argv[5]
+
     repo_name = None
     if benchmark_name_arg == 'multi-swe-bench':
         # Instance ID format: OWNER__REPO-ISSUENUMBER (e.g., apache__dubbo-10638)
@@ -1526,11 +1582,12 @@ if __name__ == "__main__":
 
     config = {
         'repo_path': f'playground/{repo_path_arg}/',
-        'repo_name': repo_name, 
+        'repo_name': repo_name,
         'repo_root': repo_name.split('/')[-1],
         'instance_id': instance_id_arg,
         'benchmark_name': benchmark_name_arg,
-        'language': 'java' if benchmark_name_arg == 'multi-swe-bench' else 'python'
+        'language': 'java' if benchmark_name_arg == 'multi-swe-bench' else 'python',
+        'traces_dir': traces_dir_arg,
     }
 
     print(f"Configuration: {config}")

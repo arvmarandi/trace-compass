@@ -1,0 +1,69 @@
+The issue describes that `warn_on_dtype=True` in `sklearn.utils.validation.check_array` does not raise a `DataConversionWarning` when the input is a pandas `DataFrame` with `dtype=object` that is subsequently converted to `float64`.
+
+Upon investigation of the `check_array` function in `sklearn/utils/validation.py`, the root cause lies in how `dtype_orig` is determined for pandas DataFrames.
+
+1.  **Original `dtype_orig` determination:**
+    ```python
+        dtype_orig = getattr(array, "dtype", None)
+        if not hasattr(dtype_orig, 'kind'):
+            # not a data type (e.g. a column named dtype in a pandas DataFrame)
+            dtype_orig = None
+    ```
+    When `array` is a pandas `DataFrame`, `array.dtype` returns a pandas `Series` of dtypes (e.g., `0 object\n1 object\ndtype: object`). A pandas `Series` object *does* have a `kind` attribute (it's 'O' for the Series itself if it contains dtypes). Therefore, the `if not hasattr(dtype_orig, 'kind'):` condition evaluates to `False`, and `dtype_orig` remains the pandas `Series` of dtypes.
+
+2.  **Warning condition:**
+    The warning is triggered by:
+    ```python
+    if warn_on_dtype and dtype_orig is not None and array.dtype != dtype_orig:
+        # ... raise warning
+    ```
+    In the problematic scenario:
+    *   `warn_on_dtype` is `True`.
+    *   `dtype_orig` is the pandas `Series` of dtypes (not `None`).
+    *   `array.dtype` (after conversion) is `np.float64`.
+    *   The comparison `array.dtype != dtype_orig` becomes `np.float64 != pd.Series(...)`. In pandas 0.21.0, comparing a NumPy dtype with a pandas Series of dtypes results in a Series of booleans (e.g., `pd.Series([True, True])`). When such a Series is used in an `if` statement, it typically raises a `ValueError: The truth value of a Series is ambiguous...`.
+
+The "Actual Results: No warning is thrown" suggests that either this `ValueError` is somehow suppressed (which would be a separate bug) or, less likely, the comparison `np.float64 != pd.Series(...)` evaluates to `False` without an error in some specific environment. Regardless, the fundamental problem is that `dtype_orig` is not a single `numpy.dtype` object as expected by the warning logic.
+
+**Proposed Fix:**
+The `dtype_orig` variable should represent the effective NumPy dtype of the input array *before* `check_array` performs any explicit conversions based on the `dtype` parameter. The most robust way to get this for various array-like inputs, including pandas DataFrames, is to use `np.asarray(array_orig).dtype`. This will correctly yield `np.dtype('object')` for the example DataFrame.
+
+This change ensures that `dtype_orig` is always a `numpy.dtype` object, making the subsequent comparisons (`dtype_orig.kind == "O"`, `dtype_orig in dtype`, and `array.dtype != dtype_orig`) valid and correct, allowing the `DataConversionWarning` to be raised as expected.
+
+```python
+### sklearn/utils/validation.py
+- start_line : 409
+- end_line : 424
+<<<<<<< SEARCH
+    dtype_orig = getattr(array, "dtype", None)
+    if not hasattr(dtype_orig, 'kind'):
+        # not a data type (e.g. a column named dtype in a pandas DataFrame)
+        dtype_orig = None
+
+    if dtype_numeric:
+        if dtype_orig is not None and dtype_orig.kind == "O":
+            # if input is object, convert to float.
+            dtype = np.float64
+        else:
+            dtype = None
+=======
+    # Determine the original dtype of the input array.
+    # For pandas DataFrames, array.dtype returns a Series of dtypes, which is
+    # not a single dtype. np.asarray(array_orig).dtype provides the effective
+    # dtype if converted to a numpy array without explicit dtype.
+    try:
+        dtype_orig = np.asarray(array_orig).dtype
+    except Exception:
+        # If array_orig cannot be converted to a numpy array (e.g., a list
+        # of uncoercible types), then we treat its original dtype as None
+        # for the purpose of warning.
+        dtype_orig = None
+
+    if dtype_numeric:
+        if dtype_orig is not None and dtype_orig.kind == "O":
+            # if input is object, convert to float.
+            dtype = np.float64
+        else:
+            dtype = None
+>>>>>>> REPLACE
+```

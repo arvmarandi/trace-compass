@@ -31,6 +31,7 @@ DATASET_NAME = "princeton-nlp/SWE-bench_Lite"
 # Graph Configuration
 DECAY_FACTOR = 0.6
 VECTOR_SIMILARITY_WEIGHT = 0.3
+TRACE_WEIGHT = 0.3  # Weight for stack trace score augmentation
 
 # API Configuration
 DEEPSEEK_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"

@@ -5,6 +5,7 @@ from utils import relative_path
 from config import (
     DECAY_FACTOR,
     VECTOR_SIMILARITY_WEIGHT,
+    TRACE_WEIGHT,
 )
 
 class KnowledgeGraph:
@@ -398,6 +399,35 @@ class KnowledgeGraph:
                name=name,
                embedding=embedding)
 
+    def set_trace_scores(self, trace_scores: dict):
+        """Set trace_score on Method nodes matched by (file_path, func_name).
+
+        Args:
+            trace_scores: dict mapping (file_path, func_name) -> float, where
+                file_path is relative to the repo root and func_name is the
+                bare function name (not qualified). Scores should be in [0, 1].
+        """
+        if not trace_scores:
+            return
+        with self.driver.session() as session:
+            session.run("MATCH (m:Method) SET m.trace_score = 0.0")
+            for (file_path, func_name), score in trace_scores.items():
+                session.run(
+                    """
+                    MATCH (m:Method)
+                    WHERE m.file_path = $file_path
+                      AND split(m.name, '.')[-1] = $func_name
+                    SET m.trace_score = CASE
+                        WHEN coalesce(m.trace_score, 0.0) < $score THEN $score
+                        ELSE m.trace_score
+                    END
+                    """,
+                    file_path=file_path,
+                    func_name=func_name,
+                    score=float(score),
+                )
+        print(f"Set trace scores for {len(trace_scores)} (file, func) pairs")
+
     def get_all_methods(self, top_k):
         """
         Get the 200 most relevant method entities for the given text
@@ -733,13 +763,14 @@ class KnowledgeGraph:
                     ] as path_details
 
                 WITH m, path_details, totalCost as cost,
-                    CASE 
-                        WHEN m:Issue THEN 
+                    CASE
+                        WHEN m:Issue THEN
                             gds.similarity.cosine(root_embedding, m.embedding) * ($DECAY_FACTOR ^ totalCost)
                         ELSE
                             (gds.similarity.cosine(root_embedding, m.embedding) * $VECTOR_SIMILARITY_WEIGHT +
                             apoc.text.levenshteinSimilarity(root_text, m.source_code) * (1 - $VECTOR_SIMILARITY_WEIGHT)) *
-                            ($DECAY_FACTOR ^ totalCost)
+                            ($DECAY_FACTOR ^ totalCost) +
+                            $TRACE_WEIGHT * coalesce(m.trace_score, 0.0)
                     END as similarity_score
                 ORDER BY similarity_score DESC
                 LIMIT 10000
@@ -772,7 +803,8 @@ class KnowledgeGraph:
                     max_hops=float(max_hops),
                     max_target_nodes=max_target_nodes,
                     VECTOR_SIMILARITY_WEIGHT=VECTOR_SIMILARITY_WEIGHT,
-                    DECAY_FACTOR=DECAY_FACTOR
+                    DECAY_FACTOR=DECAY_FACTOR,
+                    TRACE_WEIGHT=TRACE_WEIGHT,
                 )
                 method_record = method_result.single()
                 method_similarities = method_record['methods'] if method_record else []

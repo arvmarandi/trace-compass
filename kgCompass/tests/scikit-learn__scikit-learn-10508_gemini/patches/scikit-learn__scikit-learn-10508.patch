@@ -1,0 +1,71 @@
+The bug occurs in the `LabelEncoder.transform` method when an empty list `[]` is passed as input `y`, and the `LabelEncoder` was previously fitted with string data.
+
+Here's a breakdown of the problem:
+1.  **`y = column_or_1d(y, warn=True)`**: When `y` is an empty list `[]`, `column_or_1d` internally calls `np.asarray([])`. By default, `np.asarray([])` creates an empty NumPy array with `dtype=float64` (i.e., `array([], dtype=float64)`).
+2.  **`return np.searchsorted(self.classes_, y)`**: This is the line that causes the error.
+    *   If `self.classes_` was fitted with integers (e.g., `[1, 2]`), its `dtype` is `int64`. `np.searchsorted(array([1, 2], dtype=int64), array([], dtype=float64))` works because `float64` can be safely cast to `int64` for comparison, and it returns `array([], dtype=int64)`.
+    *   If `self.classes_` was fitted with strings (e.g., `["a", "b"]`), its `dtype` is a string type like `<U1` or `<U32`. `np.searchsorted(array(['a', 'b'], dtype='<U1'), array([], dtype=float64))` fails because `float64` cannot be safely cast to a string `dtype` for comparison, leading to the `TypeError`.
+
+The expected behavior is that `transform([])` should always return an empty array of integer labels (e.g., `array([], dtype=int64)`), as `transform` always outputs integer encodings.
+
+**Proposed Fix:**
+The fix involves adding a special check for an empty input `y` after it has been converted to a NumPy array. If `y` is empty (`y.size == 0`), we can directly return an empty `int64` NumPy array, bypassing the `np.searchsorted` call that causes the `TypeError`. This ensures the correct output type and avoids the dtype incompatibility.
+
+```python
+### sklearn/preprocessing/label.py
+- signature : scikit-learn.sklearn.preprocessing.label.LabelEncoder.transform(self, y)
+- start_line : 115
+- end_line : 135
+<<<<<<< SEARCH
+    def transform(self, y):
+        """Transform labels to normalized encoding.
+
+        Parameters
+        ----------
+        y : array-like of shape [n_samples]
+            Target values.
+
+        Returns
+        -------
+        y : array-like of shape [n_samples]
+        """
+        check_is_fitted(self, 'classes_')
+        y = column_or_1d(y, warn=True)
+
+        classes = np.unique(y)
+        if len(np.intersect1d(classes, self.classes_)) < len(classes):
+            diff = np.setdiff1d(classes, self.classes_)
+            raise ValueError(
+                    "y contains previously unseen labels: %s" % str(diff))
+        return np.searchsorted(self.classes_, y)
+=======
+    def transform(self, y):
+        """Transform labels to normalized encoding.
+
+        Parameters
+        ----------
+        y : array-like of shape [n_samples]
+            Target values.
+
+        Returns
+        -------
+        y : array-like of shape [n_samples]
+        """
+        check_is_fitted(self, 'classes_')
+        y = column_or_1d(y, warn=True)
+
+        # Handle empty input separately to avoid dtype issues with np.searchsorted.
+        # When y is an empty list, column_or_1d returns array([], dtype=float64)
+        # which can be incompatible with self.classes_ dtype (e.g., string),
+        # leading to a TypeError during comparison.
+        if y.size == 0:
+            return np.array([], dtype=np.int64)
+
+        classes = np.unique(y)
+        if len(np.intersect1d(classes, self.classes_)) < len(classes):
+            diff = np.setdiff1d(classes, self.classes_)
+            raise ValueError(
+                    "y contains previously unseen labels: %s" % str(diff))
+        return np.searchsorted(self.classes_, y)
+>>>>>>> REPLACE
+```

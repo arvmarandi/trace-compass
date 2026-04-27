@@ -1,0 +1,37 @@
+The issue describes two distinct problems:
+
+1.  **`tmpdir` creation fails when the username contains illegal characters for directory names (e.g., `contoso\john_doe` on Windows).**
+    The root cause appears to be that `getpass.getuser()` returns a username containing a backslash (`\`), which `pathlib` on Windows interprets as a path separator. Although `_pytest/tmpdir.py` has a `_get_user_folder()` function that uses `re.sub(r"[^\w-]", "-", username)` to sanitize the username, it seems this regex might not be robust enough or the interaction with `pathlib`'s path joining is problematic. Explicitly replacing backslashes (`\`) with a safe character like a hyphen (`-`) before applying the general regex is a more defensive approach. This ensures that `\` characters are treated as part of the username to be sanitized, rather than being interpreted as path separators by `pathlib` during path construction.
+
+2.  **`unittest` TestCase collection fails silently when there are unclear circular dependencies.**
+    The user reports that when a circular dependency exists in a test module, `pytest` skips the tests without a clear error message, especially during full discovery (`pytest` without arguments). The `_pytest/python.py` module's `PyCollector.collect()` method catches `Exception` during module loading and issues a `PytestCollectionWarning`. While `RecursionError` has a specific message suggesting a circular import, other exceptions (like `ImportError`, `NameError`, `AttributeError` that can arise from circular imports) fall into a generic "test module could not be loaded" message. To improve clarity, the generic message will be updated to explicitly suggest "circular import or other import-related issue" as a possibility.
+
+Here are the proposed *SEARCH/REPLACE* edits:
+
+```python
+### src/_pytest/tmpdir.py
+- start_line : 97
+- end_line : 97
+<<<<<<< SEARCH
+    return re.sub(r"[^\w-]", "-", username)
+=======
+    # The username might contain characters that are not safe to use in a path.
+    # Replace them with a safe alternative.
+    # For example, on Windows, the username might be "DOMAIN\username".
+    # We replace the backslash with a dash first, then other invalid characters.
+    username = username.replace("\\", "-")
+    return re.sub(r"[^\w-]", "-", username)
+>>>>>>> REPLACE
+```
+
+```python
+### src/_pytest/python.py
+- start_line : 174
+- end_line : 174
+<<<<<<< SEARCH
+                msg = f"test module could not be loaded:\n{util.exception_to_str(e)}"
+=======
+                # For any other exception during module loading, suggest circular import as a possibility.
+                msg = f"test module could not be loaded, possibly due to a circular import or other import-related issue: {util.exception_to_str(e)}"
+>>>>>>> REPLACE
+```

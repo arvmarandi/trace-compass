@@ -1,0 +1,72 @@
+The issue describes that the `Permutation` constructor raises a `ValueError` when given non-disjoint cycles, such as `Permutation([[0,1],[0,1]])`. The expected behavior is that these cycles should be composed (applied in left-to-right order) to form a single permutation.
+
+Upon reviewing the `Permutation.__new__` method in `sympy/combinatorics/permutations.py`, the problem lies in the validation logic. When the input `args` is a list of cycles (e.g., `[[0,1],[0,1]]`), the code flattens this list into `temp = [0,1,0,1]` and then checks `has_dups(temp)`. Since `temp` contains repeated elements (0 and 1), it incorrectly raises a `ValueError`.
+
+However, the subsequent code block for `is_cycle` correctly handles the composition of cycles using `Cycle` objects:
+```python
+            c = Cycle()
+            for ci in args:
+                c = c(*ci)
+            aform = c.list()
+```
+This loop effectively applies the cycles in left-to-right order, which is the desired behavior for non-disjoint cycles. The `Cycle` object's `__call__` method is designed to handle such compositions.
+
+The `has_dups` check and the subsequent check for missing integers (e.g., "Integers 0 through %s must be present.") are primarily intended for validating permutations provided in *array form* (e.g., `Permutation([0,2,1])`), where repeated elements or missing numbers would indeed indicate an invalid permutation. For cyclic form, these checks are redundant and incorrect because the `Cycle` composition logic inherently resolves non-disjoint elements into a valid permutation.
+
+The fix involves moving the `temp = flatten(args)` and the associated `has_dups` and missing integer checks into the `else` block, so they only apply when the input is an array-form permutation (`not is_cycle`). This allows the cyclic form path to proceed directly to cycle composition without premature validation errors.
+
+```python
+### sympy/combinatorics/permutations.py
+- signature : sympy.combinatorics.permutations.Permutation.__new__(cls)
+- start_line : 801
+- end_line : 929
+<<<<<<< SEARCH
+        temp = flatten(args)
+        if has_dups(temp):
+            if is_cycle:
+                raise ValueError('there were repeated elements; to resolve '
+                'cycles use Cycle%s.' % ''.join([str(tuple(c)) for c in args]))
+            else:
+                raise ValueError('there were repeated elements.')
+        temp = set(temp)
+
+        if not is_cycle and \
+                any(i not in temp for i in range(len(temp))):
+            raise ValueError("Integers 0 through %s must be present." %
+                             max(temp))
+
+        if is_cycle:
+            # it's not necessarily canonical so we won't store
+            # it -- use the array form instead
+            c = Cycle()
+            for ci in args:
+                c = c(*ci)
+            aform = c.list()
+=======
+        # if there are n elements present, 0, 1, ..., n-1 should be present
+        # unless a cycle notation has been provided. A 0 will be added
+        # for convenience in case one wants to enter permutations where
+        # counting starts from 1.
+
+        # Validate array-form permutations
+        if not is_cycle:
+            temp = flatten(args)
+            if has_dups(temp):
+                raise ValueError('there were repeated elements.')
+            temp = set(temp)
+
+            if any(i not in temp for i in range(len(temp))):
+                raise ValueError("Integers 0 through %s must be present." %
+                                 max(temp))
+
+        if is_cycle:
+            # it's not necessarily canonical so we won't store
+            # it -- use the array form instead
+            c = Cycle()
+            for ci in args:
+                c = c(*ci)
+            aform = c.list()
+        else:
+            aform = list(args)
+>>>>>>> REPLACE
+```
