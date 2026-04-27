@@ -1,0 +1,2872 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py b/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py\nnew file mode 100644\nindex 0000000000..56b5cbaa8a\n--- /dev/null\n+++ b/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py\n@@ -0,0 +1,79 @@\n+\"\"\"\n+Test for the bug: Exception when multiplying BlockMatrix containing ZeroMatrix blocks\n+\n+See: https://github.com/sympy/sympy/issues/...\n+\n+This test reproduces the bug described in the PR where a BlockMatrix with\n+ZeroMatrix blocks causes an AttributeError when multiplied multiple times.\n+\n+The bug is that after the first multiplication, ZeroMatrix blocks become Zero\n+(scalar) objects, and subsequent multiplications fail because colblocksizes\n+tries to access .cols on Zero objects.\n+\"\"\"\n+\n+from sympy import MatrixSymbol, ZeroMatrix\n+from sympy.matrices.expressions.blockmatrix import BlockMatrix, block_collapse\n+\n+\n+def test_blockmatrix_zeromatrix_mul():\n+    \"\"\"Test that BlockMatrix with ZeroMatrix blocks can be multiplied.\n+    \n+    Regression test for issue where multiplying a BlockMatrix with ZeroMatrix\n+    blocks raises an exception.\n+    \"\"\"\n+    a = MatrixSymbol(\"a\", 2, 2)\n+    z = ZeroMatrix(2, 2)\n+    b = BlockMatrix([[a, z], [z, z]])\n+    \n+    # First multiplication should work and return a BlockMatrix\n+    result1 = b._blockmul(b)\n+    \n+    # The result should be a BlockMatrix\n+    assert isinstance(result1, BlockMatrix)\n+    \n+    # Check that the result has the expected structure\n+    # The result should be [[a**2, 0], [0, 0]]\n+    assert result1.blocks[0, 0] == a * a  # which is a**2\n+    # The off-diagonal blocks should be ZeroMatrix\n+    assert result1.blocks[0, 1].is_ZeroMatrix\n+    assert result1.blocks[1, 0].is_ZeroMatrix\n+    assert result1.blocks[1, 1].is_ZeroMatrix\n+\n+\n+def test_blockmatrix_zeromatrix_multiple_mul():\n+    \"\"\"Test that BlockMatrix with ZeroMatrix blocks can be multiplied multiple times.\n+    \n+    This is a regression test for the bug where the second multiplication fails with:\n+    AttributeError: 'Zero' object has no attribute 'cols'\n+    \"\"\"\n+    a = MatrixSymbol(\"a\", 2, 2)\n+    z = ZeroMatrix(2, 2)\n+    b = BlockMatrix([[a, z], [z, z]])\n+    \n+    # First multiplication\n+    result1 = b._blockmul(b)\n+    \n+    # Second multiplication - this is where the bug occurs\n+    # The bug is that result1.blocks contains Zero objects instead of ZeroMatrix\n+    # which causes AttributeError when colblocksizes tries to access .cols\n+    result2 = result1._blockmul(b)\n+    \n+    assert isinstance(result2, BlockMatrix)\n+    assert result2.shape == (4, 4)\n+\n+\n+def test_blockmatrix_zeromatrix_block_collapse():\n+    \"\"\"Test that block_collapse works with BlockMatrix containing ZeroMatrix blocks.\"\"\"\n+    a = MatrixSymbol(\"a\", 2, 2)\n+    z = ZeroMatrix(2, 2)\n+    b = BlockMatrix([[a, z], [z, z]])\n+    \n+    # block_collapse should work for b * b\n+    result1 = block_collapse(b * b)\n+    \n+    # The result should have correct structure\n+    assert result1.shape == (4, 4)\n+    \n+    # block_collapse should work for (b * b) * b\n+    result2 = block_collapse(result1 * b)\n+    assert result2.shape == (4, 4)\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        44674874\nhash randomization: on (PYTHONHASHSEED=1845790161)\n\nsympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py[3] \ntest_blockmatrix_zeromatrix_mul E\ntest_blockmatrix_zeromatrix_multiple_mul E\ntest_blockmatrix_zeromatrix_block_collapse E                              [FAIL]\n\n\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py:test_blockmatrix_zeromatrix_mul \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py\", line 29, in test_blockmatrix_zeromatrix_mul\n    result1 = b._blockmul(b)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 167, in _blockmul\n    return BlockMatrix(self.blocks*other.blocks)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 86, in __new__\n    raise ValueError(filldedent('''\nValueError: \nexpecting a sequence of 1 or more rows containing Matrices.\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py:test_blockmatrix_zeromatrix_multiple_mul \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py\", line 54, in test_blockmatrix_zeromatrix_multiple_mul\n    result1 = b._blockmul(b)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 167, in _blockmul\n    return BlockMatrix(self.blocks*other.blocks)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 86, in __new__\n    raise ValueError(filldedent('''\nValueError: \nexpecting a sequence of 1 or more rows containing Matrices.\n________________________________________________________________________________\n sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py:test_blockmatrix_zeromatrix_block_collapse \nTraceback (most recent call last):\n  File \"/testbed/sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py\", line 72, in test_blockmatrix_zeromatrix_block_collapse\n    result1 = block_collapse(b * b)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 393, in block_collapse\n    result = rule(expr)\n  File \"/testbed/sympy/strategies/core.py\", line 11, in exhaustive_rl\n    new, old = rule(expr), expr\n  File \"/testbed/sympy/strategies/core.py\", line 44, in chain_rl\n    expr = rule(expr)\n  File \"/testbed/sympy/strategies/core.py\", line 11, in exhaustive_rl\n    new, old = rule(expr), expr\n  File \"/testbed/sympy/strategies/core.py\", line 33, in conditioned_rl\n    return rule(expr)\n  File \"/testbed/sympy/strategies/core.py\", line 95, in switch_rl\n    return rl(expr)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 467, in bc_matmul\n    matrices[i] = A._blockmul(B)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 167, in _blockmul\n    return BlockMatrix(self.blocks*other.blocks)\n  File \"/testbed/sympy/matrices/expressions/blockmatrix.py\", line 86, in __new__\n    raise ValueError(filldedent('''\nValueError: \nexpecting a sequence of 1 or more rows containing Matrices.\n\n=========== tests finished: 0 passed, 3 exceptions, in 0.01 seconds ============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py::test_blockmatrix_zeromatrix_mul": {
+        "exception_frames": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 18,
+            "func": "test_blockmatrix_zeromatrix_mul",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 451,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 447,
+            "func": "_test",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 260,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 18,
+            "func": "test_blockmatrix_zeromatrix_mul",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 392,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 78,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 92,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 72,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 451,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 447,
+            "func": "_test",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 89,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 260,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 244,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 232,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 481,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 247,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 501,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 484,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 535,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 272,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2410,
+            "func": "_eval_is_composite",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2253,
+            "func": "__gt__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 422,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 317,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2405,
+            "func": "_eval_is_prime",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/ntheory/primetest.py",
+            "line": 476,
+            "func": "isprime",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 366,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2116,
+            "func": "__int__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2250,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2243,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 148,
+            "func": "fuzzy_not",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 224,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 179,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 237,
+            "func": "__new_stage2__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 96,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 79,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 314,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 256,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 85,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 82,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 157,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 784,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 727,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2289,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 161,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 41,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 46,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2461,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2572,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2555,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2635,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 50,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 52,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 164,
+            "func": "_blockmul",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 153,
+            "func": "colblocksizes",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 141,
+            "func": "blockshape",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 145,
+            "func": "blocks",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 112,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 114,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 59,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 3730,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2489,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 64,
+            "func": "_mat",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 104,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 149,
+            "func": "rowblocksizes",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 122,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2167,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2477,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 174,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 108,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 196,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 20,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 105,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 34,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 42,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 925,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 922,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 100,
+            "func": "as_coeff_matrices",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 101,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 32,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 204,
+            "func": "validate",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 162,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 807,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1870,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 10,
+            "func": "exhaustive_rl",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 93,
+            "func": "switch_rl",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 83,
+            "func": "do_one_rl",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 219,
+            "func": "any_zeros",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 345,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 122,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 113,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 291,
+            "func": "remove_ids",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 109,
+            "func": "as_coeff_mmul",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 12,
+            "func": "rm_id",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 28,
+            "func": "ident_remove",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 268,
+            "func": "xxinv",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 165,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 261,
+            "func": "inverse",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 180,
+            "func": "_eval_inverse",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/inverse.py",
+            "line": 37,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 126,
+            "func": "unpack",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 226,
+            "func": "merge_explicit",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 254,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 312,
+            "func": "factor_in_front",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 139,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 318,
+            "func": "combine_powers",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 781,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 788,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 125,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 12,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 52,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 214,
+            "func": "newmul",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 6,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1690,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 701,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 104,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/add.py",
+            "line": 79,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/add.py",
+            "line": 20,
+            "func": "_addsort",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 56,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1818,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1832,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 598,
+            "func": "_postprocessor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matadd.py",
+            "line": 36,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matadd.py",
+            "line": 42,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matadd.py",
+            "line": 70,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 31,
+            "func": "conditioned_rl",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 35,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2505,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/utilities/misc.py",
+            "line": 21,
+            "func": "filldedent",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py::test_blockmatrix_zeromatrix_multiple_mul": {
+        "exception_frames": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 43,
+            "func": "test_blockmatrix_zeromatrix_multiple_mul",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 43,
+            "func": "test_blockmatrix_zeromatrix_multiple_mul",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 392,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 78,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 92,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 72,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 451,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 447,
+            "func": "_test",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 89,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 260,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 224,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 179,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 96,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 79,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 314,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 256,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 85,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 82,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 157,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 784,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 727,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2289,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 161,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 41,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 46,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2461,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2572,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2555,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2635,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 50,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 52,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 164,
+            "func": "_blockmul",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 153,
+            "func": "colblocksizes",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 141,
+            "func": "blockshape",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 145,
+            "func": "blocks",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 112,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 114,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2116,
+            "func": "__int__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 59,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 3730,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2489,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 64,
+            "func": "_mat",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 104,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 149,
+            "func": "rowblocksizes",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 122,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2167,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2477,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 174,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 108,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 196,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 20,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 105,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 34,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 42,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 925,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 922,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 100,
+            "func": "as_coeff_matrices",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 101,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 204,
+            "func": "validate",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2250,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2243,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 162,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 807,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1870,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 10,
+            "func": "exhaustive_rl",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 93,
+            "func": "switch_rl",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 83,
+            "func": "do_one_rl",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 219,
+            "func": "any_zeros",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 345,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 122,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 113,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 291,
+            "func": "remove_ids",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 109,
+            "func": "as_coeff_mmul",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 12,
+            "func": "rm_id",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 28,
+            "func": "ident_remove",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 268,
+            "func": "xxinv",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 165,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 261,
+            "func": "inverse",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 180,
+            "func": "_eval_inverse",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/inverse.py",
+            "line": 37,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 126,
+            "func": "unpack",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 226,
+            "func": "merge_explicit",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 254,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 312,
+            "func": "factor_in_front",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 139,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 318,
+            "func": "combine_powers",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 781,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 788,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 125,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 12,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 52,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 214,
+            "func": "newmul",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 6,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1690,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 701,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 104,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2505,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/utilities/misc.py",
+            "line": 21,
+            "func": "filldedent",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py::test_blockmatrix_zeromatrix_block_collapse": {
+        "exception_frames": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 65,
+            "func": "test_blockmatrix_zeromatrix_block_collapse",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/matrices/expressions/tests/test_blockmatrix_zeromatrix.py",
+            "line": 65,
+            "func": "test_blockmatrix_zeromatrix_block_collapse",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 770,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 392,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 78,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 92,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 230,
+            "func": "_check_dim",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 399,
+            "func": "check_assumptions",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 72,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 112,
+            "func": "fuzzy_and",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 451,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/solvers/solvers.py",
+            "line": 447,
+            "func": "_test",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 89,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 260,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 224,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 179,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 96,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 79,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 314,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 256,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 85,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 82,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 157,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 784,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 727,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2289,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 161,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 41,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 46,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2461,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2572,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2555,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2635,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 50,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 52,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 20,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 122,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 105,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 34,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 42,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 925,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 922,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 100,
+            "func": "as_coeff_matrices",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 101,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 204,
+            "func": "validate",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 131,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 145,
+            "func": "blocks",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 112,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 114,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2116,
+            "func": "__int__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 59,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 3730,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2489,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 64,
+            "func": "_mat",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 104,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2176,
+            "func": "__radd__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2164,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2250,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2243,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 162,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1670,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1690,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1760,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1704,
+            "func": "applyfunc",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1664,
+            "func": "_eval_applyfunc",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 108,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1665,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1761,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 807,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 701,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 366,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 10,
+            "func": "exhaustive_rl",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 93,
+            "func": "switch_rl",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 83,
+            "func": "do_one_rl",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 219,
+            "func": "any_zeros",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 345,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 122,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 113,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 291,
+            "func": "remove_ids",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 109,
+            "func": "as_coeff_mmul",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 12,
+            "func": "rm_id",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 28,
+            "func": "ident_remove",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 250,
+            "func": "is_Identity",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 141,
+            "func": "blockshape",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 268,
+            "func": "xxinv",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 165,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 261,
+            "func": "inverse",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 180,
+            "func": "_eval_inverse",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/expressions/inverse.py",
+            "line": 37,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 126,
+            "func": "unpack",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 226,
+            "func": "merge_explicit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 254,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 312,
+            "func": "factor_in_front",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/strategies/rl.py",
+            "line": 139,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 318,
+            "func": "combine_powers",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 46,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 429,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 432,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 28,
+            "func": "_compare_sequence",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 781,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 788,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/expressions/matexpr.py",
+            "line": 125,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 12,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matpow.py",
+            "line": 52,
+            "func": "doit",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/expressions/matmul.py",
+            "line": 214,
+            "func": "newmul",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 6,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 348,
+            "func": "block_collapse",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 81,
+            "func": "do_one",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/strategies/tools.py",
+            "line": 34,
+            "func": "typed",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 91,
+            "func": "switch",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 29,
+            "func": "condition",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 8,
+            "func": "exhaust",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/strategies/traverse.py",
+            "line": 13,
+            "func": "bottom_up",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 38,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 42,
+            "func": "chain_rl",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/strategies/traverse.py",
+            "line": 15,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/strategies/traverse.py",
+            "line": 28,
+            "func": "sall",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/strategies/traverse.py",
+            "line": 32,
+            "func": "all_rl",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/strategies/util.py",
+            "line": 14,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/strategies/core.py",
+            "line": 31,
+            "func": "conditioned_rl",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 272,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 281,
+            "func": "assumptions0",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 283,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 104,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1217,
+            "func": "has",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1264,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1266,
+            "func": "_has",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2024,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2077,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2074,
+            "func": "__next__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2028,
+            "func": "_preorder_traversal",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 101,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 96,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 299,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 68,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 62,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1186,
+            "func": "has",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1090,
+            "func": "_eval_has",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1091,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2356,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 400,
+            "func": "bc_unpack",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 510,
+            "func": "deblock",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 454,
+            "func": "bc_matmul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2216,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 84,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2292,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 164,
+            "func": "_blockmul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 153,
+            "func": "colblocksizes",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/expressions/blockmatrix.py",
+            "line": 149,
+            "func": "rowblocksizes",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2167,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2477,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 174,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 196,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2505,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/utilities/misc.py",
+            "line": 21,
+            "func": "filldedent",
+            "is_test": false,
+            "call_depth": 10
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sympy__sympy-17630",
+  "messages": []
+}

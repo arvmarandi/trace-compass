@@ -1,0 +1,906 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/template_tests/filter_tests/test_join_autoescape.py b/tests/template_tests/filter_tests/test_join_autoescape.py\nnew file mode 100644\nindex 0000000000..cb48568af3\n--- /dev/null\n+++ b/tests/template_tests/filter_tests/test_join_autoescape.py\n@@ -0,0 +1,79 @@\n+\"\"\"\n+Tests for the join filter when autoescape is off.\n+These tests verify that the joining string is not escaped when autoescape is off.\n+\"\"\"\n+from django.template.defaultfilters import join\n+from django.test import SimpleTestCase\n+\n+from ..utils import setup\n+\n+\n+class JoinAutoescapeTests(SimpleTestCase):\n+    \"\"\"\n+    Test cases for the join filter with autoescape off.\n+    These tests verify the bug where the joining string is always escaped\n+    even when autoescape is off.\n+    \"\"\"\n+\n+    @setup({\n+        \"join_autoescape01\": '{% autoescape off %}{{ some_list|join:some_var }}{% endautoescape %}'\n+    })\n+    def test_join_with_autoescape_off_and_variable_joiner(self):\n+        \"\"\"\n+        When autoescape is off and the joiner is a variable,\n+        both the list items AND the joiner should not be escaped.\n+        \"\"\"\n+        some_list = [\"<p>Hello World!</p>\", \"beta & me\", \"<script>Hi!</script>\"]\n+        some_var = \"<br/>\"\n+        output = self.engine.render_to_string(\n+            \"join_autoescape01\",\n+            {\"some_list\": some_list, \"some_var\": some_var}\n+        )\n+        # With autoescape off, the joiner should NOT be escaped\n+        # Expected: '<p>Hello World!</p><br/>beta & me<br/><script>Hi!</script>'\n+        # Buggy: '<p>Hello World!</p>&lt;br/&gt;beta & me&lt;br/&gt;<script>Hi!</script>'\n+        self.assertEqual(output, some_var.join(some_list))\n+\n+    @setup({\n+        \"join_autoescape02\": '{{ some_list|join:some_var }}'\n+    })\n+    def test_join_with_autoescape_on_and_variable_joiner(self):\n+        \"\"\"\n+        When autoescape is on (default) and the joiner is a variable,\n+        both the list items AND the joiner should be escaped.\n+        \"\"\"\n+        from django.template.defaultfilters import escape\n+        some_list = [\"<p>Hello World!</p>\", \"beta & me\", \"<script>Hi!</script>\"]\n+        some_var = \"<br/>\"\n+        output = self.engine.render_to_string(\n+            \"join_autoescape02\",\n+            {\"some_list\": some_list, \"some_var\": some_var}\n+        )\n+        # With autoescape on, the joiner should be escaped\n+        self.assertEqual(output, escape(some_var.join(some_list)))\n+\n+\n+class JoinFunctionAutoescapeTests(SimpleTestCase):\n+    \"\"\"\n+    Test cases for the join filter function with autoescape parameter.\n+    \"\"\"\n+\n+    def test_join_with_autoescape_false_does_not_escape_joiner(self):\n+        \"\"\"\n+        When autoescape=False, the joining string should NOT be escaped,\n+        but list items should also NOT be escaped.\n+        \"\"\"\n+        result = join([\"<a>\", \"<img>\", \"</a>\"], \"<br>\", autoescape=False)\n+        # With autoescape=False, neither list items nor joiner should be escaped\n+        # Expected: '<a><br><img><br></a>'\n+        # Buggy: '<a>&lt;br&gt;<img>&lt;br&gt;</a>'\n+        self.assertEqual(result, \"<a><br><img><br></a>\")\n+\n+    def test_join_with_autoescape_true_escapes_joiner(self):\n+        \"\"\"\n+        When autoescape=True (default), both list items AND the joiner\n+        should be escaped.\n+        \"\"\"\n+        result = join([\"<a>\", \"<img>\", \"</a>\"], \"<br>\")\n+        # With autoescape=True, both list items and joiner should be escaped\n+        self.assertEqual(result, \"&lt;a&gt;&lt;br&gt;&lt;img&gt;&lt;br&gt;&lt;/a&gt;\")\n",
+    "stack_traces": [],
+    "test_output": "test_join_with_autoescape_off_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner)\nWhen autoescape is off and the joiner is a variable, ... FAIL\ntest_join_with_autoescape_on_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_on_and_variable_joiner)\nWhen autoescape is on (default) and the joiner is a variable, ... ok\ntest_join_with_autoescape_false_does_not_escape_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner)\nWhen autoescape=False, the joining string should NOT be escaped, ... FAIL\ntest_join_with_autoescape_true_escapes_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_true_escapes_joiner)\nWhen autoescape=True (default), both list items AND the joiner ... ok\n\n======================================================================\nFAIL: test_join_with_autoescape_off_and_variable_joiner (template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner)\nWhen autoescape is off and the joiner is a variable,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 443, in inner\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/testbed/tests/template_tests/utils.py\", line 58, in inner\n    func(self)\n  File \"/testbed/tests/template_tests/filter_tests/test_join_autoescape.py\", line 35, in test_join_with_autoescape_off_and_variable_joiner\n    self.assertEqual(output, some_var.join(some_list))\nAssertionError: '<p>Hello World!</p>&lt;br/&gt;beta & me&lt;br/&gt;<script>Hi!</script>' != '<p>Hello World!</p><br/>beta & me<br/><script>Hi!</script>'\n\n======================================================================\nFAIL: test_join_with_autoescape_false_does_not_escape_joiner (template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner)\nWhen autoescape=False, the joining string should NOT be escaped,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/template_tests/filter_tests/test_join_autoescape.py\", line 70, in test_join_with_autoescape_false_does_not_escape_joiner\n    self.assertEqual(result, \"<a><br><img><br></a>\")\nAssertionError: '<a>&lt;br&gt;<img>&lt;br&gt;</a>' != '<a><br><img><br></a>'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.006s\n\nFAILED (failures=2)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 template_tests.filter_tests.test_join_autoescape` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application template_tests\nFound 4 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "template_tests.filter_tests.test_join_autoescape.JoinAutoescapeTests.test_join_with_autoescape_off_and_variable_joiner": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 438,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 404,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 469,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 159,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 115,
+            "func": "storages_changed",
+            "is_test": true,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 438,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 404,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 469,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 272,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 251,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 264,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 285,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 159,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 412,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 402,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 406,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 13,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 59,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 27,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 37,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 58,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 92,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 115,
+            "func": "storages_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 0,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 16,
+            "func": "StaticFilesStorage",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 47,
+            "func": "HashedFilesMixin",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 452,
+            "func": "ManifestFilesMixin",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 529,
+            "func": "ManifestStaticFilesStorage",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/contrib/staticfiles/storage.py",
+            "line": 538,
+            "func": "ConfiguredStorage",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 267,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 136,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 144,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 158,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 165,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 179,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 190,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 199,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 222,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 233,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 243,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 130,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/contrib/messages/apps.py",
+            "line": 8,
+            "func": "update_level_tags",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/files/storage/mixins.py",
+            "line": 2,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "tests/template_tests/utils.py",
+            "line": 48,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 121,
+            "func": "get_template_libraries",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 118,
+            "func": "get_template_builtins",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 119,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/library.py",
+            "line": 369,
+            "func": "import_library",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/template_tests/filter_tests/test_join_autoescape.py",
+            "line": 18,
+            "func": "test_join_with_autoescape_off_and_variable_joiner",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 181,
+            "func": "render_to_string",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 170,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 153,
+            "func": "find_template",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 39,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 127,
+            "func": "template_loaders",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 131,
+            "func": "get_template_loaders",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 139,
+            "func": "find_template_loader",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/locmem.py",
+            "line": 0,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/loaders/locmem.py",
+            "line": 10,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/template/loaders/locmem.py",
+            "line": 11,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 5,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 28,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 72,
+            "func": "cache_key",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 8,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 68,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/locmem.py",
+            "line": 21,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 25,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/locmem.py",
+            "line": 15,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 175,
+            "func": "compile_nodelist",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 350,
+            "func": "tokenize",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 364,
+            "func": "create_token",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 589,
+            "func": "add_library",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 455,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 580,
+            "func": "next_token",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 551,
+            "func": "autoescape",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 593,
+            "func": "compile_filter",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 245,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 220,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 222,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 398,
+            "func": "unescape_string_literal",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 599,
+            "func": "find_filter",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 744,
+            "func": "args_check",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 525,
+            "func": "extend_nodelist",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 583,
+            "func": "prepend_token",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 586,
+            "func": "delete_first_token",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 46,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 136,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 31,
+            "func": "_reset_dicts",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 165,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 201,
+            "func": "push_state",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 48,
+            "func": "push",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 147,
+            "func": "bind_template",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 105,
+            "func": "instrumented_test_render",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1000,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 953,
+            "func": "render_annotated",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 50,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 707,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 862,
+            "func": "_resolve_lookup",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 78,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 584,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 82,
+            "func": "conditional_escape",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 17,
+            "func": "escape",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1032,
+            "func": "render_value_in_context",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 146,
+            "func": "template_localtime",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 193,
+            "func": "localize",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 43,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 57,
+            "func": "pop",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 407,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 495,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 81,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 269,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "template_tests.filter_tests.test_join_autoescape.JoinFunctionAutoescapeTests.test_join_with_autoescape_false_does_not_escape_joiner": {
+        "exception_frames": [
+          {
+            "file": "tests/template_tests/filter_tests/test_join_autoescape.py",
+            "line": 61,
+            "func": "test_join_with_autoescape_false_does_not_escape_joiner",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/template_tests/filter_tests/test_join_autoescape.py",
+            "line": 61,
+            "func": "test_join_with_autoescape_false_does_not_escape_joiner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 584,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 82,
+            "func": "conditional_escape",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 220,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 222,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 17,
+            "func": "escape",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-16873",
+  "messages": []
+}

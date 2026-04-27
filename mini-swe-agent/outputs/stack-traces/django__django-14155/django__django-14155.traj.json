@@ -1,0 +1,1148 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/urlpatterns_reverse/test_partial_repr.py b/tests/urlpatterns_reverse/test_partial_repr.py\nnew file mode 100644\nindex 0000000000..91f121a11b\n--- /dev/null\n+++ b/tests/urlpatterns_reverse/test_partial_repr.py\n@@ -0,0 +1,132 @@\n+\"\"\"\n+Tests for ResolverMatch.__repr__() with functools.partial() views.\n+\n+When a partial function is passed as the view, the __repr__ should show the\n+underlying function's path, not 'functools.partial'.\n+\"\"\"\n+from functools import partial\n+\n+from django.test import SimpleTestCase, override_settings\n+from django.urls.resolvers import ResolverMatch\n+\n+\n+def dummy_view(request, *args, **kwargs):\n+    \"\"\"A simple dummy view for testing.\"\"\"\n+    pass\n+\n+\n+class ResolverMatchPartialTests(SimpleTestCase):\n+    \"\"\"\n+    Tests for ResolverMatch handling of functools.partial views.\n+    \"\"\"\n+\n+    def test_partial_func_path_in_repr(self):\n+        \"\"\"\n+        When a functools.partial is used as the view, the __repr__ should\n+        show the underlying function's path, not 'functools.partial'.\n+        \"\"\"\n+        partial_view = partial(dummy_view, template_name='test.html')\n+        match = ResolverMatch(\n+            func=partial_view,\n+            args=(),\n+            kwargs={},\n+            url_name='partial-view',\n+        )\n+        # The repr should show the underlying function path, not 'functools.partial'\n+        # It should contain 'dummy_view' since that's the underlying function name\n+        self.assertIn('dummy_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n+\n+    def test_partial_args_in_repr(self):\n+        \"\"\"\n+        When a functools.partial is used with default arguments, those\n+        arguments should be accessible in the __repr__.\n+        \"\"\"\n+        partial_view = partial(dummy_view, template_name='test.html', debug=False)\n+        match = ResolverMatch(\n+            func=partial_view,\n+            args=(),\n+            kwargs={},\n+            url_name='partial-view',\n+        )\n+        # The repr should contain the partial's default kwargs\n+        # When the fix is applied, these should be visible in kwargs\n+        # For now, we at least check the function path is correct\n+        self.assertIn('dummy_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n+\n+    def test_partial_with_urlpattern(self):\n+        \"\"\"\n+        Test that creating a ResolverMatch with a partial view function\n+        produces a proper __repr__.\n+        \"\"\"\n+        def test_view(request, pk=None):\n+            pass\n+        \n+        # Create a partial view\n+        partial_view = partial(test_view, pk=42)\n+        \n+        # Create a ResolverMatch with the partial\n+        match = ResolverMatch(\n+            func=partial_view,\n+            args=(),\n+            kwargs={},\n+            url_name='test-partial',\n+        )\n+        \n+        # Check that repr shows the underlying function (test_view)\n+        self.assertIn('test_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n+\n+\n+class ResolverMatchPartialIntegrationTests(SimpleTestCase):\n+    \"\"\"\n+    Integration tests using actual URL resolution with partial views.\n+    \"\"\"\n+    @override_settings(ROOT_URLCONF='urlpatterns_reverse.urls')\n+    def test_resolve_partial_view(self):\n+        \"\"\"\n+        Test that resolving a URL with a partial view function\n+        produces a ResolverMatch with a proper __repr__ showing\n+        the underlying function, not 'functools.partial'.\n+        \"\"\"\n+        from django.urls import resolve\n+        \n+        # Resolve a URL that uses the empty_view_partial which is\n+        # a functools.partial\n+        match = resolve('/partial/')\n+        \n+        # The repr should show the underlying function (empty_view),\n+        # not 'functools.partial'\n+        self.assertIn('empty_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n+\n+    @override_settings(ROOT_URLCONF='urlpatterns_reverse.urls')\n+    def test_resolve_nested_partial_view(self):\n+        \"\"\"\n+        Test that resolving a URL with a nested partial view function\n+        produces a ResolverMatch with a proper __repr__.\n+        \"\"\"\n+        from django.urls import resolve\n+        \n+        # Resolve a URL that uses empty_view_nested_partial\n+        match = resolve('/partial_nested/')\n+        \n+        # The repr should show the underlying function (empty_view)\n+        self.assertIn('empty_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n+\n+    @override_settings(ROOT_URLCONF='urlpatterns_reverse.urls')\n+    def test_resolve_wrapped_partial_view(self):\n+        \"\"\"\n+        Test that resolving a URL with a wrapped partial view function\n+        (using update_wrapper) produces a ResolverMatch with a proper __repr__.\n+        \"\"\"\n+        from django.urls import resolve\n+        \n+        # Resolve a URL that uses empty_view_wrapped\n+        match = resolve('/partial_wrapped/')\n+        \n+        # The repr should show the underlying function (empty_view)\n+        self.assertIn('empty_view', repr(match))\n+        self.assertNotIn('functools.partial', repr(match))\n",
+    "stack_traces": [],
+    "test_output": "test_resolve_nested_partial_view (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests)\nTest that resolving a URL with a nested partial view function ... FAIL\ntest_resolve_partial_view (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests)\nTest that resolving a URL with a partial view function ... FAIL\ntest_resolve_wrapped_partial_view (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests)\nTest that resolving a URL with a wrapped partial view function ... ok\ntest_partial_args_in_repr (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nWhen a functools.partial is used with default arguments, those ... FAIL\ntest_partial_func_path_in_repr (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nWhen a functools.partial is used as the view, the __repr__ should ... FAIL\ntest_partial_with_urlpattern (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nTest that creating a ResolverMatch with a partial view function ... FAIL\n\n======================================================================\nFAIL: test_resolve_nested_partial_view (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests)\nTest that resolving a URL with a nested partial view function\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 430, in inner\n    return func(*args, **kwargs)\n  File \"/testbed/tests/urlpatterns_reverse/test_partial_repr.py\", line 116, in test_resolve_nested_partial_view\n    self.assertIn('empty_view', repr(match))\nAssertionError: 'empty_view' not found in 'ResolverMatch(func=functools.partial, args=(), kwargs={}, url_name=partial_nested, app_names=[], namespaces=[], route=partial_nested/)'\n\n======================================================================\nFAIL: test_resolve_partial_view (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests)\nTest that resolving a URL with a partial view function\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 430, in inner\n    return func(*args, **kwargs)\n  File \"/testbed/tests/urlpatterns_reverse/test_partial_repr.py\", line 101, in test_resolve_partial_view\n    self.assertIn('empty_view', repr(match))\nAssertionError: 'empty_view' not found in 'ResolverMatch(func=functools.partial, args=(), kwargs={}, url_name=partial, app_names=[], namespaces=[], route=partial/)'\n\n======================================================================\nFAIL: test_partial_args_in_repr (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nWhen a functools.partial is used with default arguments, those\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/urlpatterns_reverse/test_partial_repr.py\", line 55, in test_partial_args_in_repr\n    self.assertIn('dummy_view', repr(match))\nAssertionError: 'dummy_view' not found in 'ResolverMatch(func=functools.partial, args=(), kwargs={}, url_name=partial-view, app_names=[], namespaces=[], route=None)'\n\n======================================================================\nFAIL: test_partial_func_path_in_repr (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nWhen a functools.partial is used as the view, the __repr__ should\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/urlpatterns_reverse/test_partial_repr.py\", line 37, in test_partial_func_path_in_repr\n    self.assertIn('dummy_view', repr(match))\nAssertionError: 'dummy_view' not found in 'ResolverMatch(func=functools.partial, args=(), kwargs={}, url_name=partial-view, app_names=[], namespaces=[], route=None)'\n\n======================================================================\nFAIL: test_partial_with_urlpattern (urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests)\nTest that creating a ResolverMatch with a partial view function\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/urlpatterns_reverse/test_partial_repr.py\", line 78, in test_partial_with_urlpattern\n    self.assertIn('test_view', repr(match))\nAssertionError: 'test_view' not found in 'ResolverMatch(func=functools.partial, args=(), kwargs={}, url_name=test-partial, app_names=[], namespaces=[], route=None)'\n\n----------------------------------------------------------------------\nRan 6 tests in 0.006s\n\nFAILED (failures=5)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 urlpatterns_reverse.test_partial_repr` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application urlpatterns_reverse\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests.test_resolve_nested_partial_view": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 425,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 393,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 454,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 147,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 126,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 425,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 393,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 454,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 188,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 201,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 272,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 215,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 219,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 49,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 35,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 52,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 80,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 106,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 113,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 125,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 131,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 138,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 147,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 92,
+            "func": "clear_url_caches",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 126,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 155,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 166,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 176,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 185,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 104,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/files/storage.py",
+            "line": 193,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 104,
+            "func": "test_resolve_nested_partial_view",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 21,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 138,
+            "func": "get_urlconf",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 68,
+            "func": "get_resolver",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 64,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 74,
+            "func": "_get_cached_resolver",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 149,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 550,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 156,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 94,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 187,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 164,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 595,
+            "func": "url_patterns",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 588,
+            "func": "urlconf_module",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "tests/urlpatterns_reverse/urls.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "tests/urlpatterns_reverse/views.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/contrib/auth/decorators.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/shortcuts.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "tests/urlpatterns_reverse/views.py",
+            "line": 38,
+            "func": "ViewClass",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "tests/urlpatterns_reverse/views.py",
+            "line": 46,
+            "func": "LazyRedirectView",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 194,
+            "func": "__wrapper__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 93,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 109,
+            "func": "__prepare_class__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 131,
+            "func": "__promise__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/contrib/auth/decorators.py",
+            "line": 10,
+            "func": "user_passes_test",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/contrib/auth/decorators.py",
+            "line": 17,
+            "func": "decorator",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/urls/conf.py",
+            "line": 57,
+            "func": "_path",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 205,
+            "func": "_route_to_regex",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 246,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 383,
+            "func": "_setup",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 342,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/urls/conf.py",
+            "line": 12,
+            "func": "include",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "tests/urlpatterns_reverse/included_urls.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "tests/urlpatterns_reverse/included_no_kwargs_urls.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "tests/urlpatterns_reverse/extra_urls.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "tests/urlpatterns_reverse/included_urls2.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 529,
+            "func": "_extend_tried",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 534,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 290,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 536,
+            "func": "_join_route",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 43,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 61,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 396,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 478,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 175,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "urlpatterns_reverse.test_partial_repr.ResolverMatchPartialIntegrationTests.test_resolve_partial_view": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 425,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 393,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 454,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 147,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 126,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 425,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 393,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 454,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 188,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 201,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 272,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 215,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 49,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 35,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 52,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 80,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 106,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 113,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 125,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 131,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 138,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 147,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 92,
+            "func": "clear_url_caches",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 126,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 155,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 166,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 176,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 185,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 104,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/files/storage.py",
+            "line": 193,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 86,
+            "func": "test_resolve_partial_view",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 21,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 138,
+            "func": "get_urlconf",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 68,
+            "func": "get_resolver",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 64,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 74,
+            "func": "_get_cached_resolver",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 149,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 550,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 156,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 94,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 187,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 164,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 595,
+            "func": "url_patterns",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 588,
+            "func": "urlconf_module",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 529,
+            "func": "_extend_tried",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 534,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 290,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 536,
+            "func": "_join_route",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 43,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 61,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 396,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 478,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 175,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests.test_partial_args_in_repr": {
+        "exception_frames": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 40,
+            "func": "test_partial_args_in_repr",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 40,
+            "func": "test_partial_args_in_repr",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 33,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 61,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests.test_partial_func_path_in_repr": {
+        "exception_frames": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 23,
+            "func": "test_partial_func_path_in_repr",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 23,
+            "func": "test_partial_func_path_in_repr",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 33,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 61,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "urlpatterns_reverse.test_partial_repr.ResolverMatchPartialTests.test_partial_with_urlpattern": {
+        "exception_frames": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 58,
+            "func": "test_partial_with_urlpattern",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/urlpatterns_reverse/test_partial_repr.py",
+            "line": 58,
+            "func": "test_partial_with_urlpattern",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 33,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 61,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-14155",
+  "messages": []
+}

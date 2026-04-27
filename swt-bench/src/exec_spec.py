@@ -11,6 +11,7 @@ from src.constants import (
     MAP_REPO_TO_INSTALL,
     MAP_VERSION_TO_INSTALL,
     MAP_REPO_TO_TEST_FRAMEWORK,
+    MAP_REPO_TO_TEST_FRAMEWORK_VERBOSE,
     USE_X86,
 )
 from src.dockerfiles import (
@@ -87,14 +88,15 @@ class ExecSpec:
         # otherwise execute the test suite command
         test_command = " ".join(
             [
-                MAP_REPO_TO_TEST_FRAMEWORK[self.repo][self.version],
+                MAP_REPO_TO_TEST_FRAMEWORK_VERBOSE[self.repo][self.version], # verbose mode produces stack traces
                 *self.test_directives,
             ]
         )
+
         if not self.compute_coverage:
             return test_command
 
-        cleaned_test_cmd = test_command.replace("--tb=no", "")
+        cleaned_test_cmd = test_command.replace("--tb=no", "--tb=long")
 
         if re.findall(r"python(3?) -m", cleaned_test_cmd):
             trace_test_cmd = re.subn(r"python(3?) -m", f"{trace_pattern} -m", cleaned_test_cmd, 1)

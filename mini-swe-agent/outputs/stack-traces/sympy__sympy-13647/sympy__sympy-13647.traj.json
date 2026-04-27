@@ -1,0 +1,997 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/matrices/tests/test_col_insert_bug.py b/sympy/matrices/tests/test_col_insert_bug.py\nnew file mode 100644\nindex 000000000..15f4810c4\n--- /dev/null\n+++ b/sympy/matrices/tests/test_col_insert_bug.py\n@@ -0,0 +1,210 @@\n+\"\"\"\n+Test for Matrix.col_insert() bug.\n+\n+This test reproduces the bug described in the PR where Matrix.col_insert()\n+produces incorrect results when inserting columns into a matrix.\n+\n+Bug: When inserting columns at position 3 in a 6x6 identity matrix,\n+the identity portion to the right of the inserted columns gets shifted\n+incorrectly (it ends up in the wrong rows instead of the original rows).\n+\"\"\"\n+\n+from sympy import Matrix, eye, ones\n+\n+\n+def test_col_insert_identity_with_insert_in_middle():\n+    \"\"\"\n+    Test that col_insert correctly handles insertion into the middle\n+    of an identity matrix.\n+    \n+    This is the exact example from the bug report:\n+    - Start with a 6x6 identity matrix\n+    - Insert a 6x2 matrix of 2s at column position 3\n+    - The result should be a 6x8 matrix where:\n+      - Columns 0, 1, 2 are from original columns 0, 1, 2\n+      - Columns 3, 4 are from the inserted matrix\n+      - Columns 5, 6, 7 are from original columns 3, 4, 5\n+    \"\"\"\n+    M = eye(6)\n+    V = 2 * ones(6, 2)\n+    result = M.col_insert(3, V)\n+    \n+    # Expected result: 6x8 matrix\n+    assert result.shape == (6, 8), f\"Expected shape (6, 8), got {result.shape}\"\n+    \n+    # The right 3x3 identity block should be in rows 3,4,5 and columns 5,6,7\n+    # (i.e., original positions shifted right by 2 due to insertion)\n+    expected_right_block = eye(3)\n+    actual_right_block = result[3:6, 5:8]\n+    assert actual_right_block == expected_right_block, \\\n+        f\"Right block should be eye(3), got:\\n{actual_right_block}\"\n+    \n+    # Also verify the left part is correct\n+    assert result[0, 0] == 1\n+    assert result[1, 1] == 1\n+    assert result[2, 2] == 1\n+    \n+    # Verify zeros in left block are correct\n+    assert result[1, 0] == 0\n+    assert result[2, 0] == 0\n+    assert result[2, 1] == 0\n+    \n+    # Verify the inserted columns are correct\n+    assert result[0, 3] == 2\n+    assert result[3, 4] == 2\n+    assert result[5, 3] == 2\n+\n+\n+def test_col_insert_preserves_original_structure():\n+    \"\"\"\n+    Test that col_insert preserves the structure of the original matrix\n+    after the insertion point.\n+    \"\"\"\n+    # Create a simple matrix with a clear structure\n+    M = Matrix([\n+        [1, 2, 3, 4],\n+        [5, 6, 7, 8],\n+        [9, 10, 11, 12]\n+    ])\n+    V = Matrix([[0, 0], [0, 0], [0, 0]])  # Insert zeros\n+    \n+    # Insert at position 1\n+    result = M.col_insert(1, V)\n+    \n+    # Expected result\n+    expected = Matrix([\n+        [1, 0, 0, 2, 3, 4],\n+        [5, 0, 0, 6, 7, 8],\n+        [9, 0, 0, 10, 11, 12]\n+    ])\n+    \n+    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\n+\n+\n+def test_col_insert_at_beginning():\n+    \"\"\"Test col_insert at position 0.\"\"\"\n+    M = eye(3)\n+    V = 2 * ones(3, 2)\n+    result = M.col_insert(0, V)\n+    \n+    # Result should be 3x5\n+    assert result.shape == (3, 5)\n+    \n+    # Columns 0,1 should be the inserted 2s\n+    # Columns 2,3,4 should be the identity\n+    expected = Matrix([\n+        [2, 2, 1, 0, 0],\n+        [2, 2, 0, 1, 0],\n+        [2, 2, 0, 0, 1]\n+    ])\n+    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\n+\n+\n+def test_col_insert_at_end():\n+    \"\"\"Test col_insert at the end (position = cols).\"\"\"\n+    M = eye(3)\n+    V = 2 * ones(3, 2)\n+    result = M.col_insert(3, V)\n+    \n+    # Result should be 3x5\n+    assert result.shape == (3, 5)\n+    \n+    # Columns 0,1,2 should be the identity\n+    # Columns 3,4 should be the inserted 2s\n+    expected = Matrix([\n+        [1, 0, 0, 2, 2],\n+        [0, 1, 0, 2, 2],\n+        [0, 0, 1, 2, 2]\n+    ])\n+    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\n+\n+\n+def test_col_insert_single_column():\n+    \"\"\"Test col_insert with a single column.\"\"\"\n+    M = Matrix([\n+        [1, 2, 3],\n+        [4, 5, 6]\n+    ])\n+    V = Matrix([[10], [20]])  # Single column to insert\n+    result = M.col_insert(1, V)\n+    \n+    # Result should be 2x4\n+    assert result.shape == (2, 4)\n+    \n+    # Columns 0 should be original column 0\n+    # Column 1 should be the inserted values\n+    # Columns 2,3 should be original columns 1,2\n+    expected = Matrix([\n+        [1, 10, 2, 3],\n+        [4, 20, 5, 6]\n+    ])\n+    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\n+\n+\n+def test_col_insert_general_case():\n+    \"\"\"\n+    General test case for col_insert.\n+    \n+    Inserting columns should preserve the relative positions of all\n+    original columns - just with a gap for the inserted columns.\n+    \"\"\"\n+    # Create a matrix where each column has unique, identifiable values\n+    M = Matrix([\n+        [1,  2,  3,  4,  5],\n+        [6,  7,  8,  9,  10],\n+        [11, 12, 13, 14, 15]\n+    ])\n+    \n+    # Insert a single column at position 2\n+    V = Matrix([[100], [200], [300]])\n+    result = M.col_insert(2, V)\n+    \n+    # Expected: column 0 -> result col 0, column 1 -> result col 1,\n+    #           inserted col -> result col 2, \n+    #           column 2 -> result col 3, column 3 -> result col 4, column 4 -> result col 5\n+    expected = Matrix([\n+        [1, 2, 100, 3, 4, 5],\n+        [6, 7, 200, 8, 9, 10],\n+        [11, 12, 300, 13, 14, 15]\n+    ])\n+    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\n+\n+\n+if __name__ == \"__main__\":\n+    print(\"Testing col_insert bug...\")\n+    \n+    try:\n+        test_col_insert_identity_with_insert_in_middle()\n+        print(\"FAIL: test_col_insert_identity_with_insert_in_middle should have failed but passed\")\n+    except AssertionError as e:\n+        print(f\"PASS (expected failure): test_col_insert_identity_with_insert_in_middle - {e}\")\n+    \n+    try:\n+        test_col_insert_preserves_original_structure()\n+        print(\"FAIL: test_col_insert_preserves_original_structure should have failed but passed\")\n+    except AssertionError as e:\n+        print(f\"PASS (expected failure): test_col_insert_preserves_original_structure - {e}\")\n+    \n+    try:\n+        test_col_insert_at_beginning()\n+        print(\"PASS: test_col_insert_at_beginning\")\n+    except AssertionError as e:\n+        print(f\"FAIL: test_col_insert_at_beginning - {e}\")\n+        \n+    try:\n+        test_col_insert_at_end()\n+        print(\"PASS: test_col_insert_at_end\")\n+    except AssertionError as e:\n+        print(f\"FAIL: test_col_insert_at_end - {e}\")\n+        \n+    try:\n+        test_col_insert_single_column()\n+        print(\"PASS: test_col_insert_single_column\")\n+    except AssertionError as e:\n+        print(f\"FAIL: test_col_insert_single_column - {e}\")\n+        \n+    try:\n+        test_col_insert_general_case()\n+        print(\"FAIL: test_col_insert_general_case should have failed but passed\")\n+    except AssertionError as e:\n+        print(f\"PASS (expected failure): test_col_insert_general_case - {e}\")\n",
+    "stack_traces": [],
+    "test_output": "/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/core/containers.py:271: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  class OrderedSet(collections.MutableSet):\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n/testbed/sympy/core/basic.py:3: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Mapping, defaultdict\n/testbed/sympy/core/containers.py:271: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  class OrderedSet(collections.MutableSet):\n/testbed/sympy/plotting/plot.py:28: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n  from collections import Callable\n\nERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/matrices/tests/test_col_insert_bug.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        4602982\nhash randomization: on (PYTHONHASHSEED=1689617141)\n\nsympy/matrices/tests/test_col_insert_bug.py[6] \ntest_col_insert_identity_with_insert_in_middle F\ntest_col_insert_preserves_original_structure F\ntest_col_insert_at_beginning ok\ntest_col_insert_at_end ok\ntest_col_insert_single_column F\ntest_col_insert_general_case F                                            [FAIL]\n\n\n________________________________________________________________________________\n sympy/matrices/tests/test_col_insert_bug.py:test_col_insert_identity_with_insert_in_middle \n  File \"/testbed/sympy/matrices/tests/test_col_insert_bug.py\", line 39, in test_col_insert_identity_with_insert_in_middle\n    assert actual_right_block == expected_right_block, \\\nAssertionError: Right block should be eye(3), got:\nMatrix([[0, 0, 0], [0, 0, 0], [0, 0, 0]])\n________________________________________________________________________________\n sympy/matrices/tests/test_col_insert_bug.py:test_col_insert_preserves_original_structure \n  File \"/testbed/sympy/matrices/tests/test_col_insert_bug.py\", line 81, in test_col_insert_preserves_original_structure\n    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\nAssertionError: Expected:\nMatrix([[1, 0, 0, 2, 3, 4], [5, 0, 0, 6, 7, 8], [9, 0, 0, 10, 11, 12]])\n\nGot:\nMatrix([[1, 0, 0, 1, 2, 3], [5, 0, 0, 5, 6, 7], [9, 0, 0, 9, 10, 11]])\n________________________________________________________________________________\n__ sympy/matrices/tests/test_col_insert_bug.py:test_col_insert_single_column ___\n  File \"/testbed/sympy/matrices/tests/test_col_insert_bug.py\", line 141, in test_col_insert_single_column\n    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\nAssertionError: Expected:\nMatrix([[1, 10, 2, 3], [4, 20, 5, 6]])\n\nGot:\nMatrix([[1, 10, 1, 2], [4, 20, 4, 5]])\n________________________________________________________________________________\n___ sympy/matrices/tests/test_col_insert_bug.py:test_col_insert_general_case ___\n  File \"/testbed/sympy/matrices/tests/test_col_insert_bug.py\", line 170, in test_col_insert_general_case\n    assert result == expected, f\"Expected:\\n{expected}\\n\\nGot:\\n{result}\"\nAssertionError: Expected:\nMatrix([[1, 2, 100, 3, 4, 5], [6, 7, 200, 8, 9, 10], [11, 12, 300, 13, 14, 15]])\n\nGot:\nMatrix([[1, 2, 100, 1, 2, 3], [6, 7, 200, 6, 7, 8], [11, 12, 300, 11, 12, 13]])\n\n============= tests finished: 2 passed, 4 failed, in 0.01 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/matrices/tests/test_col_insert_bug.py::test_col_insert_identity_with_insert_in_middle": {
+        "exception_frames": [
+          {
+            "file": "sympy/matrices/tests/test_col_insert_bug.py",
+            "line": 15,
+            "func": "test_col_insert_identity_with_insert_in_middle",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 1068,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 761,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 618,
+            "func": "_eval_eye",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 413,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1928,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2053,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 74,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1974,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/matrices/tests/test_col_insert_bug.py",
+            "line": 15,
+            "func": "test_col_insert_identity_with_insert_in_middle",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 1068,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 761,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 308,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 618,
+            "func": "_eval_eye",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 413,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1928,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2053,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 74,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1974,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 620,
+            "func": "entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2125,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2171,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 96,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 1327,
+            "func": "ones",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 857,
+            "func": "ones",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 642,
+            "func": "_eval_ones",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 122,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2071,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2261,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 275,
+            "func": "_eval_scalar_rmul",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 276,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2087,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 182,
+            "func": "col_insert",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1858,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 81,
+            "func": "_eval_col_insert",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 92,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2144,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 370,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 406,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 313,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 58,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2862,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 256,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 198,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 509,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 4034,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2174,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2153,
+            "func": "__ge__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2067,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 275,
+            "func": "extract",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 326,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 332,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2273,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 156,
+            "func": "_eval_extract",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 161,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 46,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 12,
+            "func": "sympify_matrix",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 325,
+            "func": "as_immutable",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 527,
+            "func": "tolist",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 279,
+            "func": "_eval_tolist",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 46,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 48,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 50,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 112,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 646,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 114,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2004,
+            "func": "__int__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 410,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 108,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 104,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 64,
+            "func": "_mat",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 28,
+            "func": "_compare_sequence",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1907,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 393,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 780,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 196,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 231,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 235,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 725,
+            "func": "_print_Zero",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      },
+      "sympy/matrices/tests/test_col_insert_bug.py::test_col_insert_preserves_original_structure": {
+        "exception_frames": [
+          {
+            "file": "sympy/matrices/tests/test_col_insert_bug.py",
+            "line": 58,
+            "func": "test_col_insert_preserves_original_structure",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 410,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 413,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1928,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 74,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1974,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/matrices/tests/test_col_insert_bug.py",
+            "line": 58,
+            "func": "test_col_insert_preserves_original_structure",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 410,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 413,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1928,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 256,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 198,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 74,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1974,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 96,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 182,
+            "func": "col_insert",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1858,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 81,
+            "func": "_eval_col_insert",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 308,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2053,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 92,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 84,
+            "func": "entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2144,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 370,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 406,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 313,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 58,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2862,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 509,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 4034,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2174,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2171,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2153,
+            "func": "__ge__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2067,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 46,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 12,
+            "func": "sympify_matrix",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 325,
+            "func": "as_immutable",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 527,
+            "func": "tolist",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 279,
+            "func": "_eval_tolist",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 282,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 46,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 48,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 50,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 112,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 646,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 114,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2004,
+            "func": "__int__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 108,
+            "func": "rows",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 104,
+            "func": "cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/immutable.py",
+            "line": 64,
+            "func": "_mat",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 28,
+            "func": "_compare_sequence",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2125,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1907,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 393,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 780,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 196,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 231,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 235,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 523,
+            "func": "_print_Integer",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 725,
+            "func": "_print_Zero",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sympy__sympy-13647",
+  "messages": []
+}

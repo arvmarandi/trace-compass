@@ -1,0 +1,275 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/dispatch/test_signal_logging.py b/tests/dispatch/test_signal_logging.py\nnew file mode 100644\nindex 0000000000..e1235354d0\n--- /dev/null\n+++ b/tests/dispatch/test_signal_logging.py\n@@ -0,0 +1,94 @@\n+\"\"\"\n+Tests for Signal.send_robust() logging behavior.\n+\n+These tests verify that exceptions raised in signal receivers are logged,\n+which helps users identify and debug issues with their signal handlers.\n+\"\"\"\n+import logging\n+\n+from django.dispatch import Signal\n+from django.test import SimpleTestCase\n+\n+\n+class SendRobustLoggingTests(SimpleTestCase):\n+    \"\"\"Tests for logging in Signal.send_robust().\"\"\"\n+\n+    def test_send_robust_logs_exception(self):\n+        \"\"\"\n+        send_robust() should log exceptions raised by receivers.\n+        \n+        When a receiver raises an exception, send_robust() catches it,\n+        returns it as part of the response list, and logs the exception.\n+        This allows users to see errors in their error handling tools\n+        like Sentry.\n+        \"\"\"\n+        signal = Signal()\n+        \n+        def failing_receiver(**kwargs):\n+            raise ValueError(\"Receiver failed intentionally\")\n+        \n+        signal.connect(failing_receiver)\n+        \n+        # The signal should still complete and return the error\n+        result = signal.send_robust(sender=self)\n+        self.assertEqual(len(result), 1)\n+        self.assertIsInstance(result[0][1], ValueError)\n+        self.assertEqual(str(result[0][1]), \"Receiver failed intentionally\")\n+        \n+        # The exception should also be logged\n+        with self.assertLogs('django.dispatch', level='ERROR') as cm:\n+            signal.send_robust(sender=self)\n+        \n+        # Check that the logged message contains information about the exception\n+        log_output = '\\n'.join(cm.output)\n+        self.assertIn('ValueError', log_output)\n+        self.assertIn('Receiver failed intentionally', log_output)\n+        \n+        signal.disconnect(failing_receiver)\n+\n+    def test_send_robust_logs_exception_with_traceback(self):\n+        \"\"\"\n+        send_robust() should log exceptions with full traceback information.\n+        \n+        This helps users identify exactly where in their receiver the\n+        error occurred.\n+        \"\"\"\n+        signal = Signal()\n+        \n+        def failing_receiver(**kwargs):\n+            raise RuntimeError(\"Error in receiver\")\n+        \n+        signal.connect(failing_receiver)\n+        \n+        # Verify logging captures exception details\n+        with self.assertLogs('django.dispatch', level='ERROR') as cm:\n+            signal.send_robust(sender=self)\n+        \n+        log_output = '\\n'.join(cm.output)\n+        # The log should contain the exception type and message\n+        self.assertIn('RuntimeError', log_output)\n+        self.assertIn('Error in receiver', log_output)\n+        \n+        signal.disconnect(failing_receiver)\n+\n+    def test_send_robust_no_log_when_successful(self):\n+        \"\"\"\n+        send_robust() should not log when receivers succeed.\n+        \n+        Logging should only happen when exceptions are raised.\n+        \"\"\"\n+        signal = Signal()\n+        \n+        def successful_receiver(**kwargs):\n+            return \"success\"\n+        \n+        signal.connect(successful_receiver)\n+        \n+        # No log output should be produced for successful calls\n+        with self.assertNoLogs('django.dispatch', level='ERROR'):\n+            result = signal.send_robust(sender=self)\n+        \n+        self.assertEqual(len(result), 1)\n+        self.assertEqual(result[0][1], \"success\")\n+        \n+        signal.disconnect(successful_receiver)\n",
+    "stack_traces": [],
+    "test_output": "test_send_robust_logs_exception (dispatch.test_signal_logging.SendRobustLoggingTests) ... FAIL\ntest_send_robust_logs_exception_with_traceback (dispatch.test_signal_logging.SendRobustLoggingTests) ... FAIL\ntest_send_robust_no_log_when_successful (dispatch.test_signal_logging.SendRobustLoggingTests) ... ERROR\n\n======================================================================\nERROR: test_send_robust_no_log_when_successful (dispatch.test_signal_logging.SendRobustLoggingTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dispatch/test_signal_logging.py\", line 88, in test_send_robust_no_log_when_successful\n    with self.assertNoLogs('django.dispatch', level='ERROR'):\nAttributeError: 'SendRobustLoggingTests' object has no attribute 'assertNoLogs'\n\n======================================================================\nFAIL: test_send_robust_logs_exception (dispatch.test_signal_logging.SendRobustLoggingTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dispatch/test_signal_logging.py\", line 40, in test_send_robust_logs_exception\n    signal.send_robust(sender=self)\nAssertionError: no logs of level ERROR or higher triggered on django.dispatch\n\n======================================================================\nFAIL: test_send_robust_logs_exception_with_traceback (dispatch.test_signal_logging.SendRobustLoggingTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dispatch/test_signal_logging.py\", line 65, in test_send_robust_logs_exception_with_traceback\n    signal.send_robust(sender=self)\nAssertionError: no logs of level ERROR or higher triggered on django.dispatch\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nFAILED (failures=2, errors=1)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 dispatch.test_signal_logging` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application dispatch\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "dispatch.test_signal_logging.SendRobustLoggingTests.test_send_robust_logs_exception": {
+        "exception_frames": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 16,
+            "func": "test_send_robust_logs_exception",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 182,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 27,
+            "func": "failing_receiver",
+            "is_test": true,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 16,
+            "func": "test_send_robust_logs_exception",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 30,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 53,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 147,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 9,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 216,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 113,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 182,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 225,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 27,
+            "func": "failing_receiver",
+            "is_test": true,
+            "call_depth": 2
+          }
+        ]
+      },
+      "dispatch.test_signal_logging.SendRobustLoggingTests.test_send_robust_logs_exception_with_traceback": {
+        "exception_frames": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 49,
+            "func": "test_send_robust_logs_exception_with_traceback",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 182,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 58,
+            "func": "failing_receiver",
+            "is_test": true,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 49,
+            "func": "test_send_robust_logs_exception_with_traceback",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 30,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 53,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 147,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 9,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 216,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 113,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 182,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 225,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 58,
+            "func": "failing_receiver",
+            "is_test": true,
+            "call_depth": 2
+          }
+        ]
+      },
+      "dispatch.test_signal_logging.SendRobustLoggingTests.test_send_robust_no_log_when_successful": {
+        "exception_frames": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 74,
+            "func": "test_send_robust_no_log_when_successful",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dispatch/test_signal_logging.py",
+            "line": 74,
+            "func": "test_send_robust_no_log_when_successful",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 30,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 53,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 147,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 9,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 216,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 113,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 264,
+            "func": "_remove_receiver",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13768",
+  "messages": []
+}

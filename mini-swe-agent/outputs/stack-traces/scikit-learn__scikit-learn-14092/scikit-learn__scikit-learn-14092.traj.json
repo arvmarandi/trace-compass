@@ -1,0 +1,1131 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/test_nca_gridsearch_compatibility.py b/test_nca_gridsearch_compatibility.py\nnew file mode 100644\nindex 000000000..ad3591aa9\n--- /dev/null\n+++ b/test_nca_gridsearch_compatibility.py\n@@ -0,0 +1,103 @@\n+\"\"\"\n+Test that NCA works correctly with GridSearchCV when numpy types are used.\n+\n+This test addresses the issue where NCA fails in GridSearchCV due to too strict\n+parameter checks. When param grids contain numpy types (like np.int64 for\n+n_components and np.float64 for tol), NCA should accept these values instead\n+of raising TypeError.\n+\n+See: https://github.com/scikit-learn/scikit-learn/issues/XXXXX\n+\"\"\"\n+import numpy as np\n+import pytest\n+\n+from sklearn.pipeline import Pipeline\n+from sklearn.model_selection import GridSearchCV, cross_val_score\n+from sklearn.neighbors import NeighborhoodComponentsAnalysis\n+from sklearn.neighbors import KNeighborsClassifier\n+from sklearn.datasets import make_classification\n+\n+\n+def test_nca_with_numpy_types_in_gridsearch():\n+    \"\"\"Test that NCA works with numpy types passed via GridSearchCV.\n+    \n+    This test reproduces the issue where GridSearchCV passes numpy types\n+    (like np.int64 and np.float64) to NCA parameters, causing TypeError\n+    due to strict type checking.\n+    \n+    Parameters like 'tol=1' (int instead of float) and \n+    'n_components=np.int64' should be accepted.\n+    \"\"\"\n+    X, y = make_classification(n_samples=100, n_features=10, random_state=42)\n+    \n+    nca = NeighborhoodComponentsAnalysis()\n+    knn = KNeighborsClassifier(n_neighbors=3)\n+\n+    pipe = Pipeline([('nca', nca), ('knn', knn)])\n+    \n+    # Create params using numpy types that would normally fail\n+    # tol=1 is int, not float; n_components is np.int64, not int\n+    params = {\n+        'nca__tol': [0.1, 0.5, 1],  # 1 is int, not float\n+        'nca__n_components': np.arange(1, 5)  # np.int64, not int\n+    }\n+    \n+    gs = GridSearchCV(estimator=pipe, param_grid=params, cv=3)\n+    \n+    # This should not raise TypeError\n+    gs.fit(X, y)\n+    \n+    # Verify that the fit was successful\n+    assert gs.best_score_ is not None\n+    assert gs.best_params_ is not None\n+\n+\n+def test_nca_accepts_numpy_int_for_n_components():\n+    \"\"\"Test that NCA accepts numpy int types for n_components.\n+    \n+    GridSearchCV can pass np.int64 values from np.arange() to n_components.\n+    NCA should accept this value without raising TypeError.\n+    \"\"\"\n+    X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n+    \n+    # np.arange returns numpy int types\n+    n_components = np.int64(2)\n+    \n+    nca = NeighborhoodComponentsAnalysis(n_components=n_components)\n+    nca.fit(X, y)\n+    \n+    assert nca.components_ is not None\n+\n+\n+def test_nca_accepts_numpy_float_for_tol():\n+    \"\"\"Test that NCA accepts numpy float types for tol.\n+    \n+    tol parameter should accept numpy float types like np.float64.\n+    \"\"\"\n+    X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n+    \n+    # np.float64 should work\n+    tol = np.float64(1e-5)\n+    \n+    nca = NeighborhoodComponentsAnalysis(tol=tol)\n+    nca.fit(X, y)\n+    \n+    assert nca.components_ is not None\n+\n+\n+def test_nca_accepts_int_for_float_param():\n+    \"\"\"Test that NCA accepts int values for float parameters like tol.\n+    \n+    In GridSearch, passing tol=1 (int literal) should work since 1 == 1.0.\n+    \"\"\"\n+    X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n+    \n+    # Passing an int literal should work since it's a valid value for tol\n+    nca = NeighborhoodComponentsAnalysis(tol=1)\n+    nca.fit(X, y)\n+    \n+    assert nca.components_ is not None\n+\n+\n+if __name__ == '__main__':\n+    pytest.main([__file__, '-v'])\n",
+    "stack_traces": [
+      "___________________ test_nca_with_numpy_types_in_gridsearch ____________________\n\n    def test_nca_with_numpy_types_in_gridsearch():\n        \"\"\"Test that NCA works with numpy types passed via GridSearchCV.\n    \n        This test reproduces the issue where GridSearchCV passes numpy types\n        (like np.int64 and np.float64) to NCA parameters, causing TypeError\n        due to strict type checking.\n    \n        Parameters like 'tol=1' (int instead of float) and\n        'n_components=np.int64' should be accepted.\n        \"\"\"\n        X, y = make_classification(n_samples=100, n_features=10, random_state=42)\n    \n        nca = NeighborhoodComponentsAnalysis()\n        knn = KNeighborsClassifier(n_neighbors=3)\n    \n        pipe = Pipeline([('nca', nca), ('knn', knn)])\n    \n        # Create params using numpy types that would normally fail\n        # tol=1 is int, not float; n_components is np.int64, not int\n        params = {\n            'nca__tol': [0.1, 0.5, 1],  # 1 is int, not float\n            'nca__n_components': np.arange(1, 5)  # np.int64, not int\n        }\n    \n        gs = GridSearchCV(estimator=pipe, param_grid=params, cv=3)\n    \n        # This should not raise TypeError\n>       gs.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:48: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = GridSearchCV(cv=3, error_score=nan,\n             estimator=Pipeline(memory=None,\n                                steps... 1]},\n             pre_dispatch='2*n_jobs', refit=True, return_train_score=False,\n             scoring=None, verbose=0)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\ngroups = None, fit_params = {}\nestimator = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nrefit_metric = 'score'\nevaluate_candidates = <function BaseSearchCV.fit.<locals>.evaluate_candidates at 0x7ffffef6e730>\nrefit_start_time = 1777250478.4530327\n\n    def fit(self, X, y=None, groups=None, **fit_params):\n        \"\"\"Run fit with all sets of parameters.\n    \n        Parameters\n        ----------\n    \n        X : array-like, shape = [n_samples, n_features]\n            Training vector, where n_samples is the number of samples and\n            n_features is the number of features.\n    \n        y : array-like, shape = [n_samples] or [n_samples, n_output], optional\n            Target relative to X for classification or regression;\n            None for unsupervised learning.\n    \n        groups : array-like, with shape (n_samples,), optional\n            Group labels for the samples used while splitting the dataset into\n            train/test set.\n    \n        **fit_params : dict of string -> object\n            Parameters passed to the ``fit`` method of the estimator\n        \"\"\"\n        estimator = self.estimator\n        cv = check_cv(self.cv, y, classifier=is_classifier(estimator))\n    \n        scorers, self.multimetric_ = _check_multimetric_scoring(\n            self.estimator, scoring=self.scoring)\n    \n        if self.multimetric_:\n            if self.refit is not False and (\n                    not isinstance(self.refit, str) or\n                    # This will work for both dict / list (tuple)\n                    self.refit not in scorers) and not callable(self.refit):\n                raise ValueError(\"For multi-metric scoring, the parameter \"\n                                 \"refit must be set to a scorer key or a \"\n                                 \"callable to refit an estimator with the \"\n                                 \"best parameter setting on the whole \"\n                                 \"data and make the best_* attributes \"\n                                 \"available for that metric. If this is \"\n                                 \"not needed, refit should be set to \"\n                                 \"False explicitly. %r was passed.\"\n                                 % self.refit)\n            else:\n                refit_metric = self.refit\n        else:\n            refit_metric = 'score'\n    \n        X, y, groups = indexable(X, y, groups)\n        n_splits = cv.get_n_splits(X, y, groups)\n    \n        base_estimator = clone(self.estimator)\n    \n        parallel = Parallel(n_jobs=self.n_jobs, verbose=self.verbose,\n                            pre_dispatch=self.pre_dispatch)\n    \n        fit_and_score_kwargs = dict(scorer=scorers,\n                                    fit_params=fit_params,\n                                    return_train_score=self.return_train_score,\n                                    return_n_test_samples=True,\n                                    return_times=True,\n                                    return_parameters=False,\n                                    error_score=self.error_score,\n                                    verbose=self.verbose)\n        results = {}\n        with parallel:\n            all_candidate_params = []\n            all_out = []\n    \n            def evaluate_candidates(candidate_params):\n                candidate_params = list(candidate_params)\n                n_candidates = len(candidate_params)\n    \n                if self.verbose > 0:\n                    print(\"Fitting {0} folds for each of {1} candidates,\"\n                          \" totalling {2} fits\".format(\n                              n_splits, n_candidates, n_candidates * n_splits))\n    \n                out = parallel(delayed(_fit_and_score)(clone(base_estimator),\n                                                       X, y,\n                                                       train=train, test=test,\n                                                       parameters=parameters,\n                                                       **fit_and_score_kwargs)\n                               for parameters, (train, test)\n                               in product(candidate_params,\n                                          cv.split(X, y, groups)))\n    \n                if len(out) < 1:\n                    raise ValueError('No fits were performed. '\n                                     'Was the CV iterator empty? '\n                                     'Were there no candidates?')\n                elif len(out) != n_candidates * n_splits:\n                    raise ValueError('cv.split and cv.get_n_splits returned '\n                                     'inconsistent results. Expected {} '\n                                     'splits, got {}'\n                                     .format(n_splits,\n                                             len(out) // n_candidates))\n    \n                all_candidate_params.extend(candidate_params)\n                all_out.extend(out)\n    \n                nonlocal results\n                results = self._format_results(\n                    all_candidate_params, scorers, n_splits, all_out)\n                return results\n    \n            self._run_search(evaluate_candidates)\n    \n        # For multi-metric evaluation, store the best_index_, best_params_ and\n        # best_score_ iff refit is one of the scorer names\n        # In single metric evaluation, refit_metric is \"score\"\n        if self.refit or not self.multimetric_:\n            # If callable, refit is expected to return the index of the best\n            # parameter set.\n            if callable(self.refit):\n                self.best_index_ = self.refit(results)\n                if not isinstance(self.best_index_, numbers.Integral):\n                    raise TypeError('best_index_ returned is not an integer')\n                if (self.best_index_ < 0 or\n                   self.best_index_ >= len(results[\"params\"])):\n                    raise IndexError('best_index_ index out of range')\n            else:\n                self.best_index_ = results[\"rank_test_%s\"\n                                           % refit_metric].argmin()\n                self.best_score_ = results[\"mean_test_%s\" % refit_metric][\n                                           self.best_index_]\n            self.best_params_ = results[\"params\"][self.best_index_]\n    \n        if self.refit:\n            self.best_estimator_ = clone(base_estimator).set_params(\n                **self.best_params_)\n            refit_start_time = time.time()\n            if y is not None:\n>               self.best_estimator_.fit(X, y, **fit_params)\n\nsklearn/model_selection/_search.py:714: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}\n\n    def fit(self, X, y=None, **fit_params):\n        \"\"\"Fit the model\n    \n        Fit all the transforms one after the other and transform the\n        data, then fit the transformed data using the final estimator.\n    \n        Parameters\n        ----------\n        X : iterable\n            Training data. Must fulfill input requirements of first step of the\n            pipeline.\n    \n        y : iterable, default=None\n            Training targets. Must fulfill label requirements for all steps of\n            the pipeline.\n    \n        **fit_params : dict of string -> object\n            Parameters passed to the ``fit`` method of each step, where\n            each parameter name is prefixed such that parameter ``p`` for step\n            ``s`` has key ``s__p``.\n    \n        Returns\n        -------\n        self : Pipeline\n            This estimator\n        \"\"\"\n>       Xt, fit_params = self._fit(X, y, **fit_params)\n\nsklearn/pipeline.py:346: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}, memory = Memory(location=None)\nfit_transform_one_cached = NotMemorizedFunc(func=<function _fit_transform_one at 0x7fff9cbc66a8>)\nfit_params_steps = {'knn': {}, 'nca': {}}\n\n    def _fit(self, X, y=None, **fit_params):\n        # shallow copy of steps - this should really be steps_\n        self.steps = list(self.steps)\n        self._validate_steps()\n        # Setup the memory\n        memory = check_memory(self.memory)\n    \n        fit_transform_one_cached = memory.cache(_fit_transform_one)\n    \n        fit_params_steps = {name: {} for name, step in self.steps\n                            if step is not None}\n        for pname, pval in fit_params.items():\n            if '__' not in pname:\n                raise ValueError(\n                    \"Pipeline.fit does not accept the {} parameter. \"\n                    \"You can pass parameters to specific steps of your \"\n                    \"pipeline using the stepname__parameter format, e.g. \"\n                    \"`Pipeline.fit(X, y, logisticregression__sample_weight\"\n                    \"=sample_weight)`.\".format(pname))\n            step, param = pname.split('__', 1)\n            fit_params_steps[step][param] = pval\n        for (step_idx,\n             name,\n             transformer) in self._iter(with_final=False,\n                                        filter_passthrough=False):\n            if (transformer is None or transformer == 'passthrough'):\n                with _print_elapsed_time('Pipeline',\n                                         self._log_message(step_idx)):\n                    continue\n    \n            if hasattr(memory, 'location'):\n                # joblib >= 0.12\n                if memory.location is None:\n                    # we do not clone when caching is disabled to\n                    # preserve backward compatibility\n                    cloned_transformer = transformer\n                else:\n                    cloned_transformer = clone(transformer)\n            elif hasattr(memory, 'cachedir'):\n                # joblib < 0.11\n                if memory.cachedir is None:\n                    # we do not clone when caching is disabled to\n                    # preserve backward compatibility\n                    cloned_transformer = transformer\n                else:\n                    cloned_transformer = clone(transformer)\n            else:\n                cloned_transformer = clone(transformer)\n            # Fit or load from cache the current transfomer\n            X, fitted_transformer = fit_transform_one_cached(\n                cloned_transformer, X, y, None,\n                message_clsname='Pipeline',\n                message=self._log_message(step_idx),\n>               **fit_params_steps[name])\n\nsklearn/pipeline.py:311: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NotMemorizedFunc(func=<function _fit_transform_one at 0x7fff9cbc66a8>)\nargs = (NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1...   0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0]), None)\nkwargs = {'message': None, 'message_clsname': 'Pipeline'}\n\n    def __call__(self, *args, **kwargs):\n>       return self.func(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/joblib/memory.py:349: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntransformer = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nweight = None, message_clsname = 'Pipeline', message = None, fit_params = {}\n\n    def _fit_transform_one(transformer,\n                           X,\n                           y,\n                           weight,\n                           message_clsname='',\n                           message=None,\n                           **fit_params):\n        \"\"\"\n        Fits ``transformer`` to ``X`` and ``y``. The transformed result is returned\n        with the fitted transformer. If ``weight`` is not ``None``, the result will\n        be multiplied by ``weight``.\n        \"\"\"\n        with _print_elapsed_time(message_clsname, message):\n            if hasattr(transformer, 'fit_transform'):\n>               res = transformer.fit_transform(X, y, **fit_params)\n\nsklearn/pipeline.py:724: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}\n\n    def fit_transform(self, X, y=None, **fit_params):\n        \"\"\"Fit to data, then transform it.\n    \n        Fits transformer to X and y with optional parameters fit_params\n        and returns a transformed version of X.\n    \n        Parameters\n        ----------\n        X : numpy array of shape [n_samples, n_features]\n            Training set.\n    \n        y : numpy array of shape [n_samples]\n            Target values.\n    \n        Returns\n        -------\n        X_new : numpy array of shape [n_samples, n_features_new]\n            Transformed array.\n    \n        \"\"\"\n        # non-optimized default implementation; override when a better\n        # method is possible for a given clustering algorithm\n        if y is None:\n            # fit method of arity 1 (unsupervised transformation)\n            return self.fit(X, **fit_params).transform(X)\n        else:\n            # fit method of arity 2 (supervised transformation)\n>           return self.fit(X, y, **fit_params).transform(X)\n\nsklearn/base.py:558: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n>           check_scalar(self.n_components, 'n_components', int, 1)\n\nsklearn/neighbors/nca.py:302: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 1, name = 'n_components', target_type = <class 'int'>, min_val = 1\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `n_components` must be an instance of <class 'int'>, not <class 'numpy.int64'>.\n\nsklearn/utils/validation.py:977: TypeError\n_________________ test_nca_accepts_numpy_int_for_n_components __________________\n\n    def test_nca_accepts_numpy_int_for_n_components():\n        \"\"\"Test that NCA accepts numpy int types for n_components.\n    \n        GridSearchCV can pass np.int64 values from np.arange() to n_components.\n        NCA should accept this value without raising TypeError.\n        \"\"\"\n        X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n    \n        # np.arange returns numpy int types\n        n_components = np.int64(2)\n    \n        nca = NeighborhoodComponentsAnalysis(n_components=n_components)\n>       nca.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:67: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=2, random_state=None, tol=1e-05,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=2, random_state=None, tol=1e-05,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n>           check_scalar(self.n_components, 'n_components', int, 1)\n\nsklearn/neighbors/nca.py:302: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 2, name = 'n_components', target_type = <class 'int'>, min_val = 1\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `n_components` must be an instance of <class 'int'>, not <class 'numpy.int64'>.\n\nsklearn/utils/validation.py:977: TypeError\n_____________________ test_nca_accepts_int_for_float_param _____________________\n\n    def test_nca_accepts_int_for_float_param():\n        \"\"\"Test that NCA accepts int values for float parameters like tol.\n    \n        In GridSearch, passing tol=1 (int literal) should work since 1 == 1.0.\n        \"\"\"\n        X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n    \n        # Passing an int literal should work since it's a valid value for tol\n        nca = NeighborhoodComponentsAnalysis(tol=1)\n>       nca.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:97: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=None, random_state=None, tol=1,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=None, random_state=None, tol=1,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n            check_scalar(self.n_components, 'n_components', int, 1)\n    \n            if self.n_components > X.shape[1]:\n                raise ValueError('The preferred dimensionality of the '\n                                 'projected space `n_components` ({}) cannot '\n                                 'be greater than the given data '\n                                 'dimensionality ({})!'\n                                 .format(self.n_components, X.shape[1]))\n    \n        # If warm_start is enabled, check that the inputs are consistent\n        check_scalar(self.warm_start, 'warm_start', bool)\n        if self.warm_start and hasattr(self, 'components_'):\n            if self.components_.shape[1] != X.shape[1]:\n                raise ValueError('The new inputs dimensionality ({}) does not '\n                                 'match the input dimensionality of the '\n                                 'previously learned transformation ({}).'\n                                 .format(X.shape[1],\n                                         self.components_.shape[1]))\n    \n        check_scalar(self.max_iter, 'max_iter', int, 1)\n>       check_scalar(self.tol, 'tol', float, 0.)\n\nsklearn/neighbors/nca.py:322: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 1, name = 'tol', target_type = <class 'float'>, min_val = 0.0\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `tol` must be an instance of <class 'float'>, not <class 'int'>.\n\nsklearn/utils/validation.py:977: TypeError"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 4 items\n\ntest_nca_gridsearch_compatibility.py FF.F                                [100%]\n\n=================================== FAILURES ===================================\n___________________ test_nca_with_numpy_types_in_gridsearch ____________________\n\n    def test_nca_with_numpy_types_in_gridsearch():\n        \"\"\"Test that NCA works with numpy types passed via GridSearchCV.\n    \n        This test reproduces the issue where GridSearchCV passes numpy types\n        (like np.int64 and np.float64) to NCA parameters, causing TypeError\n        due to strict type checking.\n    \n        Parameters like 'tol=1' (int instead of float) and\n        'n_components=np.int64' should be accepted.\n        \"\"\"\n        X, y = make_classification(n_samples=100, n_features=10, random_state=42)\n    \n        nca = NeighborhoodComponentsAnalysis()\n        knn = KNeighborsClassifier(n_neighbors=3)\n    \n        pipe = Pipeline([('nca', nca), ('knn', knn)])\n    \n        # Create params using numpy types that would normally fail\n        # tol=1 is int, not float; n_components is np.int64, not int\n        params = {\n            'nca__tol': [0.1, 0.5, 1],  # 1 is int, not float\n            'nca__n_components': np.arange(1, 5)  # np.int64, not int\n        }\n    \n        gs = GridSearchCV(estimator=pipe, param_grid=params, cv=3)\n    \n        # This should not raise TypeError\n>       gs.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:48: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = GridSearchCV(cv=3, error_score=nan,\n             estimator=Pipeline(memory=None,\n                                steps... 1]},\n             pre_dispatch='2*n_jobs', refit=True, return_train_score=False,\n             scoring=None, verbose=0)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\ngroups = None, fit_params = {}\nestimator = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nrefit_metric = 'score'\nevaluate_candidates = <function BaseSearchCV.fit.<locals>.evaluate_candidates at 0x7ffffef6e730>\nrefit_start_time = 1777250478.4530327\n\n    def fit(self, X, y=None, groups=None, **fit_params):\n        \"\"\"Run fit with all sets of parameters.\n    \n        Parameters\n        ----------\n    \n        X : array-like, shape = [n_samples, n_features]\n            Training vector, where n_samples is the number of samples and\n            n_features is the number of features.\n    \n        y : array-like, shape = [n_samples] or [n_samples, n_output], optional\n            Target relative to X for classification or regression;\n            None for unsupervised learning.\n    \n        groups : array-like, with shape (n_samples,), optional\n            Group labels for the samples used while splitting the dataset into\n            train/test set.\n    \n        **fit_params : dict of string -> object\n            Parameters passed to the ``fit`` method of the estimator\n        \"\"\"\n        estimator = self.estimator\n        cv = check_cv(self.cv, y, classifier=is_classifier(estimator))\n    \n        scorers, self.multimetric_ = _check_multimetric_scoring(\n            self.estimator, scoring=self.scoring)\n    \n        if self.multimetric_:\n            if self.refit is not False and (\n                    not isinstance(self.refit, str) or\n                    # This will work for both dict / list (tuple)\n                    self.refit not in scorers) and not callable(self.refit):\n                raise ValueError(\"For multi-metric scoring, the parameter \"\n                                 \"refit must be set to a scorer key or a \"\n                                 \"callable to refit an estimator with the \"\n                                 \"best parameter setting on the whole \"\n                                 \"data and make the best_* attributes \"\n                                 \"available for that metric. If this is \"\n                                 \"not needed, refit should be set to \"\n                                 \"False explicitly. %r was passed.\"\n                                 % self.refit)\n            else:\n                refit_metric = self.refit\n        else:\n            refit_metric = 'score'\n    \n        X, y, groups = indexable(X, y, groups)\n        n_splits = cv.get_n_splits(X, y, groups)\n    \n        base_estimator = clone(self.estimator)\n    \n        parallel = Parallel(n_jobs=self.n_jobs, verbose=self.verbose,\n                            pre_dispatch=self.pre_dispatch)\n    \n        fit_and_score_kwargs = dict(scorer=scorers,\n                                    fit_params=fit_params,\n                                    return_train_score=self.return_train_score,\n                                    return_n_test_samples=True,\n                                    return_times=True,\n                                    return_parameters=False,\n                                    error_score=self.error_score,\n                                    verbose=self.verbose)\n        results = {}\n        with parallel:\n            all_candidate_params = []\n            all_out = []\n    \n            def evaluate_candidates(candidate_params):\n                candidate_params = list(candidate_params)\n                n_candidates = len(candidate_params)\n    \n                if self.verbose > 0:\n                    print(\"Fitting {0} folds for each of {1} candidates,\"\n                          \" totalling {2} fits\".format(\n                              n_splits, n_candidates, n_candidates * n_splits))\n    \n                out = parallel(delayed(_fit_and_score)(clone(base_estimator),\n                                                       X, y,\n                                                       train=train, test=test,\n                                                       parameters=parameters,\n                                                       **fit_and_score_kwargs)\n                               for parameters, (train, test)\n                               in product(candidate_params,\n                                          cv.split(X, y, groups)))\n    \n                if len(out) < 1:\n                    raise ValueError('No fits were performed. '\n                                     'Was the CV iterator empty? '\n                                     'Were there no candidates?')\n                elif len(out) != n_candidates * n_splits:\n                    raise ValueError('cv.split and cv.get_n_splits returned '\n                                     'inconsistent results. Expected {} '\n                                     'splits, got {}'\n                                     .format(n_splits,\n                                             len(out) // n_candidates))\n    \n                all_candidate_params.extend(candidate_params)\n                all_out.extend(out)\n    \n                nonlocal results\n                results = self._format_results(\n                    all_candidate_params, scorers, n_splits, all_out)\n                return results\n    \n            self._run_search(evaluate_candidates)\n    \n        # For multi-metric evaluation, store the best_index_, best_params_ and\n        # best_score_ iff refit is one of the scorer names\n        # In single metric evaluation, refit_metric is \"score\"\n        if self.refit or not self.multimetric_:\n            # If callable, refit is expected to return the index of the best\n            # parameter set.\n            if callable(self.refit):\n                self.best_index_ = self.refit(results)\n                if not isinstance(self.best_index_, numbers.Integral):\n                    raise TypeError('best_index_ returned is not an integer')\n                if (self.best_index_ < 0 or\n                   self.best_index_ >= len(results[\"params\"])):\n                    raise IndexError('best_index_ index out of range')\n            else:\n                self.best_index_ = results[\"rank_test_%s\"\n                                           % refit_metric].argmin()\n                self.best_score_ = results[\"mean_test_%s\" % refit_metric][\n                                           self.best_index_]\n            self.best_params_ = results[\"params\"][self.best_index_]\n    \n        if self.refit:\n            self.best_estimator_ = clone(base_estimator).set_params(\n                **self.best_params_)\n            refit_start_time = time.time()\n            if y is not None:\n>               self.best_estimator_.fit(X, y, **fit_params)\n\nsklearn/model_selection/_search.py:714: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}\n\n    def fit(self, X, y=None, **fit_params):\n        \"\"\"Fit the model\n    \n        Fit all the transforms one after the other and transform the\n        data, then fit the transformed data using the final estimator.\n    \n        Parameters\n        ----------\n        X : iterable\n            Training data. Must fulfill input requirements of first step of the\n            pipeline.\n    \n        y : iterable, default=None\n            Training targets. Must fulfill label requirements for all steps of\n            the pipeline.\n    \n        **fit_params : dict of string -> object\n            Parameters passed to the ``fit`` method of each step, where\n            each parameter name is prefixed such that parameter ``p`` for step\n            ``s`` has key ``s__p``.\n    \n        Returns\n        -------\n        self : Pipeline\n            This estimator\n        \"\"\"\n>       Xt, fit_params = self._fit(X, y, **fit_params)\n\nsklearn/pipeline.py:346: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = Pipeline(memory=None,\n         steps=[('nca',\n                 NeighborhoodComponentsAnalysis(callback=None, init='aut...   n_jobs=None, n_neighbors=3, p=2,\n                                      weights='uniform'))],\n         verbose=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}, memory = Memory(location=None)\nfit_transform_one_cached = NotMemorizedFunc(func=<function _fit_transform_one at 0x7fff9cbc66a8>)\nfit_params_steps = {'knn': {}, 'nca': {}}\n\n    def _fit(self, X, y=None, **fit_params):\n        # shallow copy of steps - this should really be steps_\n        self.steps = list(self.steps)\n        self._validate_steps()\n        # Setup the memory\n        memory = check_memory(self.memory)\n    \n        fit_transform_one_cached = memory.cache(_fit_transform_one)\n    \n        fit_params_steps = {name: {} for name, step in self.steps\n                            if step is not None}\n        for pname, pval in fit_params.items():\n            if '__' not in pname:\n                raise ValueError(\n                    \"Pipeline.fit does not accept the {} parameter. \"\n                    \"You can pass parameters to specific steps of your \"\n                    \"pipeline using the stepname__parameter format, e.g. \"\n                    \"`Pipeline.fit(X, y, logisticregression__sample_weight\"\n                    \"=sample_weight)`.\".format(pname))\n            step, param = pname.split('__', 1)\n            fit_params_steps[step][param] = pval\n        for (step_idx,\n             name,\n             transformer) in self._iter(with_final=False,\n                                        filter_passthrough=False):\n            if (transformer is None or transformer == 'passthrough'):\n                with _print_elapsed_time('Pipeline',\n                                         self._log_message(step_idx)):\n                    continue\n    \n            if hasattr(memory, 'location'):\n                # joblib >= 0.12\n                if memory.location is None:\n                    # we do not clone when caching is disabled to\n                    # preserve backward compatibility\n                    cloned_transformer = transformer\n                else:\n                    cloned_transformer = clone(transformer)\n            elif hasattr(memory, 'cachedir'):\n                # joblib < 0.11\n                if memory.cachedir is None:\n                    # we do not clone when caching is disabled to\n                    # preserve backward compatibility\n                    cloned_transformer = transformer\n                else:\n                    cloned_transformer = clone(transformer)\n            else:\n                cloned_transformer = clone(transformer)\n            # Fit or load from cache the current transfomer\n            X, fitted_transformer = fit_transform_one_cached(\n                cloned_transformer, X, y, None,\n                message_clsname='Pipeline',\n                message=self._log_message(step_idx),\n>               **fit_params_steps[name])\n\nsklearn/pipeline.py:311: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NotMemorizedFunc(func=<function _fit_transform_one at 0x7fff9cbc66a8>)\nargs = (NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1...   0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0]), None)\nkwargs = {'message': None, 'message_clsname': 'Pipeline'}\n\n    def __call__(self, *args, **kwargs):\n>       return self.func(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/joblib/memory.py:349: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntransformer = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nweight = None, message_clsname = 'Pipeline', message = None, fit_params = {}\n\n    def _fit_transform_one(transformer,\n                           X,\n                           y,\n                           weight,\n                           message_clsname='',\n                           message=None,\n                           **fit_params):\n        \"\"\"\n        Fits ``transformer`` to ``X`` and ``y``. The transformed result is returned\n        with the fitted transformer. If ``weight`` is not ``None``, the result will\n        be multiplied by ``weight``.\n        \"\"\"\n        with _print_elapsed_time(message_clsname, message):\n            if hasattr(transformer, 'fit_transform'):\n>               res = transformer.fit_transform(X, y, **fit_params)\n\nsklearn/pipeline.py:724: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\nfit_params = {}\n\n    def fit_transform(self, X, y=None, **fit_params):\n        \"\"\"Fit to data, then transform it.\n    \n        Fits transformer to X and y with optional parameters fit_params\n        and returns a transformed version of X.\n    \n        Parameters\n        ----------\n        X : numpy array of shape [n_samples, n_features]\n            Training set.\n    \n        y : numpy array of shape [n_samples]\n            Target values.\n    \n        Returns\n        -------\n        X_new : numpy array of shape [n_samples, n_features_new]\n            Transformed array.\n    \n        \"\"\"\n        # non-optimized default implementation; override when a better\n        # method is possible for a given clustering algorithm\n        if y is None:\n            # fit method of arity 1 (unsupervised transformation)\n            return self.fit(X, **fit_params).transform(X)\n        else:\n            # fit method of arity 2 (supervised transformation)\n>           return self.fit(X, y, **fit_params).transform(X)\n\nsklearn/base.py:558: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=1, random_state=None, tol=0.1,\n                               verbose=0, warm_start=False)\nX = array([[-1.14052601,  1.35970566,  0.86199147,  0.84609208,  0.60600995,\n        -1.55662917,  1.75479418,  1.69645637...3273, -1.69302842, -0.83806958,  0.79166269,\n         1.15811087,  0.62834551, -0.89725437,  0.62411982, -0.01224677]])\ny = array([1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,\n       0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0,...1,\n       0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1,\n       0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n>           check_scalar(self.n_components, 'n_components', int, 1)\n\nsklearn/neighbors/nca.py:302: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 1, name = 'n_components', target_type = <class 'int'>, min_val = 1\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `n_components` must be an instance of <class 'int'>, not <class 'numpy.int64'>.\n\nsklearn/utils/validation.py:977: TypeError\n_________________ test_nca_accepts_numpy_int_for_n_components __________________\n\n    def test_nca_accepts_numpy_int_for_n_components():\n        \"\"\"Test that NCA accepts numpy int types for n_components.\n    \n        GridSearchCV can pass np.int64 values from np.arange() to n_components.\n        NCA should accept this value without raising TypeError.\n        \"\"\"\n        X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n    \n        # np.arange returns numpy int types\n        n_components = np.int64(2)\n    \n        nca = NeighborhoodComponentsAnalysis(n_components=n_components)\n>       nca.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:67: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=2, random_state=None, tol=1e-05,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=2, random_state=None, tol=1e-05,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n>           check_scalar(self.n_components, 'n_components', int, 1)\n\nsklearn/neighbors/nca.py:302: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 2, name = 'n_components', target_type = <class 'int'>, min_val = 1\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `n_components` must be an instance of <class 'int'>, not <class 'numpy.int64'>.\n\nsklearn/utils/validation.py:977: TypeError\n_____________________ test_nca_accepts_int_for_float_param _____________________\n\n    def test_nca_accepts_int_for_float_param():\n        \"\"\"Test that NCA accepts int values for float parameters like tol.\n    \n        In GridSearch, passing tol=1 (int literal) should work since 1 == 1.0.\n        \"\"\"\n        X, y = make_classification(n_samples=50, n_features=5, random_state=42)\n    \n        # Passing an int literal should work since it's a valid value for tol\n        nca = NeighborhoodComponentsAnalysis(tol=1)\n>       nca.fit(X, y)\n\ntest_nca_gridsearch_compatibility.py:97: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=None, random_state=None, tol=1,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n    \n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n>       X, y, init = self._validate_params(X, y)\n\nsklearn/neighbors/nca.py:189: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NeighborhoodComponentsAnalysis(callback=None, init='auto', max_iter=50,\n                               n_components=None, random_state=None, tol=1,\n                               verbose=0, warm_start=False)\nX = array([[-1.16921533,  1.14486264, -0.97468167,  1.58307723, -0.69470526],\n       [-0.84888286,  1.10091916, -0.8206823...953, -0.68002472,  1.24228249, -0.54392235],\n       [-1.89549787,  1.63193607,  0.7870846 ,  2.51170023, -1.10320346]])\ny = array([1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,\n       1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,\n       0, 1, 1, 0, 1, 1])\n\n    def _validate_params(self, X, y):\n        \"\"\"Validate parameters as soon as :meth:`fit` is called.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n    \n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n    \n        Returns\n        -------\n        X : array, shape (n_samples, n_features)\n            The validated training samples.\n    \n        y : array, shape (n_samples,)\n            The validated training labels, encoded to be integers in\n            the range(0, n_classes).\n    \n        init : string or numpy array of shape (n_features_a, n_features_b)\n            The validated initialization of the linear transformation.\n    \n        Raises\n        -------\n        TypeError\n            If a parameter is not an instance of the desired type.\n    \n        ValueError\n            If a parameter's value violates its legal value range or if the\n            combination of two or more given parameters is incompatible.\n        \"\"\"\n    \n        # Validate the inputs X and y, and converts y to numerical classes.\n        X, y = check_X_y(X, y, ensure_min_samples=2)\n        check_classification_targets(y)\n        y = LabelEncoder().fit_transform(y)\n    \n        # Check the preferred dimensionality of the projected space\n        if self.n_components is not None:\n            check_scalar(self.n_components, 'n_components', int, 1)\n    \n            if self.n_components > X.shape[1]:\n                raise ValueError('The preferred dimensionality of the '\n                                 'projected space `n_components` ({}) cannot '\n                                 'be greater than the given data '\n                                 'dimensionality ({})!'\n                                 .format(self.n_components, X.shape[1]))\n    \n        # If warm_start is enabled, check that the inputs are consistent\n        check_scalar(self.warm_start, 'warm_start', bool)\n        if self.warm_start and hasattr(self, 'components_'):\n            if self.components_.shape[1] != X.shape[1]:\n                raise ValueError('The new inputs dimensionality ({}) does not '\n                                 'match the input dimensionality of the '\n                                 'previously learned transformation ({}).'\n                                 .format(X.shape[1],\n                                         self.components_.shape[1]))\n    \n        check_scalar(self.max_iter, 'max_iter', int, 1)\n>       check_scalar(self.tol, 'tol', float, 0.)\n\nsklearn/neighbors/nca.py:322: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nx = 1, name = 'tol', target_type = <class 'float'>, min_val = 0.0\nmax_val = None\n\n    def check_scalar(x, name, target_type, min_val=None, max_val=None):\n        \"\"\"Validate scalar parameters type and value.\n    \n        Parameters\n        ----------\n        x : object\n            The scalar parameter to validate.\n    \n        name : str\n            The name of the parameter to be printed in error messages.\n    \n        target_type : type or tuple\n            Acceptable data types for the parameter.\n    \n        min_val : float or int, optional (default=None)\n            The minimum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have a lower bound.\n    \n        max_val : float or int, optional (default=None)\n            The maximum valid value the parameter can take. If None (default) it\n            is implied that the parameter does not have an upper bound.\n    \n        Raises\n        -------\n        TypeError\n            If the parameter's type does not match the desired type.\n    \n        ValueError\n            If the parameter's value violates the given bounds.\n        \"\"\"\n    \n        if not isinstance(x, target_type):\n            raise TypeError('`{}` must be an instance of {}, not {}.'\n>                           .format(name, target_type, type(x)))\nE           TypeError: `tol` must be an instance of <class 'float'>, not <class 'int'>.\n\nsklearn/utils/validation.py:977: TypeError\n=========================== short test summary info ============================\nFAILED test_nca_gridsearch_compatibility.py::test_nca_with_numpy_types_in_gridsearch\nFAILED test_nca_gridsearch_compatibility.py::test_nca_accepts_numpy_int_for_n_components\nFAILED test_nca_gridsearch_compatibility.py::test_nca_accepts_int_for_float_param\n=================== 3 failed, 1 passed, 37 warnings in 0.46s ===================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/test_nca_gridsearch_compatibility.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "test_nca_gridsearch_compatibility.py::test_nca_with_numpy_types_in_gridsearch": {
+        "exception_frames": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 21,
+            "func": "test_nca_with_numpy_types_in_gridsearch",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 36,
+            "func": "make_classification",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 763,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 21,
+            "func": "test_nca_with_numpy_types_in_gridsearch",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 36,
+            "func": "make_classification",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 763,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 181,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 23,
+            "func": "_generate_hypercube",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 381,
+            "func": "shuffle",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 226,
+            "func": "resample",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 190,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 201,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 131,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 372,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 181,
+            "func": "safe_indexing",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 158,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/classification.py",
+            "line": 120,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 109,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 124,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 51,
+            "func": "_check_weights",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 128,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 162,
+            "func": "_validate_steps",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 62,
+            "func": "_validate_names",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 134,
+            "func": "get_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 24,
+            "func": "_get_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 179,
+            "func": "get_params",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 152,
+            "func": "_get_param_names",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 166,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 70,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 1107,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 358,
+            "func": "_check_param_grid",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 583,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 623,
+            "func": "is_classifier",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 233,
+            "func": "_estimator_type",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 1917,
+            "func": "check_cv",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 172,
+            "func": "type_of_target",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 109,
+            "func": "is_multilabel",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 612,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/scorer.py",
+            "line": 305,
+            "func": "_check_multimetric_scoring",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/scorer.py",
+            "line": 243,
+            "func": "check_scoring",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 99,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 242,
+            "func": "_final_estimator",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 208,
+            "func": "indexable",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 329,
+            "func": "get_n_splits",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 34,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 1119,
+            "func": "_run_search",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 650,
+            "func": "evaluate_candidates",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 133,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 137,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 113,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 672,
+            "func": "split",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 332,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 325,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 667,
+            "func": "_iter_test_masks",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 615,
+            "func": "_make_test_folds",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 734,
+            "func": "column_or_1d",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 648,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sklearn/model_selection/_split.py",
+            "line": 423,
+            "func": "_iter_test_indices",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sklearn/model_selection/_validation.py",
+            "line": 383,
+            "func": "_fit_and_score",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_validation.py",
+            "line": 482,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 150,
+            "func": "set_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 36,
+            "func": "_set_params",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 202,
+            "func": "set_params",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/utils/metaestimators.py",
+            "line": 145,
+            "func": "_safe_split",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 621,
+            "func": "_pairwise",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 320,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 258,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 157,
+            "func": "check_memory",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 267,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 190,
+            "func": "_iter",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 247,
+            "func": "_log_message",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/pipeline.py",
+            "line": 710,
+            "func": "_fit_transform_one",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 642,
+            "func": "_print_elapsed_time",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sklearn/base.py",
+            "line": 531,
+            "func": "fit_transform",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 170,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 262,
+            "func": "_validate_params",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 600,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 663,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 155,
+            "func": "check_classification_targets",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 231,
+            "func": "fit_transform",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 74,
+            "func": "_encode",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 36,
+            "func": "_encode_numpy",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 944,
+            "func": "check_scalar",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 728,
+            "func": "_format_results",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/model_selection/_validation.py",
+            "line": 1462,
+            "func": "_aggregate_score_dicts",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/model_selection/_validation.py",
+            "line": 1485,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sklearn/model_selection/_search.py",
+            "line": 747,
+            "func": "_store",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      },
+      "test_nca_gridsearch_compatibility.py::test_nca_accepts_numpy_int_for_n_components": {
+        "exception_frames": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 55,
+            "func": "test_nca_accepts_numpy_int_for_n_components",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 170,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 262,
+            "func": "_validate_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 600,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 332,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 55,
+            "func": "test_nca_accepts_numpy_int_for_n_components",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 36,
+            "func": "make_classification",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 763,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 181,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 23,
+            "func": "_generate_hypercube",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 381,
+            "func": "shuffle",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 226,
+            "func": "resample",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 190,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 201,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 131,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 372,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 181,
+            "func": "safe_indexing",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 158,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 170,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 262,
+            "func": "_validate_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 600,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 332,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 325,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 663,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 734,
+            "func": "column_or_1d",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 155,
+            "func": "check_classification_targets",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 172,
+            "func": "type_of_target",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 109,
+            "func": "is_multilabel",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 231,
+            "func": "fit_transform",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 74,
+            "func": "_encode",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 36,
+            "func": "_encode_numpy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 944,
+            "func": "check_scalar",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_nca_gridsearch_compatibility.py::test_nca_accepts_int_for_float_param": {
+        "exception_frames": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 88,
+            "func": "test_nca_accepts_int_for_float_param",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 170,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 262,
+            "func": "_validate_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 600,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 332,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_nca_gridsearch_compatibility.py",
+            "line": 88,
+            "func": "test_nca_accepts_int_for_float_param",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 36,
+            "func": "make_classification",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 763,
+            "func": "check_random_state",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 181,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/datasets/samples_generator.py",
+            "line": 23,
+            "func": "_generate_hypercube",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 381,
+            "func": "shuffle",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 226,
+            "func": "resample",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 190,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 201,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 131,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 372,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 181,
+            "func": "safe_indexing",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 158,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 170,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/nca.py",
+            "line": 262,
+            "func": "_validate_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 600,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 332,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 325,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 663,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 734,
+            "func": "column_or_1d",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 155,
+            "func": "check_classification_targets",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 172,
+            "func": "type_of_target",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 109,
+            "func": "is_multilabel",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 231,
+            "func": "fit_transform",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 74,
+            "func": "_encode",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/preprocessing/label.py",
+            "line": 36,
+            "func": "_encode_numpy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 944,
+            "func": "check_scalar",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-14092",
+  "messages": []
+}

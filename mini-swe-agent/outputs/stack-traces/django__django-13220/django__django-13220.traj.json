@@ -1,0 +1,540 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/test_exceptions/test_validation_error_equality.py b/tests/test_exceptions/test_validation_error_equality.py\nnew file mode 100644\nindex 0000000000..30371510b4\n--- /dev/null\n+++ b/tests/test_exceptions/test_validation_error_equality.py\n@@ -0,0 +1,156 @@\n+\"\"\"\n+Tests for ValidationError equality comparison.\n+\"\"\"\n+import unittest\n+\n+from django.core.exceptions import ValidationError\n+\n+\n+class TestValidationErrorEquality(unittest.TestCase):\n+    \"\"\"Test that ValidationErrors can be compared for equality.\"\"\"\n+\n+    def test_simple_message_equal(self):\n+        \"\"\"Two ValidationErrors with identical simple messages should be equal.\"\"\"\n+        e1 = ValidationError('Error message')\n+        e2 = ValidationError('Error message')\n+        self.assertEqual(e1, e2)\n+\n+    def test_simple_message_not_equal(self):\n+        \"\"\"Two ValidationErrors with different messages should not be equal.\"\"\"\n+        e1 = ValidationError('Error message 1')\n+        e2 = ValidationError('Error message 2')\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_list_messages_equal_same_order(self):\n+        \"\"\"Two ValidationErrors with identical lists should be equal.\"\"\"\n+        e1 = ValidationError(['Error 1', 'Error 2'])\n+        e2 = ValidationError(['Error 1', 'Error 2'])\n+        self.assertEqual(e1, e2)\n+\n+    def test_list_messages_equal_different_order(self):\n+        \"\"\"Two ValidationErrors with the same list of messages in different order should be equal.\"\"\"\n+        # The PR description specifically mentions that order should not matter\n+        e1 = ValidationError(['Error 1', 'Error 2'])\n+        e2 = ValidationError(['Error 2', 'Error 1'])\n+        self.assertEqual(e1, e2)\n+\n+    def test_list_messages_not_equal(self):\n+        \"\"\"Two ValidationErrors with different lists should not be equal.\"\"\"\n+        e1 = ValidationError(['Error 1', 'Error 2'])\n+        e2 = ValidationError(['Error 1', 'Error 3'])\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_list_messages_not_equal_different_count(self):\n+        \"\"\"Two ValidationErrors with different number of messages should not be equal.\"\"\"\n+        e1 = ValidationError(['Error 1', 'Error 2'])\n+        e2 = ValidationError(['Error 1', 'Error 2', 'Error 3'])\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_dict_messages_equal_same_order(self):\n+        \"\"\"Two ValidationErrors with identical dicts should be equal.\"\"\"\n+        e1 = ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']})\n+        e2 = ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']})\n+        self.assertEqual(e1, e2)\n+\n+    def test_dict_messages_equal_different_order(self):\n+        \"\"\"Two ValidationErrors with the same dict in different field order should be equal.\"\"\"\n+        # The PR description specifically mentions that order should not matter\n+        e1 = ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']})\n+        e2 = ValidationError({'field2': ['Error 2'], 'field1': ['Error 1']})\n+        self.assertEqual(e1, e2)\n+\n+    def test_dict_messages_within_field_different_order(self):\n+        \"\"\"Two ValidationErrors with the same errors in different order within a field should be equal.\"\"\"\n+        e1 = ValidationError({'field1': ['Error 1', 'Error 2']})\n+        e2 = ValidationError({'field1': ['Error 2', 'Error 1']})\n+        self.assertEqual(e1, e2)\n+\n+    def test_dict_messages_not_equal(self):\n+        \"\"\"Two ValidationErrors with different dicts should not be equal.\"\"\"\n+        e1 = ValidationError({'field1': ['Error 1']})\n+        e2 = ValidationError({'field2': ['Error 1']})\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_dict_vs_list_not_equal(self):\n+        \"\"\"A dict-based ValidationError should not equal a list-based one.\"\"\"\n+        e1 = ValidationError({'field1': ['Error 1']})\n+        e2 = ValidationError(['Error 1'])\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_simple_vs_list_not_equal(self):\n+        \"\"\"A simple message ValidationError should not equal a list-based one with same message.\"\"\"\n+        e1 = ValidationError('Error 1')\n+        e2 = ValidationError(['Error 1'])\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_error_with_code_equal(self):\n+        \"\"\"Two ValidationErrors with same message and code should be equal.\"\"\"\n+        e1 = ValidationError('Error message', code='invalid')\n+        e2 = ValidationError('Error message', code='invalid')\n+        self.assertEqual(e1, e2)\n+\n+    def test_error_with_code_not_equal(self):\n+        \"\"\"Two ValidationErrors with same message but different codes should not be equal.\"\"\"\n+        e1 = ValidationError('Error message', code='invalid')\n+        e2 = ValidationError('Error message', code='required')\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_error_with_params_equal(self):\n+        \"\"\"Two ValidationErrors with same message, code, and params should be equal.\"\"\"\n+        e1 = ValidationError('Error %(name)s', code='invalid', params={'name': 'value'})\n+        e2 = ValidationError('Error %(name)s', code='invalid', params={'name': 'value'})\n+        self.assertEqual(e1, e2)\n+\n+    def test_error_with_params_not_equal(self):\n+        \"\"\"Two ValidationErrors with same message but different params should not be equal.\"\"\"\n+        e1 = ValidationError('Error %(name)s', code='invalid', params={'name': 'value1'})\n+        e2 = ValidationError('Error %(name)s', code='invalid', params={'name': 'value2'})\n+        self.assertNotEqual(e1, e2)\n+\n+    def test_nested_validation_error_list(self):\n+        \"\"\"Nested ValidationErrors in a list should be comparable.\"\"\"\n+        e1 = ValidationError([\n+            ValidationError('Error 1'),\n+            ValidationError('Error 2')\n+        ])\n+        e2 = ValidationError([\n+            ValidationError('Error 1'),\n+            ValidationError('Error 2')\n+        ])\n+        self.assertEqual(e1, e2)\n+\n+    def test_nested_validation_error_dict(self):\n+        \"\"\"Nested ValidationErrors in a dict should be comparable.\"\"\"\n+        e1 = ValidationError({\n+            'field1': ['Error 1', 'Error 2'],\n+            'field2': ['Error 3']\n+        })\n+        e2 = ValidationError({\n+            'field1': ['Error 1', 'Error 2'],\n+            'field2': ['Error 3']\n+        })\n+        self.assertEqual(e1, e2)\n+\n+    def test_nested_validation_error_dict_different_order(self):\n+        \"\"\"Nested ValidationErrors in a dict with different field order should be equal.\"\"\"\n+        e1 = ValidationError({\n+            'field1': ['Error 1', 'Error 2'],\n+            'field2': ['Error 3']\n+        })\n+        e2 = ValidationError({\n+            'field2': ['Error 3'],\n+            'field1': ['Error 2', 'Error 1']\n+        })\n+        self.assertEqual(e1, e2)\n+\n+    def test_equality_with_non_validation_error(self):\n+        \"\"\"A ValidationError should not be equal to a non-ValidationError object.\"\"\"\n+        e1 = ValidationError('Error message')\n+        self.assertNotEqual(e1, 'Error message')\n+        self.assertNotEqual(e1, ['Error message'])\n+        self.assertNotEqual(e1, {'field': ['Error message']})\n+        self.assertNotEqual(e1, None)\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n",
+    "stack_traces": [],
+    "test_output": "test_dict_messages_equal_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same dict in different field order should be equal. ... FAIL\ntest_dict_messages_equal_same_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical dicts should be equal. ... FAIL\ntest_dict_messages_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with different dicts should not be equal. ... ok\ntest_dict_messages_within_field_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same errors in different order within a field should be equal. ... FAIL\ntest_dict_vs_list_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nA dict-based ValidationError should not equal a list-based one. ... ok\ntest_equality_with_non_validation_error (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nA ValidationError should not be equal to a non-ValidationError object. ... ok\ntest_error_with_code_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message and code should be equal. ... FAIL\ntest_error_with_code_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message but different codes should not be equal. ... ok\ntest_error_with_params_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message, code, and params should be equal. ... FAIL\ntest_error_with_params_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message but different params should not be equal. ... ok\ntest_list_messages_equal_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same list of messages in different order should be equal. ... FAIL\ntest_list_messages_equal_same_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical lists should be equal. ... FAIL\ntest_list_messages_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with different lists should not be equal. ... ok\ntest_list_messages_not_equal_different_count (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with different number of messages should not be equal. ... ok\ntest_nested_validation_error_dict (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a dict should be comparable. ... FAIL\ntest_nested_validation_error_dict_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a dict with different field order should be equal. ... FAIL\ntest_nested_validation_error_list (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a list should be comparable. ... FAIL\ntest_simple_message_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical simple messages should be equal. ... FAIL\ntest_simple_message_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with different messages should not be equal. ... ok\ntest_simple_vs_list_not_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nA simple message ValidationError should not equal a list-based one with same message. ... ok\n\n======================================================================\nFAIL: test_dict_messages_equal_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same dict in different field order should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 60, in test_dict_messages_equal_different_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']}) != ValidationError({'field2': ['Error 2'], 'field1': ['Error 1']})\n\n======================================================================\nFAIL: test_dict_messages_equal_same_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical dicts should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 53, in test_dict_messages_equal_same_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']}) != ValidationError({'field1': ['Error 1'], 'field2': ['Error 2']})\n\n======================================================================\nFAIL: test_dict_messages_within_field_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same errors in different order within a field should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 66, in test_dict_messages_within_field_different_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError({'field1': ['Error 1', 'Error 2']}) != ValidationError({'field1': ['Error 2', 'Error 1']})\n\n======================================================================\nFAIL: test_error_with_code_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message and code should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 90, in test_error_with_code_equal\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error message']) != ValidationError(['Error message'])\n\n======================================================================\nFAIL: test_error_with_params_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with same message, code, and params should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 102, in test_error_with_params_equal\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error value']) != ValidationError(['Error value'])\n\n======================================================================\nFAIL: test_list_messages_equal_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with the same list of messages in different order should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 35, in test_list_messages_equal_different_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error 1', 'Error 2']) != ValidationError(['Error 2', 'Error 1'])\n\n======================================================================\nFAIL: test_list_messages_equal_same_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical lists should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 28, in test_list_messages_equal_same_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error 1', 'Error 2']) != ValidationError(['Error 1', 'Error 2'])\n\n======================================================================\nFAIL: test_nested_validation_error_dict (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a dict should be comparable.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 132, in test_nested_validation_error_dict\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError({'field1': ['Error 1', 'Error 2'], 'field2': ['Error 3']}) != ValidationError({'field1': ['Error 1', 'Error 2'], 'field2': ['Error 3']})\n\n======================================================================\nFAIL: test_nested_validation_error_dict_different_order (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a dict with different field order should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 144, in test_nested_validation_error_dict_different_order\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError({'field1': ['Error 1', 'Error 2'], 'field2': ['Error 3']}) != ValidationError({'field2': ['Error 3'], 'field1': ['Error 2', 'Error 1']})\n\n======================================================================\nFAIL: test_nested_validation_error_list (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nNested ValidationErrors in a list should be comparable.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 120, in test_nested_validation_error_list\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error 1', 'Error 2']) != ValidationError(['Error 1', 'Error 2'])\n\n======================================================================\nFAIL: test_simple_message_equal (test_exceptions.test_validation_error_equality.TestValidationErrorEquality)\nTwo ValidationErrors with identical simple messages should be equal.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/test_exceptions/test_validation_error_equality.py\", line 16, in test_simple_message_equal\n    self.assertEqual(e1, e2)\nAssertionError: ValidationError(['Error message']) != ValidationError(['Error message'])\n\n----------------------------------------------------------------------\nRan 20 tests in 0.002s\n\nFAILED (failures=11)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 test_exceptions.test_validation_error_equality` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application test_exceptions\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_dict_messages_equal_different_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 55,
+            "func": "test_dict_messages_equal_different_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 55,
+            "func": "test_dict_messages_equal_different_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_dict_messages_equal_same_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 49,
+            "func": "test_dict_messages_equal_same_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 49,
+            "func": "test_dict_messages_equal_same_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_dict_messages_within_field_different_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 62,
+            "func": "test_dict_messages_within_field_different_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 62,
+            "func": "test_dict_messages_within_field_different_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_error_with_code_equal": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 86,
+            "func": "test_error_with_code_equal",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 86,
+            "func": "test_error_with_code_equal",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_error_with_params_equal": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 98,
+            "func": "test_error_with_params_equal",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 98,
+            "func": "test_error_with_params_equal",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_list_messages_equal_different_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 30,
+            "func": "test_list_messages_equal_different_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 30,
+            "func": "test_list_messages_equal_different_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_list_messages_equal_same_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 24,
+            "func": "test_list_messages_equal_same_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 24,
+            "func": "test_list_messages_equal_same_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_nested_validation_error_dict": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 122,
+            "func": "test_nested_validation_error_dict",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 122,
+            "func": "test_nested_validation_error_dict",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_nested_validation_error_dict_different_order": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 134,
+            "func": "test_nested_validation_error_dict_different_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 134,
+            "func": "test_nested_validation_error_dict_different_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_nested_validation_error_list": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 110,
+            "func": "test_nested_validation_error_list",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 110,
+            "func": "test_nested_validation_error_list",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_exceptions.test_validation_error_equality.TestValidationErrorEquality.test_simple_message_equal": {
+        "exception_frames": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 12,
+            "func": "test_simple_message_equal",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_exceptions/test_validation_error_equality.py",
+            "line": 12,
+            "func": "test_simple_message_equal",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 101,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 182,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 177,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/exceptions.py",
+            "line": 166,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13220",
+  "messages": []
+}

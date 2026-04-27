@@ -1,0 +1,675 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/test_urllib3_exceptions.py b/test_urllib3_exceptions.py\nnew file mode 100644\nindex 00000000..c4ed2bda\n--- /dev/null\n+++ b/test_urllib3_exceptions.py\n@@ -0,0 +1,95 @@\n+# -*- coding: utf-8 -*-\n+\"\"\"\n+Tests for urllib3 exceptions being properly wrapped in requests exceptions.\n+\n+This test module verifies that exceptions from urllib3 are properly caught\n+and wrapped in the appropriate requests exceptions, so that users only need\n+to catch requests exceptions.\n+\n+These tests verify the fix for the issue where urllib3's DecodeError and \n+TimeoutError were passing through the requests API instead of being wrapped.\n+\"\"\"\n+\n+import pytest\n+import requests\n+from requests import adapters\n+from requests.exceptions import (\n+    ContentDecodingError,\n+    Timeout,\n+    RequestException,\n+)\n+from requests.packages.urllib3.exceptions import (\n+    DecodeError,\n+    TimeoutError,\n+    HTTPError,\n+)\n+\n+\n+try:\n+    from unittest import mock\n+except ImportError:\n+    import mock\n+\n+\n+class TestUrllib3ExceptionWrapping:\n+    \"\"\"Tests that urllib3 exceptions are properly wrapped in requests exceptions.\"\"\"\n+    \n+    def test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error(self):\n+        \"\"\"urllib3 DecodeError should be caught and wrapped as ContentDecodingError.\n+        \n+        When urllib3's DecodeError is raised (e.g., when automatic decoding\n+        based on Content-Type fails), it should be wrapped in requests'\n+        ContentDecodingError so users only need to catch requests exceptions.\n+        \"\"\"\n+        # Create a mock adapter\n+        adapter = adapters.HTTPAdapter()\n+        \n+        # Create a prepared request\n+        request = requests.Request('GET', 'http://example.com')\n+        prepared_request = request.prepare()\n+        \n+        # Mock the poolmanager to return a mock connection that raises DecodeError\n+        mock_conn = mock.Mock()\n+        mock_conn.urlopen.side_effect = DecodeError(\"Decoding failed\")\n+        \n+        with mock.patch.object(adapter.poolmanager, 'connection_from_url', return_value=mock_conn):\n+            # Send should raise DecodeError if not properly wrapped\n+            # After the fix, it should raise ContentDecodingError\n+            with pytest.raises(ContentDecodingError):\n+                adapter.send(prepared_request, timeout=None)\n+    \n+    def test_urllib3_timeout_error_should_be_wrapped_as_timeout(self):\n+        \"\"\"urllib3 TimeoutError should be caught and wrapped as Timeout.\n+        \n+        When urllib3's TimeoutError is raised (e.g., when a proxy times out),\n+        it should be wrapped in requests' Timeout exception so users only need\n+        to catch requests exceptions.\n+        \"\"\"\n+        # Create a mock adapter\n+        adapter = adapters.HTTPAdapter()\n+        \n+        # Create a prepared request\n+        request = requests.Request('GET', 'http://example.com')\n+        prepared_request = request.prepare()\n+        \n+        # Mock the poolmanager to return a mock connection that raises TimeoutError\n+        mock_conn = mock.Mock()\n+        mock_conn.urlopen.side_effect = TimeoutError(\"Connection timed out\")\n+        \n+        with mock.patch.object(adapter.poolmanager, 'connection_from_url', return_value=mock_conn):\n+            # Send should raise TimeoutError if not properly wrapped\n+            # After the fix, it should raise Timeout\n+            with pytest.raises(Timeout):\n+                adapter.send(prepared_request, timeout=None)\n+    \n+    def test_decode_error_is_request_exception(self):\n+        \"\"\"Verify that ContentDecodingError is a RequestException.\"\"\"\n+        assert issubclass(ContentDecodingError, RequestException)\n+    \n+    def test_timeout_is_request_exception(self):\n+        \"\"\"Verify that Timeout is a RequestException.\"\"\"\n+        assert issubclass(Timeout, RequestException)\n+\n+\n+if __name__ == '__main__':\n+    pytest.main([__file__, '-v'])\n",
+    "stack_traces": [],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-7.4.4, pluggy-1.0.0\nrootdir: /testbed\ncollected 4 items\n\ntest_urllib3_exceptions.py FF..                                          [100%]\n\n=================================== FAILURES ===================================\n_ TestUrllib3ExceptionWrapping.test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error _\n\nself = <test_urllib3_exceptions.TestUrllib3ExceptionWrapping object at 0x7ffffdffc760>\n\n    def test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error(self):\n        \"\"\"urllib3 DecodeError should be caught and wrapped as ContentDecodingError.\n    \n        When urllib3's DecodeError is raised (e.g., when automatic decoding\n        based on Content-Type fails), it should be wrapped in requests'\n        ContentDecodingError so users only need to catch requests exceptions.\n        \"\"\"\n        # Create a mock adapter\n        adapter = adapters.HTTPAdapter()\n    \n        # Create a prepared request\n        request = requests.Request('GET', 'http://example.com')\n        prepared_request = request.prepare()\n    \n        # Mock the poolmanager to return a mock connection that raises DecodeError\n        mock_conn = mock.Mock()\n        mock_conn.urlopen.side_effect = DecodeError(\"Decoding failed\")\n    \n        with mock.patch.object(adapter.poolmanager, 'connection_from_url', return_value=mock_conn):\n            # Send should raise DecodeError if not properly wrapped\n            # After the fix, it should raise ContentDecodingError\n            with pytest.raises(ContentDecodingError):\n>               adapter.send(prepared_request, timeout=None)\n\ntest_urllib3_exceptions.py:59: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <requests.adapters.HTTPAdapter object at 0x7ffffe000370>\nrequest = <PreparedRequest [GET]>, stream = False\ntimeout = <requests.packages.urllib3.util.timeout.Timeout object at 0x7ffffdd0e550>\nverify = True, cert = None, proxies = None\n\n    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n    \n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) How long to wait for the server to send\n            data before giving up, as a float, or a (`connect timeout, read\n            timeout <user/advanced.html#timeouts>`_) tuple.\n        :type timeout: float or tuple\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n    \n        conn = self.get_connection(request.url, proxies)\n    \n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n    \n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n    \n        if isinstance(timeout, tuple):\n            try:\n                connect, read = timeout\n                timeout = TimeoutSauce(connect=connect, read=read)\n            except ValueError as e:\n                # this may raise a string formatting error.\n                err = (\"Invalid timeout {0}. Pass a (connect, read) \"\n                       \"timeout tuple, or a single float to set \"\n                       \"both timeouts to the same value\".format(timeout))\n                raise ValueError(err)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n    \n        try:\n            if not chunked:\n>               resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\nrequests/adapters.py:361: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451903968'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\n\n    def __call__(self, /, *args, **kwargs):\n        # can't use self in-case a function / method we are mocking uses self\n        # in the signature\n        self._mock_check_sig(*args, **kwargs)\n        self._increment_mock_call(*args, **kwargs)\n>       return self._mock_call(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1092: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451903968'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\n\n    def _mock_call(self, /, *args, **kwargs):\n>       return self._execute_mock_call(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1096: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451903968'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\neffect = DecodeError('Decoding failed')\n\n    def _execute_mock_call(self, /, *args, **kwargs):\n        # separate from _increment_mock_call so that awaited functions are\n        # executed separately from their call, also AsyncMock overrides this method\n    \n        effect = self.side_effect\n        if effect is not None:\n            if _is_exception(effect):\n>               raise effect\nE               requests.packages.urllib3.exceptions.DecodeError: Decoding failed\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1151: DecodeError\n_ TestUrllib3ExceptionWrapping.test_urllib3_timeout_error_should_be_wrapped_as_timeout _\n\nself = <test_urllib3_exceptions.TestUrllib3ExceptionWrapping object at 0x7ffffe000310>\n\n    def test_urllib3_timeout_error_should_be_wrapped_as_timeout(self):\n        \"\"\"urllib3 TimeoutError should be caught and wrapped as Timeout.\n    \n        When urllib3's TimeoutError is raised (e.g., when a proxy times out),\n        it should be wrapped in requests' Timeout exception so users only need\n        to catch requests exceptions.\n        \"\"\"\n        # Create a mock adapter\n        adapter = adapters.HTTPAdapter()\n    \n        # Create a prepared request\n        request = requests.Request('GET', 'http://example.com')\n        prepared_request = request.prepare()\n    \n        # Mock the poolmanager to return a mock connection that raises TimeoutError\n        mock_conn = mock.Mock()\n        mock_conn.urlopen.side_effect = TimeoutError(\"Connection timed out\")\n    \n        with mock.patch.object(adapter.poolmanager, 'connection_from_url', return_value=mock_conn):\n            # Send should raise TimeoutError if not properly wrapped\n            # After the fix, it should raise Timeout\n            with pytest.raises(Timeout):\n>               adapter.send(prepared_request, timeout=None)\n\ntest_urllib3_exceptions.py:83: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <requests.adapters.HTTPAdapter object at 0x7ffffdcdc640>\nrequest = <PreparedRequest [GET]>, stream = False\ntimeout = <requests.packages.urllib3.util.timeout.Timeout object at 0x7ffffdd00e50>\nverify = True, cert = None, proxies = None\n\n    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):\n        \"\"\"Sends PreparedRequest object. Returns Response object.\n    \n        :param request: The :class:`PreparedRequest <PreparedRequest>` being sent.\n        :param stream: (optional) Whether to stream the request content.\n        :param timeout: (optional) How long to wait for the server to send\n            data before giving up, as a float, or a (`connect timeout, read\n            timeout <user/advanced.html#timeouts>`_) tuple.\n        :type timeout: float or tuple\n        :param verify: (optional) Whether to verify SSL certificates.\n        :param cert: (optional) Any user-provided SSL certificate to be trusted.\n        :param proxies: (optional) The proxies dictionary to apply to the request.\n        \"\"\"\n    \n        conn = self.get_connection(request.url, proxies)\n    \n        self.cert_verify(conn, request.url, verify, cert)\n        url = self.request_url(request, proxies)\n        self.add_headers(request)\n    \n        chunked = not (request.body is None or 'Content-Length' in request.headers)\n    \n        if isinstance(timeout, tuple):\n            try:\n                connect, read = timeout\n                timeout = TimeoutSauce(connect=connect, read=read)\n            except ValueError as e:\n                # this may raise a string formatting error.\n                err = (\"Invalid timeout {0}. Pass a (connect, read) \"\n                       \"timeout tuple, or a single float to set \"\n                       \"both timeouts to the same value\".format(timeout))\n                raise ValueError(err)\n        else:\n            timeout = TimeoutSauce(connect=timeout, read=timeout)\n    \n        try:\n            if not chunked:\n>               resp = conn.urlopen(\n                    method=request.method,\n                    url=url,\n                    body=request.body,\n                    headers=request.headers,\n                    redirect=False,\n                    assert_same_host=False,\n                    preload_content=False,\n                    decode_content=False,\n                    retries=self.max_retries,\n                    timeout=timeout\n                )\n\nrequests/adapters.py:361: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451511616'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\n\n    def __call__(self, /, *args, **kwargs):\n        # can't use self in-case a function / method we are mocking uses self\n        # in the signature\n        self._mock_check_sig(*args, **kwargs)\n        self._increment_mock_call(*args, **kwargs)\n>       return self._mock_call(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1092: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451511616'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\n\n    def _mock_call(self, /, *args, **kwargs):\n>       return self._execute_mock_call(*args, **kwargs)\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1096: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <Mock name='mock.urlopen' id='140737451511616'>, args = ()\nkwargs = {'assert_same_host': False, 'body': None, 'decode_content': False, 'headers': {}, ...}\neffect = TimeoutError('Connection timed out')\n\n    def _execute_mock_call(self, /, *args, **kwargs):\n        # separate from _increment_mock_call so that awaited functions are\n        # executed separately from their call, also AsyncMock overrides this method\n    \n        effect = self.side_effect\n        if effect is not None:\n            if _is_exception(effect):\n>               raise effect\nE               requests.packages.urllib3.exceptions.TimeoutError: Connection timed out\n\n/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py:1151: TimeoutError\n=============================== warnings summary ===============================\nrequests/packages/urllib3/connectionpool.py:95\n  /testbed/requests/packages/urllib3/connectionpool.py:95: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"\n\nrequests/packages/urllib3/connectionpool.py:424\n  /testbed/requests/packages/urllib3/connectionpool.py:424: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"\n\nrequests/packages/urllib3/connectionpool.py:772\n  /testbed/requests/packages/urllib3/connectionpool.py:772: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"\n\nrequests/packages/urllib3/_collections.py:1\nrequests/packages/urllib3/_collections.py:1\n  /testbed/requests/packages/urllib3/_collections.py:1: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n    from collections import Mapping, MutableMapping\n\nrequests/packages/urllib3/poolmanager.py:32\n  /testbed/requests/packages/urllib3/poolmanager.py:32: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"\n\nrequests/models.py:783\n  /testbed/requests/models.py:783: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Returns the json-encoded content of a response, if any.\n\nrequests/api.py:59\n  /testbed/requests/api.py:59: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a GET request.\n\nrequests/api.py:73\n  /testbed/requests/api.py:73: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a OPTIONS request.\n\nrequests/api.py:86\n  /testbed/requests/api.py:86: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a HEAD request.\n\nrequests/api.py:99\n  /testbed/requests/api.py:99: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a POST request.\n\nrequests/api.py:113\n  /testbed/requests/api.py:113: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a PUT request.\n\nrequests/api.py:126\n  /testbed/requests/api.py:126: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a PATCH request.\n\nrequests/api.py:139\n  /testbed/requests/api.py:139: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a DELETE request.\n\nrequests/sessions.py:470\n  /testbed/requests/sessions.py:470: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a GET request. Returns :class:`Response` object.\n\nrequests/sessions.py:480\n  /testbed/requests/sessions.py:480: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a OPTIONS request. Returns :class:`Response` object.\n\nrequests/sessions.py:490\n  /testbed/requests/sessions.py:490: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a HEAD request. Returns :class:`Response` object.\n\nrequests/sessions.py:500\n  /testbed/requests/sessions.py:500: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a POST request. Returns :class:`Response` object.\n\nrequests/sessions.py:511\n  /testbed/requests/sessions.py:511: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a PUT request. Returns :class:`Response` object.\n\nrequests/sessions.py:521\n  /testbed/requests/sessions.py:521: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a PATCH request. Returns :class:`Response` object.\n\nrequests/sessions.py:531\n  /testbed/requests/sessions.py:531: DeprecationWarning: invalid escape sequence \\*\n    \"\"\"Sends a DELETE request. Returns :class:`Response` object.\n\ntest_urllib3_exceptions.py::TestUrllib3ExceptionWrapping::test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error\n  /testbed/requests/models.py:168: DeprecationWarning: Using or importing the ABCs from 'collections' instead of from 'collections.abc' is deprecated since Python 3.3, and in 3.10 it will stop working\n    if isinstance(hook, collections.Callable):\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED test_urllib3_exceptions.py::TestUrllib3ExceptionWrapping::test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error\nFAILED test_urllib3_exceptions.py::TestUrllib3ExceptionWrapping::test_urllib3_timeout_error_should_be_wrapped_as_timeout\n=================== 2 failed, 2 passed, 22 warnings in 0.19s ===================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/test_urllib3_exceptions.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "test_urllib3_exceptions.py::TestUrllib3ExceptionWrapping::test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error": {
+        "exception_frames": [
+          {
+            "file": "test_urllib3_exceptions.py",
+            "line": 37,
+            "func": "test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "requests/models.py",
+            "line": 236,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/models.py",
+            "line": 288,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 324,
+            "func": "prepare_url",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_urllib3_exceptions.py",
+            "line": 37,
+            "func": "test_urllib3_decode_error_should_be_wrapped_as_content_decoding_error",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 83,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/packages/urllib3/util/retry.py",
+            "line": 112,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 117,
+            "func": "init_poolmanager",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/poolmanager.py",
+            "line": 61,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/packages/urllib3/request.py",
+            "line": 43,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/packages/urllib3/_collections.py",
+            "line": 42,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 209,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/hooks.py",
+            "line": 20,
+            "func": "default_hooks",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 236,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/models.py",
+            "line": 318,
+            "func": "prepare_method",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/models.py",
+            "line": 324,
+            "func": "prepare_url",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 121,
+            "func": "parse_url",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 88,
+            "func": "split_first",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 16,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 74,
+            "func": "_encode_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 148,
+            "func": "to_key_val_list",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 418,
+            "func": "requote_uri",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 396,
+            "func": "unquote_unreserved",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 398,
+            "func": "prepare_headers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/structures.py",
+            "line": 42,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 495,
+            "func": "prepare_cookies",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 443,
+            "func": "cookiejar_from_dict",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 132,
+            "func": "get_cookie_header",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 34,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 78,
+            "func": "get_new_headers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 406,
+            "func": "prepare_body",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 50,
+            "func": "super_len",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 461,
+            "func": "prepare_content_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 473,
+            "func": "prepare_auth",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 664,
+            "func": "get_auth_from_url",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 515,
+            "func": "prepare_hooks",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/models.py",
+            "line": 162,
+            "func": "register_hook",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 171,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 324,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 233,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 160,
+            "func": "cert_verify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 264,
+            "func": "request_url",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 53,
+            "func": "path_url",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 288,
+            "func": "add_headers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/util/timeout.py",
+            "line": 94,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/util/timeout.py",
+            "line": 104,
+            "func": "_validate_timeout",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "test_urllib3_exceptions.py::TestUrllib3ExceptionWrapping::test_urllib3_timeout_error_should_be_wrapped_as_timeout": {
+        "exception_frames": [
+          {
+            "file": "test_urllib3_exceptions.py",
+            "line": 61,
+            "func": "test_urllib3_timeout_error_should_be_wrapped_as_timeout",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "requests/models.py",
+            "line": 236,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/models.py",
+            "line": 288,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 495,
+            "func": "prepare_cookies",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 132,
+            "func": "get_cookie_header",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_urllib3_exceptions.py",
+            "line": 61,
+            "func": "test_urllib3_timeout_error_should_be_wrapped_as_timeout",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 83,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/packages/urllib3/util/retry.py",
+            "line": 112,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 117,
+            "func": "init_poolmanager",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/poolmanager.py",
+            "line": 61,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/packages/urllib3/request.py",
+            "line": 43,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/packages/urllib3/_collections.py",
+            "line": 42,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 209,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/hooks.py",
+            "line": 20,
+            "func": "default_hooks",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 236,
+            "func": "prepare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/models.py",
+            "line": 318,
+            "func": "prepare_method",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/models.py",
+            "line": 324,
+            "func": "prepare_url",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 121,
+            "func": "parse_url",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 88,
+            "func": "split_first",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/packages/urllib3/util/url.py",
+            "line": 16,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 74,
+            "func": "_encode_params",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 148,
+            "func": "to_key_val_list",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 418,
+            "func": "requote_uri",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 396,
+            "func": "unquote_unreserved",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 398,
+            "func": "prepare_headers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/structures.py",
+            "line": 42,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 495,
+            "func": "prepare_cookies",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 443,
+            "func": "cookiejar_from_dict",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 132,
+            "func": "get_cookie_header",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 34,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/cookies.py",
+            "line": 78,
+            "func": "get_new_headers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/models.py",
+            "line": 406,
+            "func": "prepare_body",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 50,
+            "func": "super_len",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 461,
+            "func": "prepare_content_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 473,
+            "func": "prepare_auth",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/utils.py",
+            "line": 664,
+            "func": "get_auth_from_url",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 515,
+            "func": "prepare_hooks",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/models.py",
+            "line": 162,
+            "func": "register_hook",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "requests/models.py",
+            "line": 171,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 324,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 233,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 160,
+            "func": "cert_verify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 264,
+            "func": "request_url",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/models.py",
+            "line": 53,
+            "func": "path_url",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "requests/adapters.py",
+            "line": 288,
+            "func": "add_headers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/util/timeout.py",
+            "line": 94,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "requests/packages/urllib3/util/timeout.py",
+            "line": 104,
+            "func": "_validate_timeout",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "psf__requests-2674",
+  "messages": []
+}

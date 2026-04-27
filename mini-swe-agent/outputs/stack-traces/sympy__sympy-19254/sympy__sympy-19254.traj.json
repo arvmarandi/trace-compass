@@ -1,0 +1,4838 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/polys/tests/test_knuth_cohen_bound.py b/sympy/polys/tests/test_knuth_cohen_bound.py\nnew file mode 100644\nindex 0000000000..7506de589a\n--- /dev/null\n+++ b/sympy/polys/tests/test_knuth_cohen_bound.py\n@@ -0,0 +1,245 @@\n+\"\"\"\n+Tests for Knuth-Cohen bound functions in sympy.polys.factortools.\n+\n+These tests verify the Knuth-Cohen bound implementation for polynomial\n+factorization. The Knuth-Cohen bound provides a tighter bound than the\n+Mignotte bound, which improves efficiency in polynomial factorization algorithms.\n+\n+Reference: Research with Prof. Ag.Akritas on comparison of various polynomial\n+bounds including Mignotte and Knuth-Cohen.\n+\"\"\"\n+\n+from sympy import sqrt, simplify\n+from sympy.polys.rings import ring\n+from sympy.polys.domains import ZZ, QQ\n+from sympy import binomial\n+\n+\n+def test_dup_zz_knuth_cohen_bound_exists():\n+    \"\"\"Test that the Knuth-Cohen bound function exists for univariate polynomials.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test that the function exists\n+    assert hasattr(R, 'dup_zz_knuth_cohen_bound'), \\\n+        \"dup_zz_knuth_cohen_bound method should exist in polynomial ring\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_exists():\n+    \"\"\"Test that the Knuth-Cohen bound function exists for multivariate polynomials.\"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    # Test that the function exists\n+    assert hasattr(R, 'dmp_zz_knuth_cohen_bound'), \\\n+        \"dmp_zz_knuth_cohen_bound method should exist in polynomial ring\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_basic():\n+    \"\"\"Test basic Knuth-Cohen bound computation for univariate polynomials.\n+    \n+    The Knuth-Cohen bound for a polynomial f(x) = a_n*x^n + ... + a_0 is:\n+    \n+    B = 2^(1-n) * sqrt(binomial(2n, n)) * ||f||_2 / |a_n|\n+    \n+    where ||f||_2 = sqrt(sum(a_i^2)) is the L2 norm of coefficients.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 2*x^2 + 3*x + 4 (dense: [2, 3, 4])\n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Calculate expected value:\n+    # n = 2, a_n = 2\n+    # ||f||_2 = sqrt(2^2 + 3^2 + 4^2) = sqrt(4 + 9 + 16) = sqrt(29)\n+    # binomial(2n, n) = binomial(4, 2) = 6\n+    # B = 2^(1-2) * sqrt(6) * sqrt(29) / 2 = sqrt(174) / 4\n+    expected = sqrt(174) / 4\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    # The result should be the exact Knuth-Cohen bound value\n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_simple():\n+    \"\"\"Test Knuth-Cohen bound with a simpler polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = x^3 + 2*x^2 - 3*x + 1 (dense: [1, 2, -3, 1])\n+    f = x**3 + 2*x**2 - 3*x + 1\n+    \n+    # Calculate expected value:\n+    # n = 3, a_n = 1\n+    # ||f||_2 = sqrt(1 + 4 + 9 + 1) = sqrt(15)\n+    # binomial(2n, n) = binomial(6, 3) = 20\n+    # B = 2^(1-3) * sqrt(20) * sqrt(15) / 1 = 2^(-2) * 2*sqrt(5) * sqrt(15)\n+    #   = 0.25 * 2 * sqrt(75) = 0.5 * 5*sqrt(3) = 2.5*sqrt(3) = (5*sqrt(3))/2\n+    expected = (5 * sqrt(3)) / 2\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_basic():\n+    \"\"\"Test basic Knuth-Cohen bound for multivariate polynomials.\"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    # Test polynomial: f = 2*x^2 + 3*x + 4 (same as univariate but in multivariate ring)\n+    f = 2*x**2 + 3*x + 4\n+    \n+    # The multivariate version should give the same result as univariate\n+    # since y doesn't appear in the polynomial\n+    expected = sqrt(174) / 4\n+    \n+    result = R.dmp_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_equivalence():\n+    \"\"\"Test that Knuth-Cohen bound is tighter than Mignotte bound.\n+    \n+    The Knuth-Cohen bound should always be less than or equal to the \n+    Mignotte bound for the same polynomial, providing a tighter estimate.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 3*x^4 + 2*x^3 + x^2 + 4*x + 5\n+    f = 3*x**4 + 2*x**3 + x**2 + 4*x + 5\n+    \n+    knuth_cohen_bound = R.dup_zz_knuth_cohen_bound(f)\n+    mignotte_bound = R.dup_zz_mignotte_bound(f)\n+    \n+    # The Knuth-Cohen bound should be <= Mignotte bound\n+    # (This verifies it's a valid tighter bound)\n+    assert knuth_cohen_bound <= mignotte_bound, \\\n+        f\"Knuth-Cohen bound ({knuth_cohen_bound}) should be <= Mignotte bound ({mignotte_bound})\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_degree_one():\n+    \"\"\"Test Knuth-Cohen bound for degree 1 polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 5*x + 3 (dense: [5, 3])\n+    f = 5*x + 3\n+    \n+    # Calculate expected value:\n+    # n = 1, a_n = 5\n+    # ||f||_2 = sqrt(5^2 + 3^2) = sqrt(34)\n+    # binomial(2n, n) = binomial(2, 1) = 2\n+    # B = 2^(1-1) * sqrt(2) * sqrt(34) / 5 = 1 * sqrt(68) / 5 = 2*sqrt(17) / 5\n+    expected = (2 * sqrt(17)) / 5\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_leading_one():\n+    \"\"\"Test Knuth-Cohen bound for monic polynomial.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = x^3 + x^2 + x + 1 (dense: [1, 1, 1, 1], monic)\n+    f = x**3 + x**2 + x + 1\n+    \n+    # Calculate expected value:\n+    # n = 3, a_n = 1\n+    # ||f||_2 = sqrt(1 + 1 + 1 + 1) = sqrt(4) = 2\n+    # binomial(2n, n) = binomial(6, 3) = 20\n+    # B = 2^(1-3) * sqrt(20) * 2 / 1 = 0.25 * 2*sqrt(5) * 2 = sqrt(5)\n+    expected = sqrt(5)\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_consistency():\n+    \"\"\"Test Knuth-Cohen bound with polynomial that has leading zeros in dense form.\"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    # Test polynomial: f = 4 (constant polynomial)\n+    f = 4\n+    \n+    # For constant polynomial:\n+    # n = 0, a_n = 4\n+    # ||f||_2 = sqrt(16) = 4\n+    # binomial(0, 0) = 1\n+    # B = 2^(1-0) * sqrt(1) * 4 / 4 = 2 * 1 * 1 = 2\n+    expected = 2\n+    \n+    result = R.dup_zz_knuth_cohen_bound(f)\n+    \n+    assert result.equals(expected), \\\n+        f\"Expected {expected} but got {result}\"\n+\n+\n+def test_dup_zz_knuth_cohen_bound_replaces_mignotte():\n+    \"\"\"Test that the Knuth-Cohen bound replaces the Mignotte bound for consistency.\n+    \n+    This test verifies that the new dup_zz_knuth_cohen_bound function \n+    follows the same API pattern as dup_zz_mignotte_bound.\n+    \"\"\"\n+    R, x = ring(\"x\", ZZ)\n+    \n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Both functions should exist and be callable\n+    assert callable(getattr(R, 'dup_zz_knuth_cohen_bound', None)), \\\n+        \"dup_zz_knuth_cohen_bound should be callable\"\n+    assert callable(getattr(R, 'dup_zz_mignotte_bound', None)), \\\n+        \"dup_zz_mignotte_bound should be callable\"\n+    \n+    # Both should return valid results\n+    knuth_result = R.dup_zz_knuth_cohen_bound(f)\n+    mignotte_result = R.dup_zz_mignotte_bound(f)\n+    \n+    # Both should be positive numbers\n+    assert knuth_result > 0, f\"Knuth-Cohen bound should be positive, got {knuth_result}\"\n+    assert mignotte_result > 0, f\"Mignotte bound should be positive, got {mignotte_result}\"\n+\n+\n+def test_dmp_zz_knuth_cohen_bound_replaces_mignotte():\n+    \"\"\"Test that the Knuth-Cohen bound replaces the Mignotte bound for consistency.\n+    \n+    This test verifies that the new dmp_zz_knuth_cohen_bound function \n+    follows the same API pattern as dmp_zz_mignotte_bound.\n+    \"\"\"\n+    R, x, y = ring(\"x,y\", ZZ)\n+    \n+    f = 2*x**2 + 3*x + 4\n+    \n+    # Both functions should exist and be callable\n+    assert callable(getattr(R, 'dmp_zz_knuth_cohen_bound', None)), \\\n+        \"dmp_zz_knuth_cohen_bound should be callable\"\n+    assert callable(getattr(R, 'dmp_zz_mignotte_bound', None)), \\\n+        \"dmp_zz_mignotte_bound should be callable\"\n+    \n+    # Both should return valid results\n+    knuth_result = R.dmp_zz_knuth_cohen_bound(f)\n+    mignotte_result = R.dmp_zz_mignotte_bound(f)\n+    \n+    # Both should be positive numbers\n+    assert knuth_result > 0, f\"Knuth-Cohen bound should be positive, got {knuth_result}\"\n+    assert mignotte_result > 0, f\"Mignotte bound should be positive, got {mignotte_result}\"\n+\n+\n+if __name__ == \"__main__\":\n+    # Run all tests\n+    test_dup_zz_knuth_cohen_bound_exists()\n+    test_dmp_zz_knuth_cohen_bound_exists()\n+    test_dup_zz_knuth_cohen_bound_basic()\n+    test_dup_zz_knuth_cohen_bound_simple()\n+    test_dmp_zz_knuth_cohen_bound_basic()\n+    test_dup_zz_knuth_cohen_bound_equivalence()\n+    test_dup_zz_knuth_cohen_bound_degree_one()\n+    test_dup_zz_knuth_cohen_bound_leading_one()\n+    test_dup_zz_knuth_cohen_bound_consistency()\n+    test_dup_zz_knuth_cohen_bound_replaces_mignotte()\n+    test_dmp_zz_knuth_cohen_bound_replaces_mignotte()\n+    print(\"All tests passed!\")\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/polys/tests/test_knuth_cohen_bound.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        3452376\nhash randomization: on (PYTHONHASHSEED=3244892764)\n\nsympy/polys/tests/test_knuth_cohen_bound.py[11] \ntest_dup_zz_knuth_cohen_bound_exists F\ntest_dmp_zz_knuth_cohen_bound_exists F\ntest_dup_zz_knuth_cohen_bound_basic E\ntest_dup_zz_knuth_cohen_bound_simple E\ntest_dmp_zz_knuth_cohen_bound_basic E\ntest_dup_zz_knuth_cohen_bound_equivalence E\ntest_dup_zz_knuth_cohen_bound_degree_one E\ntest_dup_zz_knuth_cohen_bound_leading_one E\ntest_dup_zz_knuth_cohen_bound_consistency E\ntest_dup_zz_knuth_cohen_bound_replaces_mignotte F\ntest_dmp_zz_knuth_cohen_bound_replaces_mignotte F                         [FAIL]\n\n\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_basic \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 57, in test_dup_zz_knuth_cohen_bound_basic\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_simple \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 79, in test_dup_zz_knuth_cohen_bound_simple\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_basic \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 96, in test_dmp_zz_knuth_cohen_bound_basic\n    result = R.dmp_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dmp_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_equivalence \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 113, in test_dup_zz_knuth_cohen_bound_equivalence\n    knuth_cohen_bound = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_degree_one \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 136, in test_dup_zz_knuth_cohen_bound_degree_one\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_leading_one \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 156, in test_dup_zz_knuth_cohen_bound_leading_one\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_consistency \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 176, in test_dup_zz_knuth_cohen_bound_consistency\n    result = R.dup_zz_knuth_cohen_bound(f)\nAttributeError: 'PolyRing' object has no attribute 'dup_zz_knuth_cohen_bound'\n\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_exists \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 23, in test_dup_zz_knuth_cohen_bound_exists\n    assert hasattr(R, 'dup_zz_knuth_cohen_bound'), \\\nAssertionError: dup_zz_knuth_cohen_bound method should exist in polynomial ring\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_exists \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 32, in test_dmp_zz_knuth_cohen_bound_exists\n    assert hasattr(R, 'dmp_zz_knuth_cohen_bound'), \\\nAssertionError: dmp_zz_knuth_cohen_bound method should exist in polynomial ring\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dup_zz_knuth_cohen_bound_replaces_mignotte \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 193, in test_dup_zz_knuth_cohen_bound_replaces_mignotte\n    assert callable(getattr(R, 'dup_zz_knuth_cohen_bound', None)), \\\nAssertionError: dup_zz_knuth_cohen_bound should be callable\n________________________________________________________________________________\n sympy/polys/tests/test_knuth_cohen_bound.py:test_dmp_zz_knuth_cohen_bound_replaces_mignotte \nTraceback (most recent call last):\n  File \"/testbed/sympy/polys/tests/test_knuth_cohen_bound.py\", line 218, in test_dmp_zz_knuth_cohen_bound_replaces_mignotte\n    assert callable(getattr(R, 'dmp_zz_knuth_cohen_bound', None)), \\\nAssertionError: dmp_zz_knuth_cohen_bound should be callable\n\n====== tests finished: 0 passed, 4 failed, 7 exceptions, in 0.01 seconds =======\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_basic": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 36,
+            "func": "test_dup_zz_knuth_cohen_bound_basic",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 36,
+            "func": "test_dup_zz_knuth_cohen_bound_basic",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 265,
+            "func": "_gens",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 303,
+            "func": "monomial_basis",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 567,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 408,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 419,
+            "func": "mul",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 416,
+            "func": "_vars",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 417,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 411,
+            "func": "_build",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 433,
+            "func": "pow",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 445,
+            "func": "mulpow",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 459,
+            "func": "ldiv",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 473,
+            "func": "div",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 489,
+            "func": "lcm",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 503,
+            "func": "gcd",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2086,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 108,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/singleton.py",
+            "line": 103,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/singleton.py",
+            "line": 171,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 57,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1970,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1688,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 436,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 439,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 533,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 464,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 867,
+            "func": "_eval_is_negative",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 915,
+            "func": "_eval_is_extended_negative",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 877,
+            "func": "_eval_is_extended_positive_negative",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 665,
+            "func": "_eval_evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2080,
+            "func": "_as_mpf_val",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1191,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 149,
+            "func": "mpf_norm",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1372,
+            "func": "evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 712,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1271,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1882,
+            "func": "as_real_imag",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 12,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 442,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 211,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1763,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 567,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 75,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 115,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 667,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1850,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 315,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/functions/elementary/complexes.py",
+            "line": 50,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2639,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1468,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1422,
+            "func": "_Frel",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 420,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 40,
+            "func": "integer_nthroot",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 83,
+            "func": "_integer_nthroot_python",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 482,
+            "func": "_factors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 19,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 257,
+            "func": "_eval_number",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2125,
+            "func": "ceiling",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 81,
+            "func": "extend",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 261,
+            "func": "search",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 198,
+            "func": "trailing",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1973,
+            "func": "factors",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 1389,
+            "func": "factorrat",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 976,
+            "func": "factorint",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 875,
+            "func": "_factorint_small",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 889,
+            "func": "done",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 229,
+            "func": "igcd",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 249,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1795,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 738,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1809,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 239,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 120,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 232,
+            "func": "__div__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2736,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2206,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 210,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 205,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 32,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 36,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 109,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3351,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 859,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 381,
+            "func": "_gather",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 469,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 355,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 30,
+            "func": "_mulsort",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 61,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_simple": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 64,
+            "func": "test_dup_zz_knuth_cohen_bound_simple",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 64,
+            "func": "test_dup_zz_knuth_cohen_bound_simple",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 987,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1970,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 436,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 439,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 533,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 464,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 867,
+            "func": "_eval_is_negative",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 915,
+            "func": "_eval_is_extended_negative",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 877,
+            "func": "_eval_is_extended_positive_negative",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 665,
+            "func": "_eval_evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2080,
+            "func": "_as_mpf_val",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1191,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 108,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 149,
+            "func": "mpf_norm",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1372,
+            "func": "evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 712,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1271,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1882,
+            "func": "as_real_imag",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 12,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1215,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 442,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 211,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1763,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 567,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 75,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 667,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1850,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 315,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/functions/elementary/complexes.py",
+            "line": 50,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2639,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1468,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1422,
+            "func": "_Frel",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 420,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 40,
+            "func": "integer_nthroot",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 83,
+            "func": "_integer_nthroot_python",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 482,
+            "func": "_factors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1973,
+            "func": "factors",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 1389,
+            "func": "factorrat",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 976,
+            "func": "factorint",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1795,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 738,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1809,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 239,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 120,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 200,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 115,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 32,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 36,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 109,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1694,
+            "func": "_eval_is_zero",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3351,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2206,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 859,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 381,
+            "func": "_gather",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 469,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 355,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 30,
+            "func": "_mulsort",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 61,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 232,
+            "func": "__div__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2736,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1597,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 210,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 205,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 766,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 82,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 229,
+            "func": "igcd",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 249,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_basic": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 85,
+            "func": "test_dmp_zz_knuth_cohen_bound_basic",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 85,
+            "func": "test_dmp_zz_knuth_cohen_bound_basic",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 222,
+            "func": "__new_stage2__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 108,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 257,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 266,
+            "func": "assumptions0",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 268,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 265,
+            "func": "_gens",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 303,
+            "func": "monomial_basis",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 567,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 408,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 419,
+            "func": "mul",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 416,
+            "func": "_vars",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 417,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 411,
+            "func": "_build",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 433,
+            "func": "pow",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 445,
+            "func": "mulpow",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 459,
+            "func": "ldiv",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 473,
+            "func": "div",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 489,
+            "func": "lcm",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/monomials.py",
+            "line": 503,
+            "func": "gcd",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1970,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 239,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 120,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 232,
+            "func": "__div__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_equivalence": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 102,
+            "func": "test_dup_zz_knuth_cohen_bound_equivalence",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 102,
+            "func": "test_dup_zz_knuth_cohen_bound_equivalence",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_degree_one": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 122,
+            "func": "test_dup_zz_knuth_cohen_bound_degree_one",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 122,
+            "func": "test_dup_zz_knuth_cohen_bound_degree_one",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1970,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2086,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 108,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 436,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 439,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 533,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 464,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 867,
+            "func": "_eval_is_negative",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 915,
+            "func": "_eval_is_extended_negative",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 877,
+            "func": "_eval_is_extended_positive_negative",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 665,
+            "func": "_eval_evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2080,
+            "func": "_as_mpf_val",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1191,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 149,
+            "func": "mpf_norm",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1372,
+            "func": "evalf",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 712,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1271,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1882,
+            "func": "as_real_imag",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 12,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1215,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 442,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 211,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1763,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 567,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 75,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 667,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1850,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 315,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/functions/elementary/complexes.py",
+            "line": 50,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2639,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1468,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1422,
+            "func": "_Frel",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 420,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 40,
+            "func": "integer_nthroot",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 83,
+            "func": "_integer_nthroot_python",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 482,
+            "func": "_factors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 19,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 257,
+            "func": "_eval_number",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2125,
+            "func": "ceiling",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 81,
+            "func": "extend",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 261,
+            "func": "search",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 523,
+            "func": "nextprime",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1973,
+            "func": "factors",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 1389,
+            "func": "factorrat",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 976,
+            "func": "factorint",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 875,
+            "func": "_factorint_small",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 198,
+            "func": "trailing",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 889,
+            "func": "done",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1795,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 738,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1809,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 239,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 120,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 200,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 115,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 32,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 36,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 109,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1694,
+            "func": "_eval_is_zero",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3351,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2206,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 859,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 381,
+            "func": "_gather",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 469,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 355,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 30,
+            "func": "_mulsort",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 61,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 232,
+            "func": "__div__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2736,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 229,
+            "func": "igcd",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 249,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 210,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 205,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 766,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2217,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_leading_one": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 142,
+            "func": "test_dup_zz_knuth_cohen_bound_leading_one",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 145,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 442,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 211,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1763,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 567,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 75,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 13
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 142,
+            "func": "test_dup_zz_knuth_cohen_bound_leading_one",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/functions/elementary/miscellaneous.py",
+            "line": 64,
+            "func": "sqrt",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1970,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 267,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2301,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 40,
+            "func": "integer_nthroot",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 83,
+            "func": "_integer_nthroot_python",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 482,
+            "func": "_factors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 442,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 211,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1763,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 567,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 75,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 108,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 667,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1850,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 315,
+            "func": "__nonzero__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 19,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 257,
+            "func": "_eval_number",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2125,
+            "func": "ceiling",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 81,
+            "func": "extend",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 261,
+            "func": "search",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 523,
+            "func": "nextprime",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 247,
+            "func": "multiplicity",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1973,
+            "func": "factors",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 1389,
+            "func": "factorrat",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 976,
+            "func": "factorint",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1795,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 738,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1809,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_consistency": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 162,
+            "func": "test_dup_zz_knuth_cohen_bound_consistency",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 162,
+            "func": "test_dup_zz_knuth_cohen_bound_consistency",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_exists": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 18,
+            "func": "test_dup_zz_knuth_cohen_bound_exists",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 18,
+            "func": "test_dup_zz_knuth_cohen_bound_exists",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_exists": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 27,
+            "func": "test_dmp_zz_knuth_cohen_bound_exists",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 27,
+            "func": "test_dmp_zz_knuth_cohen_bound_exists",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dup_zz_knuth_cohen_bound_replaces_mignotte": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 182,
+            "func": "test_dup_zz_knuth_cohen_bound_replaces_mignotte",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 182,
+            "func": "test_dup_zz_knuth_cohen_bound_replaces_mignotte",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "sympy/polys/tests/test_knuth_cohen_bound.py::test_dmp_zz_knuth_cohen_bound_replaces_mignotte": {
+        "exception_frames": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 207,
+            "func": "test_dmp_zz_knuth_cohen_bound_replaces_mignotte",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/polys/tests/test_knuth_cohen_bound.py",
+            "line": 207,
+            "func": "test_dmp_zz_knuth_cohen_bound_replaces_mignotte",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 35,
+            "func": "ring",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 200,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 182,
+            "func": "_parse_symbols",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 493,
+            "func": "symbols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 637,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 638,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 623,
+            "func": "literal",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 209,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 177,
+            "func": "_sanitize",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 91,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/polys/polyoptions.py",
+            "line": 413,
+            "func": "preprocess",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 201,
+            "func": "monomial_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 106,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 71,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/orderings.py",
+            "line": 31,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1147,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 309,
+            "func": "zero",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 1118,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 317,
+            "func": "domain_new",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 105,
+            "func": "convert",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/polys/polyutils.py",
+            "line": 171,
+            "func": "_not_a_coeff",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 3260,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 124,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 413,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 90,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 161,
+            "func": "of_type",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/polys/domains/domain.py",
+            "line": 77,
+            "func": "tp",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 913,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 578,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/polys/rings.py",
+            "line": 556,
+            "func": "new",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sympy__sympy-19254",
+  "messages": []
+}

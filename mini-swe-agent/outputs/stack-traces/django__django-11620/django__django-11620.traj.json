@@ -1,0 +1,879 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/urlpatterns/test_path_converter_http404.py b/tests/urlpatterns/test_path_converter_http404.py\nnew file mode 100644\nindex 0000000000..70b3f572c8\n--- /dev/null\n+++ b/tests/urlpatterns/test_path_converter_http404.py\n@@ -0,0 +1,113 @@\n+\"\"\"\n+Tests for handling Http404 raised in path converter's to_python method.\n+\n+This test module verifies that when Http404 is raised in a path converter's\n+to_python method, the correct behavior occurs depending on DEBUG setting:\n+- When DEBUG=True: A technical 404 response should be returned\n+- When DEBUG=False: The handler404 view should be called\n+\"\"\"\n+from django.http import Http404, HttpResponse\n+from django.test import SimpleTestCase, override_settings\n+from django.urls import path, register_converter\n+\n+\n+class Http404Converter:\n+    \"\"\"\n+    A converter that raises Http404 in to_python.\n+    Used to test the handling of Http404 in path converters.\n+    \"\"\"\n+    regex = r'\\d+'\n+    \n+    def to_python(self, value):\n+        raise Http404(f\"Object with id {value} not found\")\n+    \n+    def to_url(self, value):\n+        return str(value)\n+\n+\n+# Register the converter for use in URL patterns\n+register_converter(Http404Converter, 'http404_converter')\n+\n+\n+def test_view(request, item_id):\n+    \"\"\"A simple view that returns OK for testing purposes.\"\"\"\n+    return HttpResponse(f\"OK: {item_id}\")\n+\n+\n+# URL patterns that use the Http404-raising converter\n+urlpatterns = [\n+    path('item/<http404_converter:item_id>/', test_view, name='item_detail'),\n+]\n+\n+\n+@override_settings(ROOT_URLCONF='urlpatterns.test_path_converter_http404', DEBUG=True)\n+class PathConverterHttp404Tests(SimpleTestCase):\n+    \"\"\"\n+    Test that Http404 raised in a path converter's to_python method\n+    results in proper 404 responses.\n+    \"\"\"\n+    \n+    def test_resolve_raises_htt404_from_converter(self):\n+        \"\"\"\n+        When resolve() is called and the converter raises Http404,\n+        the Http404 should propagate.\n+        \"\"\"\n+        from django.urls import resolve, Resolver404\n+        \n+        with self.assertRaises(Http404) as ctx:\n+            resolve('/item/123/')\n+        self.assertIn('Object with id 123 not found', str(ctx.exception))\n+\n+    def test_htt404_converter_debug_true_returns_technical_404(self):\n+        \"\"\"\n+        When DEBUG=True and a path converter raises Http404,\n+        a technical 404 response should be returned.\n+        \n+        This is the bug reported in the issue: when DEBUG is True, raising\n+        Http404 in a path converter's to_python method does not result in\n+        a technical response. Instead, the current behavior causes an\n+        infinite recursion because technical_404_response() tries to\n+        resolve() the same path again, which triggers the same Http404.\n+        \n+        The fix should ensure that when Http404 is raised in a converter's\n+        to_python method, it's treated similarly to ValueError (as \"no match\")\n+        and the URL resolution continues to try other patterns or returns\n+        Resolver404. This allows the final 404 response to be generated\n+        properly.\n+        \"\"\"\n+        from django.test import Client\n+        \n+        # Make a request to the URL that uses the Http404-raising converter\n+        client = Client()\n+        \n+        # This should NOT raise a RecursionError or return a 500 error.\n+        # It should return a 404 response with helpful debug information.\n+        response = client.get('/item/123/')\n+        \n+        # The status code should be 404, not 500\n+        self.assertEqual(\n+            response.status_code, 404,\n+            f\"Expected 404 but got {response.status_code}. \"\n+            \"Http404 from converter should result in 404 response, not 500.\"\n+        )\n+        \n+        # In DEBUG mode, we should get a technical 404 response\n+        # that contains information about URL patterns tried\n+        content = response.content.decode('utf-8')\n+        \n+        # The response should NOT be a generic \"A server error occurred\" message\n+        self.assertNotIn(\n+            'A server error occurred', content,\n+            \"Http404 from converter should result in technical 404 response, \"\n+            \"not generic error message.\"\n+        )\n+        \n+        # The response should contain helpful debugging information\n+        # (either the tried URL patterns or the exception message)\n+        self.assertTrue(\n+            'Django tried these URL patterns' in content or\n+            'Object with id 123 not found' in content or\n+            'Technical 404' in content or\n+            '/item/' in content,\n+            f\"Response should contain debugging information. Got: {content[:200]}...\"\n+        )\n",
+    "stack_traces": [],
+    "test_output": "test_htt404_converter_debug_true_returns_technical_404 (urlpatterns.test_path_converter_http404.PathConverterHttp404Tests) ... ERROR\ntest_resolve_raises_htt404_from_converter (urlpatterns.test_path_converter_http404.PathConverterHttp404Tests) ... ok\n\n======================================================================\nERROR: test_htt404_converter_debug_true_returns_technical_404 (urlpatterns.test_path_converter_http404.PathConverterHttp404Tests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/core/handlers/base.py\", line 100, in _get_response\n    resolver_match = resolver.resolve(request.path_info)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/utils/deprecation.py\", line 94, in __call__\n    response = response or self.get_response(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/utils/deprecation.py\", line 94, in __call__\n    response = response or self.get_response(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/utils/deprecation.py\", line 94, in __call__\n    response = response or self.get_response(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/utils/deprecation.py\", line 94, in __call__\n    response = response or self.get_response(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/django/core/handlers/exception.py\", line 34, in inner\n    response = get_response(request)\n  File \"/testbed/django/utils/deprecation.py\", line 94, in __call__\n    response = response or self.get_response(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 85, in test_htt404_converter_debug_true_returns_technical_404\n    response = client.get('/item/123/')\n  File \"/testbed/django/test/client.py\", line 518, in get\n    response = super().get(path, data=data, secure=secure, **extra)\n  File \"/testbed/django/test/client.py\", line 346, in get\n    **extra,\n  File \"/testbed/django/test/client.py\", line 421, in generic\n    return self.request(**r)\n  File \"/testbed/django/test/client.py\", line 484, in request\n    response = self.handler(environ)\n  File \"/testbed/django/test/client.py\", line 139, in __call__\n    response = self.get_response(request)\n  File \"/testbed/django/core/handlers/base.py\", line 75, in get_response\n    response = self._middleware_chain(request)\n  File \"/testbed/django/core/handlers/exception.py\", line 36, in inner\n    response = response_for_exception(request, exc)\n  File \"/testbed/django/core/handlers/exception.py\", line 44, in response_for_exception\n    response = debug.technical_404_response(request, exc)\n  File \"/testbed/django/views/debug.py\", line 485, in technical_404_response\n    resolver_match = resolve(request.path)\n  File \"/testbed/django/urls/base.py\", line 25, in resolve\n    return get_resolver(urlconf).resolve(path)\n  File \"/testbed/django/urls/resolvers.py\", line 542, in resolve\n    sub_match = pattern.resolve(new_path)\n  File \"/testbed/django/urls/resolvers.py\", line 349, in resolve\n    match = self.pattern.match(path)\n  File \"/testbed/django/urls/resolvers.py\", line 260, in match\n    kwargs[key] = converter.to_python(value)\n  File \"/testbed/tests/urlpatterns/test_path_converter_http404.py\", line 22, in to_python\n    raise Http404(f\"Object with id {value} not found\")\ndjango.http.response.Http404: Object with id 123 not found\n\n----------------------------------------------------------------------\nRan 2 tests in 0.005s\n\nFAILED (errors=1)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 urlpatterns.test_path_converter_http404` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application urlpatterns\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "urlpatterns.test_path_converter_http404.PathConverterHttp404Tests.test_htt404_converter_debug_true_returns_technical_404": {
+        "exception_frames": [
+          {
+            "file": "tests/urlpatterns/test_path_converter_http404.py",
+            "line": 61,
+            "func": "test_htt404_converter_debug_true_returns_technical_404",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 516,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 341,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 397,
+            "func": "generic",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 465,
+            "func": "request",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 49,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 36,
+            "func": "func_accepts_kwargs",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/urlpatterns/test_path_converter_http404.py",
+            "line": 61,
+            "func": "test_htt404_converter_debug_true_returns_technical_404",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 442,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 516,
+            "func": "get",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 103,
+            "func": "urlencode",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 397,
+            "func": "generic",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 73,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 82,
+            "func": "force_bytes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 330,
+            "func": "_get_path",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 465,
+            "func": "request",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 275,
+            "func": "_base_environ",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 285,
+            "func": "<genexpr>",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 76,
+            "func": "write",
+            "is_test": true,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 49,
+            "func": "connect",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 112,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 36,
+            "func": "func_accepts_kwargs",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 38,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 7,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 214,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 109,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/test/client.py",
+            "line": 122,
+            "func": "__call__",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 23,
+            "func": "load_middleware",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 18,
+            "func": "convert_exception_to_response",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 7,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 86,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/contrib/sessions/middleware.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 12,
+            "func": "SessionStore",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 26,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 30,
+            "func": "__set_name__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 113,
+            "func": "disconnect",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 223,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 174,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/__init__.py",
+            "line": 45,
+            "func": "reset_queries",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 221,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 218,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 222,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 200,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 65,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 155,
+            "func": "get_script_name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 186,
+            "func": "get_bytes_from_wsgi",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 148,
+            "func": "get_path_info",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 226,
+            "func": "repercent_broken_unicode",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 74,
+            "func": "_set_content_type_params",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 71,
+            "func": "get_response",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 127,
+            "func": "set_urlconf",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 31,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/deprecation.py",
+            "line": 90,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/contrib/sessions/middleware.py",
+            "line": 18,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 108,
+            "func": "COOKIES",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 199,
+            "func": "get_str_from_wsgi",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/cookie.py",
+            "line": 10,
+            "func": "parse_cookie",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/contrib/sessions/backends/db.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 47,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 180,
+            "func": "_set_session_key",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/contrib/sessions/backends/base.py",
+            "line": 170,
+            "func": "_validate_session_key",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/contrib/sessions/serializers.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/contrib/sessions/serializers.py",
+            "line": 6,
+            "func": "PickleSerializer",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/middleware/common.py",
+            "line": 34,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 104,
+            "func": "get_host",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 85,
+            "func": "_get_raw_host",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 124,
+            "func": "get_port",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 239,
+            "func": "is_secure",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 225,
+            "func": "scheme",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/core/handlers/wsgi.py",
+            "line": 91,
+            "func": "_get_scheme",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 574,
+            "func": "split_domain_port",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 596,
+            "func": "validate_host",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 611,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 277,
+            "func": "is_same_domain",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/middleware/common.py",
+            "line": 63,
+            "func": "should_redirect_with_slash",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 132,
+            "func": "get_full_path",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/http/request.py",
+            "line": 138,
+            "func": "_get_full_path",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/encoding.py",
+            "line": 204,
+            "func": "escape_uri_path",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 199,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/middleware/csrf.py",
+            "line": 158,
+            "func": "_get_token",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/contrib/auth/middleware.py",
+            "line": 17,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 248,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/contrib/messages/middleware.py",
+            "line": 11,
+            "func": "process_request",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/contrib/messages/storage/__init__.py",
+            "line": 5,
+            "func": "default_storage",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/contrib/messages/utils.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/utils.py",
+            "line": 5,
+            "func": "get_level_tags",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 7,
+            "func": "Message",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 43,
+            "func": "BaseStorage",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 10,
+            "func": "MessageEncoder",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 27,
+            "func": "MessageDecoder",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/cookie.py",
+            "line": 52,
+            "func": "CookieStorage",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 10,
+            "func": "SessionStorage",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 6,
+            "func": "FallbackStorage",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/contrib/messages/storage/base.py",
+            "line": 51,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/messages/storage/fallback.py",
+            "line": 15,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/contrib/messages/storage/session.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/core/handlers/base.py",
+            "line": 85,
+            "func": "_get_response",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 66,
+            "func": "get_resolver",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 72,
+            "func": "_get_cached_resolver",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 147,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 534,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 154,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 92,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 184,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 160,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 581,
+            "func": "url_patterns",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 574,
+            "func": "urlconf_module",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/urls/resolvers.py",
+            "line": 202,
+            "func": "_route_to_regex",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/urls/converters.py",
+            "line": 65,
+            "func": "get_converter",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "tests/urlpatterns/test_path_converter_http404.py",
+            "line": 21,
+            "func": "to_python",
+            "is_test": true,
+            "call_depth": 22
+          },
+          {
+            "file": "django/core/handlers/exception.py",
+            "line": 41,
+            "func": "response_for_exception",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/views/debug.py",
+            "line": 459,
+            "func": "technical_404_response",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 22,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 139,
+            "func": "get_urlconf",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 262,
+            "func": "_remove_receiver",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-11620",
+  "messages": []
+}

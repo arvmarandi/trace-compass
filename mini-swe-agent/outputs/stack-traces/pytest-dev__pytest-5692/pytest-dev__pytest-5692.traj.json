@@ -1,0 +1,2720 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/testing/test_junitxml_hostname_timestamp.py b/testing/test_junitxml_hostname_timestamp.py\nnew file mode 100644\nindex 000000000..c9ebd1e36\n--- /dev/null\n+++ b/testing/test_junitxml_hostname_timestamp.py\n@@ -0,0 +1,100 @@\n+\"\"\"Tests for hostname and timestamp properties in JUnit XML reports\n+\n+These tests verify that the JUnit XML testsuite element includes the\n+hostname and timestamp attributes as required by the JUnit XML schema.\n+\n+This test file should:\n+- FAIL when run against the buggy codebase (hostname/timestamp missing)\n+- PASS once the bug is fixed (hostname/timestamp present)\n+\n+To ensure we're testing the correct (testbed) junitxml module, we load it\n+by file path and import its contents into our namespace.\n+\"\"\"\n+import os\n+import socket\n+import sys\n+import tempfile\n+from datetime import datetime\n+from xml.dom import minidom\n+from importlib.machinery import SourceFileLoader\n+\n+import pytest\n+\n+# Load the testbed's junitxml module directly from file\n+# This bypasses the normal import mechanism that might use cached modules\n+testbed_junitxml_path = '/testbed/src/_pytest/junitxml.py'\n+\n+# Create a new module with a unique name\n+junitxml_loader = SourceFileLoader('_pytest_junitxml_testbed', testbed_junitxml_path)\n+junitxml_module = junitxml_loader.load_module()\n+\n+# Get the LogXML class from the testbed's module\n+LogXML = junitxml_module.LogXML\n+\n+\n+def run_test_and_check_xml():\n+    \"\"\"Helper to run a test session and return the XML content\"\"\"\n+    with tempfile.TemporaryDirectory() as tmpdir:\n+        logfile = os.path.join(tmpdir, 'junit.xml')\n+        xml = LogXML(logfile, 'pytest')\n+        \n+        # Simulate session\n+        xml.pytest_sessionstart()\n+        xml.pytest_sessionfinish()\n+        \n+        # Parse the generated XML\n+        with open(logfile, 'r') as f:\n+            content = f.read()\n+        \n+        xmldoc = minidom.parseString(content)\n+        testsuite_nodes = xmldoc.getElementsByTagName(\"testsuite\")\n+        assert len(testsuite_nodes) == 1\n+        return testsuite_nodes[0], content\n+\n+\n+class TestJunitxmlHostnameTimestamp:\n+    \"\"\"Test that hostname and timestamp are present in JUnit XML testsuite element\"\"\"\n+\n+    def test_testsuite_has_hostname(self):\n+        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        hostname = testsuite.getAttributeNode(\"hostname\")\n+        assert hostname is not None, (\n+            \"hostname attribute should be present on testsuite element.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        assert hostname.value == socket.gethostname(), (\n+            f\"hostname should be '{socket.gethostname()}', got '{hostname.value}'\"\n+        )\n+\n+    def test_testsuite_has_timestamp(self):\n+        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        timestamp = testsuite.getAttributeNode(\"timestamp\")\n+        assert timestamp is not None, (\n+            \"timestamp attribute should be present on testsuite element.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        assert timestamp.value, \"timestamp should not be empty\"\n+\n+    def test_timestamp_is_iso_format(self):\n+        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n+        testsuite, xml_content = run_test_and_check_xml()\n+        timestamp = testsuite.getAttributeNode(\"timestamp\")\n+        assert timestamp is not None, (\n+            \"timestamp attribute should be present.\\n\"\n+            f\"Generated XML: {xml_content}\"\n+        )\n+        \n+        # Verify it's a valid ISO format timestamp\n+        # Expected format: \"YYYY-MM-DDTHH:MM:SS\" (at minimum)\n+        timestamp_value = timestamp.value\n+        try:\n+            datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))\n+        except ValueError:\n+            assert False, f\"timestamp '{timestamp_value}' is not in valid ISO 8601 format\"\n+\n+\n+# Allow running this test file directly with Python\n+if __name__ == '__main__':\n+    sys.exit(pytest.main([__file__, '-v', '-c', '/dev/null']))\n",
+    "stack_traces": [
+      "__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_hostname ___________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe843430>\n\n    def test_testsuite_has_hostname(self):\n        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        hostname = testsuite.getAttributeNode(\"hostname\")\n>       assert hostname is not None, (\n            \"hostname attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: hostname attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:62: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_timestamp __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe9978b0>\n\n    def test_testsuite_has_timestamp(self):\n        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:74: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_timestamp_is_iso_format __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe874bb0>\n\n    def test_timestamp_is_iso_format(self):\n        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:84: AssertionError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/testing/test_junitxml_hostname_timestamp.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-5.0.2.dev185+g29e336bd9, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, inifile: tox.ini\ncollected 3 items\n\ntesting/test_junitxml_hostname_timestamp.py FFF                          [100%]\n\n=================================== FAILURES ===================================\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_hostname ___________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe843430>\n\n    def test_testsuite_has_hostname(self):\n        \"\"\"Test that the testsuite element has a hostname attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        hostname = testsuite.getAttributeNode(\"hostname\")\n>       assert hostname is not None, (\n            \"hostname attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: hostname attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:62: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_testsuite_has_timestamp __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe9978b0>\n\n    def test_testsuite_has_timestamp(self):\n        \"\"\"Test that the testsuite element has a timestamp attribute\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present on testsuite element.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present on testsuite element.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:74: AssertionError\n__________ TestJunitxmlHostnameTimestamp.test_timestamp_is_iso_format __________\n\nself = <test_junitxml_hostname_timestamp.TestJunitxmlHostnameTimestamp object at 0x7ffffe874bb0>\n\n    def test_timestamp_is_iso_format(self):\n        \"\"\"Test that the timestamp is in ISO 8601 format\"\"\"\n        testsuite, xml_content = run_test_and_check_xml()\n        timestamp = testsuite.getAttributeNode(\"timestamp\")\n>       assert timestamp is not None, (\n            \"timestamp attribute should be present.\\n\"\n            f\"Generated XML: {xml_content}\"\n        )\nE       AssertionError: timestamp attribute should be present.\nE         Generated XML: <?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite errors=\"0\" failures=\"0\" name=\"pytest\" skipped=\"0\" tests=\"0\" time=\"0.000\"></testsuite></testsuites>\nE       assert None is not None\n\ntesting/test_junitxml_hostname_timestamp.py:84: AssertionError\n=========================== short test summary info ============================\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_hostname\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_timestamp\nFAILED testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_timestamp_is_iso_format\n=========================== 3 failed in 0.03 seconds ===========================\n\n",
+    "settrace_traces": {
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_hostname": {
+        "exception_frames": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 58,
+            "func": "test_testsuite_has_hostname",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 135,
+            "func": "_update_current_test_var",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 138,
+            "func": "nodeid",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 97,
+            "func": "ihook",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 420,
+            "func": "gethookproxy",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 90,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 99,
+            "func": "check_xfail_no_run",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 48,
+            "func": "istrue",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 71,
+            "func": "_istrue",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 39,
+            "func": "_get_marks",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 183,
+            "func": "iter_markers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 189,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 191,
+            "func": "iter_markers_with_node",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 152,
+            "func": "listchain",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 244,
+            "func": "obj",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 164,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 58,
+            "func": "test_testsuite_has_hostname",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 467,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 640,
+            "func": "pytest_sessionstart",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 681,
+            "func": "_get_global_properties_node",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 662,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 63,
+            "func": "find_spec",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 155,
+            "func": "_early_rewrite_bailout",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/pathlib.py",
+            "line": 306,
+            "func": "fnmatch_ex",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 192,
+            "func": "_should_rewrite",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 417,
+            "func": "isinitpath",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 215,
+            "func": "_is_marked_for_rewrite",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 396,
+            "func": "_call_reprcompare",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 110,
+            "func": "callbinrepr",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 120,
+            "func": "assertrepr_compare",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 60,
+            "func": "saferepr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 29,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 34,
+            "func": "repr",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 41,
+            "func": "repr_instance",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 16,
+            "func": "_ellipsize",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1018,
+            "func": "getoption",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 341,
+            "func": "_saferepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 355,
+            "func": "_format_assertmsg",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 20,
+            "func": "format_explanation",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 36,
+            "func": "_split_explanation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 53,
+            "func": "_format_lines",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 225,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 185,
+            "func": "item_capture",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 153,
+            "func": "deactivate_fixture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 126,
+            "func": "suspend_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 488,
+            "func": "suspend_capturing",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 600,
+            "func": "suspend",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 140,
+            "func": "read_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 520,
+            "func": "readouterr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 626,
+            "func": "snap",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 442,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 394,
+            "func": "add_report_section",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 571,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 532,
+            "func": "_runtest_for",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 552,
+            "func": "_runtest_for_main",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 208,
+            "func": "catching_logs",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 426,
+            "func": "from_current",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 399,
+            "func": "from_exc_info",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 523,
+            "func": "errisinstance",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 467,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 120,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/unittest.py",
+            "line": 223,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 242,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 338,
+            "func": "from_item_and_call",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 353,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 357,
+            "func": "_seen",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 345,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 806,
+            "func": "repr_failure",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 241,
+            "func": "_repr_failure_py",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 491,
+            "func": "traceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 475,
+            "func": "tb",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 282,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 287,
+            "func": "f",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 322,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 785,
+            "func": "_prunetraceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 218,
+            "func": "get_real_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 1039,
+            "func": "getrawcode",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 52,
+            "func": "path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 296,
+            "func": "cut",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 178,
+            "func": "frame",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 238,
+            "func": "ishidden",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 535,
+            "func": "getrepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 813,
+            "func": "repr_excinfo",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 758,
+            "func": "repr_traceback",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 715,
+            "func": "repr_traceback_entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 640,
+            "func": "_getentrysource",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 210,
+            "func": "getsource",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 68,
+            "func": "fullsource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 235,
+            "func": "findsource",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 241,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 207,
+            "func": "getfirstlinesource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 285,
+            "func": "getstatementrange_ast",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 137,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 261,
+            "func": "get_statement_startend2",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 310,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 308,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 50,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 111,
+            "func": "deindent",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 677,
+            "func": "get_exconly",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 507,
+            "func": "exconly",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 459,
+            "func": "type",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 529,
+            "func": "_getreprcrash",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 340,
+            "func": "getcrashentry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 416,
+            "func": "location",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 284,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 30,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 590,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 219,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 407,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 104,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1042,
+            "func": "getvalue",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 385,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 172,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 151,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 169,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 255,
+            "func": "verbosity",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 263,
+            "func": "showfspath",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/stepwise.py",
+            "line": 73,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/cacheprovider.py",
+            "line": 186,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      },
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_testsuite_has_timestamp": {
+        "exception_frames": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 70,
+            "func": "test_testsuite_has_timestamp",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 135,
+            "func": "_update_current_test_var",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 138,
+            "func": "nodeid",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 97,
+            "func": "ihook",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 420,
+            "func": "gethookproxy",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 90,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 99,
+            "func": "check_xfail_no_run",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 48,
+            "func": "istrue",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 71,
+            "func": "_istrue",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 39,
+            "func": "_get_marks",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 183,
+            "func": "iter_markers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 189,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 191,
+            "func": "iter_markers_with_node",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 152,
+            "func": "listchain",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 244,
+            "func": "obj",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 164,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 70,
+            "func": "test_testsuite_has_timestamp",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 467,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 640,
+            "func": "pytest_sessionstart",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 681,
+            "func": "_get_global_properties_node",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 662,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 396,
+            "func": "_call_reprcompare",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 110,
+            "func": "callbinrepr",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 120,
+            "func": "assertrepr_compare",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 60,
+            "func": "saferepr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 29,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 34,
+            "func": "repr",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 41,
+            "func": "repr_instance",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 16,
+            "func": "_ellipsize",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1018,
+            "func": "getoption",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 341,
+            "func": "_saferepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 355,
+            "func": "_format_assertmsg",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 20,
+            "func": "format_explanation",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 36,
+            "func": "_split_explanation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 53,
+            "func": "_format_lines",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 225,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 185,
+            "func": "item_capture",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 153,
+            "func": "deactivate_fixture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 126,
+            "func": "suspend_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 488,
+            "func": "suspend_capturing",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 600,
+            "func": "suspend",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 140,
+            "func": "read_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 520,
+            "func": "readouterr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 626,
+            "func": "snap",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 442,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 394,
+            "func": "add_report_section",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 571,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 532,
+            "func": "_runtest_for",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 552,
+            "func": "_runtest_for_main",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 208,
+            "func": "catching_logs",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 426,
+            "func": "from_current",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 399,
+            "func": "from_exc_info",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 523,
+            "func": "errisinstance",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 467,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 120,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/unittest.py",
+            "line": 223,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 242,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 338,
+            "func": "from_item_and_call",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 353,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 357,
+            "func": "_seen",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 345,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 806,
+            "func": "repr_failure",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 241,
+            "func": "_repr_failure_py",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 491,
+            "func": "traceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 475,
+            "func": "tb",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 282,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 287,
+            "func": "f",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 322,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 785,
+            "func": "_prunetraceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 218,
+            "func": "get_real_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 1039,
+            "func": "getrawcode",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 52,
+            "func": "path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 296,
+            "func": "cut",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 178,
+            "func": "frame",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 238,
+            "func": "ishidden",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 535,
+            "func": "getrepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 813,
+            "func": "repr_excinfo",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 758,
+            "func": "repr_traceback",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 715,
+            "func": "repr_traceback_entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 640,
+            "func": "_getentrysource",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 210,
+            "func": "getsource",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 68,
+            "func": "fullsource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 235,
+            "func": "findsource",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 241,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 207,
+            "func": "getfirstlinesource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 285,
+            "func": "getstatementrange_ast",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 137,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 261,
+            "func": "get_statement_startend2",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 310,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 308,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 50,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 111,
+            "func": "deindent",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 677,
+            "func": "get_exconly",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 507,
+            "func": "exconly",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 459,
+            "func": "type",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 529,
+            "func": "_getreprcrash",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 340,
+            "func": "getcrashentry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 416,
+            "func": "location",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 284,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 30,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 590,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 219,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 407,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 104,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1042,
+            "func": "getvalue",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 385,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 172,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 151,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 169,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 255,
+            "func": "verbosity",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 263,
+            "func": "showfspath",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/stepwise.py",
+            "line": 73,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/cacheprovider.py",
+            "line": 186,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      },
+      "testing/test_junitxml_hostname_timestamp.py::TestJunitxmlHostnameTimestamp::test_timestamp_is_iso_format": {
+        "exception_frames": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 80,
+            "func": "test_timestamp_is_iso_format",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 113,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 135,
+            "func": "_update_current_test_var",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 138,
+            "func": "nodeid",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1426,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 97,
+            "func": "ihook",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 420,
+            "func": "gethookproxy",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 90,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 99,
+            "func": "check_xfail_no_run",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 48,
+            "func": "istrue",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 71,
+            "func": "_istrue",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 39,
+            "func": "_get_marks",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 183,
+            "func": "iter_markers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 189,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 191,
+            "func": "iter_markers_with_node",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 152,
+            "func": "listchain",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 151,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 244,
+            "func": "obj",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 164,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 80,
+            "func": "test_timestamp_is_iso_format",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_junitxml_hostname_timestamp.py",
+            "line": 35,
+            "func": "run_test_and_check_xml",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 467,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 640,
+            "func": "pytest_sessionstart",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 643,
+            "func": "pytest_sessionfinish",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 681,
+            "func": "_get_global_properties_node",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/junitxml.py",
+            "line": 662,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 396,
+            "func": "_call_reprcompare",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 110,
+            "func": "callbinrepr",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 120,
+            "func": "assertrepr_compare",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 60,
+            "func": "saferepr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 29,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 34,
+            "func": "repr",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 41,
+            "func": "repr_instance",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 16,
+            "func": "_ellipsize",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1018,
+            "func": "getoption",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 341,
+            "func": "_saferepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 355,
+            "func": "_format_assertmsg",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 20,
+            "func": "format_explanation",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 36,
+            "func": "_split_explanation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 53,
+            "func": "_format_lines",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 225,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 185,
+            "func": "item_capture",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 153,
+            "func": "deactivate_fixture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 126,
+            "func": "suspend_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 488,
+            "func": "suspend_capturing",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 600,
+            "func": "suspend",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 140,
+            "func": "read_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 520,
+            "func": "readouterr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 626,
+            "func": "snap",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 442,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 394,
+            "func": "add_report_section",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 571,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 532,
+            "func": "_runtest_for",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 552,
+            "func": "_runtest_for_main",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 208,
+            "func": "catching_logs",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 426,
+            "func": "from_current",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 399,
+            "func": "from_exc_info",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 523,
+            "func": "errisinstance",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 467,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 120,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/unittest.py",
+            "line": 223,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 242,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 338,
+            "func": "from_item_and_call",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 353,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 357,
+            "func": "_seen",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 345,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 806,
+            "func": "repr_failure",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 241,
+            "func": "_repr_failure_py",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 491,
+            "func": "traceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 475,
+            "func": "tb",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 282,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 287,
+            "func": "f",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 322,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 785,
+            "func": "_prunetraceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 218,
+            "func": "get_real_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 1039,
+            "func": "getrawcode",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 52,
+            "func": "path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 296,
+            "func": "cut",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 178,
+            "func": "frame",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 328,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 238,
+            "func": "ishidden",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 535,
+            "func": "getrepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 813,
+            "func": "repr_excinfo",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 758,
+            "func": "repr_traceback",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 715,
+            "func": "repr_traceback_entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 640,
+            "func": "_getentrysource",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 210,
+            "func": "getsource",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 68,
+            "func": "fullsource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 235,
+            "func": "findsource",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 241,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 207,
+            "func": "getfirstlinesource",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 285,
+            "func": "getstatementrange_ast",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 137,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 261,
+            "func": "get_statement_startend2",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 310,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 308,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 50,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 111,
+            "func": "deindent",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 677,
+            "func": "get_exconly",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 507,
+            "func": "exconly",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 459,
+            "func": "type",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 529,
+            "func": "_getreprcrash",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 340,
+            "func": "getcrashentry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 416,
+            "func": "location",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 284,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/evaluate.py",
+            "line": 30,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 590,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 219,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 407,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 104,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1042,
+            "func": "getvalue",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 385,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 172,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 151,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 169,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 255,
+            "func": "verbosity",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 263,
+            "func": "showfspath",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/stepwise.py",
+            "line": 73,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/cacheprovider.py",
+            "line": 186,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "pytest-dev__pytest-5692",
+  "messages": []
+}

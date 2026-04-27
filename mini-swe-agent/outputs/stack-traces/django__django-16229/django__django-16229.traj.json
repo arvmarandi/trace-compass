@@ -1,0 +1,2613 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/forms_tests/tests/test_forms.py b/tests/forms_tests/tests/test_forms.py\nindex 930a200b14..24bedb2085 100644\n--- a/tests/forms_tests/tests/test_forms.py\n+++ b/tests/forms_tests/tests/test_forms.py\n@@ -5097,3 +5097,94 @@ class DeprecationTests(SimpleTestCase):\n         ):\n             form = Person()\n             str(form)\n+\n+\n+class CallableInitialWithShowHiddenInitialTests(SimpleTestCase):\n+    \"\"\"\n+    Tests for the bug where ModelForm fields with callable defaults don't\n+    correctly propagate default values when show_hidden_initial=True.\n+\n+    The issue is in BoundField.as_widget() - when only_initial=True is passed,\n+    it still uses value() which calls bound_data() when the form is bound.\n+    This causes the hidden initial value to be set to the submitted data\n+    instead of the original initial value.\n+    \n+    See: https://code.djangoproject.com/ticket/XXXXX\n+    \"\"\"\n+\n+    def test_hidden_initial_with_explicit_initial_on_bound_form(self):\n+        \"\"\"\n+        When a form is bound with data but has explicit initial, the hidden\n+        initial value should use the explicit initial, not the submitted data.\n+        \"\"\"\n+        class MyForm(Form):\n+            items = CharField(show_hidden_initial=True)\n+\n+        # Create bound form with data and explicit initial\n+        form = MyForm(data={'items': 'submitted'}, initial={'items': 'from_initial'})\n+        \n+        # The hidden initial should be 'from_initial', not 'submitted'\n+        hidden_html = form['items'].as_widget(only_initial=True)\n+        self.assertIn('value=\"from_initial\"', hidden_html)\n+\n+    def test_hidden_initial_with_callable_initial_on_bound_form(self):\n+        \"\"\"\n+        When a form is bound with data and a field has a callable initial,\n+        the hidden initial value should use the callable's result, not\n+        the submitted data.\n+        \"\"\"\n+        class MyForm(Form):\n+            items = CharField(\n+                initial=lambda: 'callable_result',\n+                show_hidden_initial=True,\n+            )\n+\n+        # Create bound form with data\n+        form = MyForm(data={'items': 'submitted'})\n+        \n+        # The hidden initial should be 'callable_result', not 'submitted'\n+        hidden_html = form['items'].as_widget(only_initial=True)\n+        self.assertIn('value=\"callable_result\"', hidden_html)\n+\n+    def test_has_changed_with_hidden_initial_and_callable_default(self):\n+        \"\"\"\n+        When a field has show_hidden_initial=True and a callable default,\n+        _has_changed() should return True when the submitted data differs\n+        from the callable's result, even if the hidden initial value would\n+        have been empty.\n+        \n+        This tests the scenario where:\n+        1. Form is submitted with data (e.g., 'test')\n+        2. clean() raises a ValidationError\n+        3. Form is re-rendered with submitted data\n+        4. On second submission (without modification), the hidden initial value\n+           incorrectly becomes empty (the submitted data) instead of 'test'\n+        5. has_changed() should return True (data differs from initial)\n+        \"\"\"\n+        class MyForm(Form):\n+            items = CharField(\n+                initial=lambda: 'initial_value',\n+                show_hidden_initial=True,\n+            )\n+\n+        # First form with initial data\n+        form1 = MyForm(initial={'items': 'test_value'})\n+        # Hidden initial should have 'test_value'\n+        self.assertIn('value=\"test_value\"', form1['items'].as_widget(only_initial=True))\n+        \n+        # Simulate second submission with empty data (after ValidationError)\n+        # The hidden initial should STILL be 'test_value'\n+        form2 = MyForm(data={'items': ''}, initial={'items': 'test_value'})\n+        hidden_html = form2['items'].as_widget(only_initial=True)\n+        \n+        # This is the bug: hidden initial becomes empty instead of 'test_value'\n+        # Uncomment the following line when the bug is fixed:\n+        # self.assertIn('value=\"test_value\"', hidden_html)\n+        \n+        # For now, we test the consequence of the bug:\n+        # _has_changed() should return True because data differs from initial\n+        # But due to the bug, it returns False because both are empty\n+        self.assertTrue(\n+            form2['items']._has_changed(),\n+            \"_has_changed() should return True since data differs from initial\",\n+        )\n",
+    "stack_traces": [],
+    "test_output": "test_has_changed_with_hidden_initial_and_callable_default (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a field has show_hidden_initial=True and a callable default, ... FAIL\ntest_hidden_initial_with_callable_initial_on_bound_form (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a form is bound with data and a field has a callable initial, ... FAIL\ntest_hidden_initial_with_explicit_initial_on_bound_form (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a form is bound with data but has explicit initial, the hidden ... FAIL\ntest_warning (forms_tests.tests.test_forms.DeprecationTests) ... ok\ntest_accessing_clean (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_auto_id (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_auto_id_false (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_auto_id_on_form_and_field (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_auto_id_true (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_baseform_repr (forms_tests.tests.test_forms.FormsTestCase)\nBaseForm.__repr__() should contain some basic information about the ... ok\ntest_baseform_repr_dont_trigger_validation (forms_tests.tests.test_forms.FormsTestCase)\nBaseForm.__repr__() shouldn't trigger the form validation. ... ok\ntest_boundfield_bool (forms_tests.tests.test_forms.FormsTestCase)\nBoundField without any choices (subwidgets) evaluates to True. ... ok\ntest_boundfield_css_classes (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_empty_label (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_id_for_label (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_id_for_label_override_by_attrs (forms_tests.tests.test_forms.FormsTestCase)\nIf an id is provided in `Widget.attrs`, it overrides the generated ID, ... ok\ntest_boundfield_initial_called_once (forms_tests.tests.test_forms.FormsTestCase)\nMultiple calls to BoundField().value() in an unbound form should return ... ok\ntest_boundfield_invalid_index (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_label_tag (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_label_tag_custom_widget_id_for_label (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_label_tag_no_id (forms_tests.tests.test_forms.FormsTestCase)\nIf a widget has no id, label_tag() and legend_tag() return the text ... ok\ntest_boundfield_slice (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_subwidget_id_for_label (forms_tests.tests.test_forms.FormsTestCase)\nIf auto_id is provided when initializing the form, the generated ID in ... ok\ntest_boundfield_value_disabled_callable_initial (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_values (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_boundfield_widget_type (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_callable_initial_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_changed_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_changing_cleaned_data_in_clean (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_changing_cleaned_data_nothing_returned (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_checkbox_auto_id (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_class_prefix (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_cleaned_data_only_fields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_custom_boundfield (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_custom_empty_values (forms_tests.tests.test_forms.FormsTestCase)\nForm fields can customize what is considered as an empty value ... ok\ntest_datetime_changed_data_callable_with_microseconds (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_datetime_clean_disabled_callable_initial_bound_field (forms_tests.tests.test_forms.FormsTestCase)\nThe cleaned value for a form with a disabled DateTimeField and callable ... ok\ntest_datetime_clean_disabled_callable_initial_microseconds (forms_tests.tests.test_forms.FormsTestCase)\nCleaning a form with a disabled DateTimeField and callable initial ... ok\ntest_dynamic_construction (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_dynamic_initial_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_empty_data_files_multi_value_dict (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_empty_dict (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_empty_permitted (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_empty_permitted_and_use_required_attribute (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_empty_querydict_args (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_dict (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_dict_as_json_escape_html (forms_tests.tests.test_forms.FormsTestCase)\n#21962 - adding html escape flag to ErrorDict ... ok\ntest_error_escaping (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_html_required_html_classes (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_list (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_list_class_has_one_class_specified (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_list_class_not_specified (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_list_with_hidden_field_errors_has_correct_class (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_error_list_with_non_field_errors_has_correct_class (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_escaping (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_explicit_field_order (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_extracting_hidden_and_visible (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_field_deep_copy_error_messages (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_field_named_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_field_order (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_filefield_initial_callable (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_filefield_with_fileinput_required (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form_html_attributes (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form_with_disabled_fields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form_with_iterable_boundfield (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form_with_iterable_boundfield_id (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_form_with_noniterable_boundfield (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_choices (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_file_fields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_multiple_choice (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_null_boolean (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_prefixes (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_forms_with_radio (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_get_initial_for_field (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_has_error (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_help_text (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_help_text_html_safe (forms_tests.tests.test_forms.FormsTestCase)\nhelp_text should not be escaped. ... ok\ntest_hidden_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_hidden_initial_gets_id (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_hidden_widget (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_html_output_with_hidden_input_field_errors (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_html_safe (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_id_on_field (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_initial_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_initial_datetime_values (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_iterable_boundfield_select (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_label_attrs_not_localized (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_label_does_not_include_new_line (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_label_has_required_css_class (forms_tests.tests.test_forms.FormsTestCase)\nrequired_css_class is added to label_tag() and legend_tag() of required ... ok\ntest_label_split_datetime_not_displayed (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_label_suffix (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_label_suffix_override (forms_tests.tests.test_forms.FormsTestCase)\nBoundField label_suffix (if provided) overrides Form label_suffix ... ok\ntest_multipart_encoded_form (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multiple_checkbox_render (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multiple_choice_checkbox (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multiple_choice_list_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multiple_hidden (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multivalue_deep_copy (forms_tests.tests.test_forms.FormsTestCase)\n#19298 -- MultiValueField needs to override the default as it needs ... ok\ntest_multivalue_field_validation (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multivalue_initial_data (forms_tests.tests.test_forms.FormsTestCase)\n#23674 -- invalid initial data should not break form.changed_data() ... ok\ntest_multivalue_optional_subfields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_multivalue_optional_subfields_rendering (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_only_hidden_fields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_optional_data (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_remove_cached_field (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_specifying_labels (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_subclassing_forms (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_unbound_form (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_unicode_values (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_update_error_dict (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_use_required_attribute_false (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_use_required_attribute_true (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_validating_multiple_fields (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_validators_independence (forms_tests.tests.test_forms.FormsTestCase)\nThe list of form field validators can be modified without polluting ... ok\ntest_various_boolean_values (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_widget_output (forms_tests.tests.test_forms.FormsTestCase) ... ok\ntest_accessing_clean (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_auto_id (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_auto_id_false (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_auto_id_on_form_and_field (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_auto_id_true (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_baseform_repr (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nBaseForm.__repr__() should contain some basic information about the ... ok\ntest_baseform_repr_dont_trigger_validation (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nBaseForm.__repr__() shouldn't trigger the form validation. ... ok\ntest_boundfield_bool (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nBoundField without any choices (subwidgets) evaluates to True. ... ok\ntest_boundfield_css_classes (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_empty_label (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_id_for_label (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_id_for_label_override_by_attrs (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nIf an id is provided in `Widget.attrs`, it overrides the generated ID, ... ok\ntest_boundfield_initial_called_once (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nMultiple calls to BoundField().value() in an unbound form should return ... ok\ntest_boundfield_invalid_index (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_label_tag (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_label_tag_custom_widget_id_for_label (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_label_tag_no_id (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nIf a widget has no id, label_tag() and legend_tag() return the text ... ok\ntest_boundfield_slice (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_subwidget_id_for_label (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nIf auto_id is provided when initializing the form, the generated ID in ... ok\ntest_boundfield_value_disabled_callable_initial (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_values (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_boundfield_widget_type (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_callable_initial_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_changed_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_changing_cleaned_data_in_clean (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_changing_cleaned_data_nothing_returned (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_checkbox_auto_id (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_class_prefix (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_cleaned_data_only_fields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_custom_boundfield (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_custom_empty_values (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nForm fields can customize what is considered as an empty value ... ok\ntest_datetime_changed_data_callable_with_microseconds (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_datetime_clean_disabled_callable_initial_bound_field (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nThe cleaned value for a form with a disabled DateTimeField and callable ... ok\ntest_datetime_clean_disabled_callable_initial_microseconds (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nCleaning a form with a disabled DateTimeField and callable initial ... ok\ntest_dynamic_construction (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_dynamic_initial_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_empty_data_files_multi_value_dict (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_empty_dict (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_empty_permitted (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_empty_permitted_and_use_required_attribute (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_empty_querydict_args (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_dict (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_dict_as_json_escape_html (forms_tests.tests.test_forms.Jinja2FormsTestCase)\n#21962 - adding html escape flag to ErrorDict ... ok\ntest_error_escaping (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_html_required_html_classes (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_list (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_list_class_has_one_class_specified (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_list_class_not_specified (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_list_with_hidden_field_errors_has_correct_class (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_error_list_with_non_field_errors_has_correct_class (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_escaping (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_explicit_field_order (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_extracting_hidden_and_visible (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_field_deep_copy_error_messages (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_field_named_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_field_order (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_filefield_initial_callable (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_filefield_with_fileinput_required (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form_html_attributes (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form_with_disabled_fields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form_with_iterable_boundfield (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form_with_iterable_boundfield_id (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_form_with_noniterable_boundfield (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_choices (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_file_fields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_multiple_choice (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_null_boolean (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_prefixes (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_forms_with_radio (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_get_initial_for_field (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_has_error (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_help_text (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_help_text_html_safe (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nhelp_text should not be escaped. ... ok\ntest_hidden_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_hidden_initial_gets_id (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_hidden_widget (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_html_output_with_hidden_input_field_errors (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_html_safe (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_id_on_field (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_initial_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_initial_datetime_values (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_iterable_boundfield_select (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_label_attrs_not_localized (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_label_does_not_include_new_line (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_label_has_required_css_class (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nrequired_css_class is added to label_tag() and legend_tag() of required ... ok\ntest_label_split_datetime_not_displayed (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_label_suffix (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_label_suffix_override (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nBoundField label_suffix (if provided) overrides Form label_suffix ... ok\ntest_multipart_encoded_form (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multiple_checkbox_render (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multiple_choice_checkbox (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multiple_choice_list_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multiple_hidden (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multivalue_deep_copy (forms_tests.tests.test_forms.Jinja2FormsTestCase)\n#19298 -- MultiValueField needs to override the default as it needs ... ok\ntest_multivalue_field_validation (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multivalue_initial_data (forms_tests.tests.test_forms.Jinja2FormsTestCase)\n#23674 -- invalid initial data should not break form.changed_data() ... ok\ntest_multivalue_optional_subfields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_multivalue_optional_subfields_rendering (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_only_hidden_fields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_optional_data (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_remove_cached_field (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_specifying_labels (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_subclassing_forms (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_unbound_form (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_unicode_values (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_update_error_dict (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_use_required_attribute_false (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_use_required_attribute_true (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_validating_multiple_fields (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_validators_independence (forms_tests.tests.test_forms.Jinja2FormsTestCase)\nThe list of form field validators can be modified without polluting ... ok\ntest_various_boolean_values (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_widget_output (forms_tests.tests.test_forms.Jinja2FormsTestCase) ... ok\ntest_custom_renderer_template_name (forms_tests.tests.test_forms.OverrideTests) ... ok\ntest_cyclic_context_boundfield_render (forms_tests.tests.test_forms.OverrideTests) ... ok\ntest_errorlist_override (forms_tests.tests.test_forms.OverrideTests) ... ok\ntest_legend_tag (forms_tests.tests.test_forms.OverrideTests) ... ok\ntest_per_form_template_name (forms_tests.tests.test_forms.OverrideTests) ... ok\ntest_attribute_class (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_attribute_instance (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_attribute_override (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_default (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_kwarg_class (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_kwarg_instance (forms_tests.tests.test_forms.RendererTests) ... ok\ntest_basic_processing_in_view (forms_tests.tests.test_forms.TemplateTests) ... ok\ntest_iterate_checkboxes (forms_tests.tests.test_forms.TemplateTests) ... ok\ntest_iterate_radios (forms_tests.tests.test_forms.TemplateTests) ... ok\ntest_templates_with_forms (forms_tests.tests.test_forms.TemplateTests) ... ok\n\n======================================================================\nFAIL: test_has_changed_with_hidden_initial_and_callable_default (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a field has show_hidden_initial=True and a callable default,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/tests/test_forms.py\", line 5187, in test_has_changed_with_hidden_initial_and_callable_default\n    self.assertTrue(\nAssertionError: False is not true : _has_changed() should return True since data differs from initial\n\n======================================================================\nFAIL: test_hidden_initial_with_callable_initial_on_bound_form (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a form is bound with data and a field has a callable initial,\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/tests/test_forms.py\", line 5147, in test_hidden_initial_with_callable_initial_on_bound_form\n    self.assertIn('value=\"callable_result\"', hidden_html)\nAssertionError: 'value=\"callable_result\"' not found in '<input type=\"text\" name=\"initial-items\" value=\"submitted\" required id=\"initial-id_items\">'\n\n======================================================================\nFAIL: test_hidden_initial_with_explicit_initial_on_bound_form (forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests)\nWhen a form is bound with data but has explicit initial, the hidden\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/forms_tests/tests/test_forms.py\", line 5128, in test_hidden_initial_with_explicit_initial_on_bound_form\n    self.assertIn('value=\"from_initial\"', hidden_html)\nAssertionError: 'value=\"from_initial\"' not found in '<input type=\"text\" name=\"initial-items\" value=\"submitted\" required id=\"initial-id_items\">'\n\n----------------------------------------------------------------------\nRan 245 tests in 0.349s\n\nFAILED (failures=3)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 forms_tests.tests.test_forms` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application forms_tests\nFound 245 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests.test_has_changed_with_hidden_initial_and_callable_default": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5149,
+            "func": "test_has_changed_with_hidden_initial_and_callable_default",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5149,
+            "func": "test_has_changed_with_hidden_initial_and_callable_default",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5164,
+            "func": "MyForm",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 326,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 284,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 15,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/validators.py",
+            "line": 605,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 30,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 223,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 191,
+            "func": "media_property",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 72,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 108,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 250,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 242,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 131,
+            "func": "order_fields",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 11,
+            "func": "get_default_renderer",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 89,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 175,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 243,
+            "func": "get_bound_field",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 17,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 203,
+            "func": "add_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 212,
+            "func": "add_initial_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 229,
+            "func": "auto_id",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/utils.py",
+            "line": 16,
+            "func": "pretty_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 84,
+            "func": "as_widget",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 257,
+            "func": "build_widget_attrs",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 49,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 253,
+            "func": "initial",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 515,
+            "func": "get_initial_for_field",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 314,
+            "func": "use_required_attribute",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 248,
+            "func": "is_hidden",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 129,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 169,
+            "func": "prepare_value",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 278,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 332,
+            "func": "get_context",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 256,
+            "func": "format_value",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 288,
+            "func": "build_attrs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 283,
+            "func": "_render",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 27,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 33,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 36,
+            "func": "engine",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 38,
+            "func": "get_templatetag_libraries",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 110,
+            "func": "get_installed_libraries",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 117,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 88,
+            "func": "get_template_tag_modules",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 145,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 129,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 94,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 122,
+            "func": "get_package_libraries",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/backends/base.py",
+            "line": 12,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 121,
+            "func": "get_template_libraries",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/library.py",
+            "line": 369,
+            "func": "import_library",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 118,
+            "func": "get_template_builtins",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 119,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 32,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 170,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 153,
+            "func": "find_template",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 127,
+            "func": "template_loaders",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 131,
+            "func": "get_template_loaders",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 139,
+            "func": "find_template_loader",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loaders/__init__.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 4,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 14,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 12,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 5,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/loaders/app_directories.py",
+            "line": 1,
+            "func": "<module>",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/template/loaders/app_directories.py",
+            "line": 11,
+            "func": "Loader",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 28,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 72,
+            "func": "cache_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 8,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 68,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 27,
+            "func": "get_template_sources",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 17,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/utils/_os.py",
+            "line": 9,
+            "func": "safe_join",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 25,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 20,
+            "func": "get_contents",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 179,
+            "func": "compile_nodelist",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 353,
+            "func": "tokenize",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 367,
+            "func": "create_token",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 592,
+            "func": "add_library",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 458,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 583,
+            "func": "next_token",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 301,
+            "func": "do_include",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 325,
+            "func": "split_contents",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 359,
+            "func": "smart_split",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 264,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 418,
+            "func": "_setup",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 345,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 304,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 243,
+            "func": "construct_relative_path",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 596,
+            "func": "compile_filter",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 239,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 241,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 378,
+            "func": "unescape_string_literal",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 843,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 163,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 528,
+            "func": "extend_nodelist",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 57,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 273,
+            "func": "make_context",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 136,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 31,
+            "func": "_reset_dicts",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 169,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 201,
+            "func": "push_state",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 48,
+            "func": "push",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 147,
+            "func": "bind_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 105,
+            "func": "instrumented_test_render",
+            "is_test": true,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1005,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 958,
+            "func": "render_annotated",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 174,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 197,
+            "func": "select_template",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 43,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 892,
+            "func": "do_if",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 884,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 157,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 177,
+            "func": "translate_token",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 888,
+            "func": "create_var",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 185,
+            "func": "next_token",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 193,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 202,
+            "func": "expression",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 134,
+            "func": "nud",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 53,
+            "func": "led",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 602,
+            "func": "find_filter",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 749,
+            "func": "args_check",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 586,
+            "func": "prepend_token",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 202,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 20,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 867,
+            "func": "_resolve_lookup",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 78,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1037,
+            "func": "render_value_in_context",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 181,
+            "func": "template_localtime",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 199,
+            "func": "localize",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 82,
+            "func": "conditional_escape",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 17,
+            "func": "escape",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 310,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 58,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 105,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 877,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 263,
+            "func": "stringformat",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 768,
+            "func": "do_for",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 89,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 90,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 62,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 162,
+            "func": "update",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 57,
+            "func": "pop",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 23,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 122,
+            "func": "data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 216,
+            "func": "_widget_data_value",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 292,
+            "func": "value_from_datadict",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 203,
+            "func": "bound_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 139,
+            "func": "_has_changed",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 274,
+            "func": "to_python",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 224,
+            "func": "has_changed",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests.test_hidden_initial_with_callable_initial_on_bound_form": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5130,
+            "func": "test_hidden_initial_with_callable_initial_on_bound_form",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5130,
+            "func": "test_hidden_initial_with_callable_initial_on_bound_form",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5136,
+            "func": "MyForm",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 326,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 284,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 15,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/validators.py",
+            "line": 605,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 30,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 223,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 191,
+            "func": "media_property",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 72,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 108,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 250,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 242,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 131,
+            "func": "order_fields",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 175,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 243,
+            "func": "get_bound_field",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 17,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 203,
+            "func": "add_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 212,
+            "func": "add_initial_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 229,
+            "func": "auto_id",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/utils.py",
+            "line": 16,
+            "func": "pretty_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 84,
+            "func": "as_widget",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 257,
+            "func": "build_widget_attrs",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 49,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 253,
+            "func": "initial",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 515,
+            "func": "get_initial_for_field",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5138,
+            "func": "<lambda>",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 314,
+            "func": "use_required_attribute",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 248,
+            "func": "is_hidden",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 129,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 122,
+            "func": "data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 216,
+            "func": "_widget_data_value",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 292,
+            "func": "value_from_datadict",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 203,
+            "func": "bound_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 169,
+            "func": "prepare_value",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 278,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 332,
+            "func": "get_context",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 256,
+            "func": "format_value",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 288,
+            "func": "build_attrs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 283,
+            "func": "_render",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 27,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 33,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 32,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 170,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 153,
+            "func": "find_template",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 28,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 72,
+            "func": "cache_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 49,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 57,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 273,
+            "func": "make_context",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 136,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 31,
+            "func": "_reset_dicts",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 169,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 201,
+            "func": "push_state",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 48,
+            "func": "push",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 147,
+            "func": "bind_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 105,
+            "func": "instrumented_test_render",
+            "is_test": true,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1005,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 958,
+            "func": "render_annotated",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 174,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 712,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 243,
+            "func": "construct_relative_path",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 197,
+            "func": "select_template",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 43,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 202,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 20,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 867,
+            "func": "_resolve_lookup",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 78,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1037,
+            "func": "render_value_in_context",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 181,
+            "func": "template_localtime",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 199,
+            "func": "localize",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 82,
+            "func": "conditional_escape",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 239,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 241,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 17,
+            "func": "escape",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 310,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 58,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 105,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 877,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 263,
+            "func": "stringformat",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 89,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 90,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 62,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 162,
+            "func": "update",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 57,
+            "func": "pop",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 23,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 24
+          }
+        ]
+      },
+      "forms_tests.tests.test_forms.CallableInitialWithShowHiddenInitialTests.test_hidden_initial_with_explicit_initial_on_bound_form": {
+        "exception_frames": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5115,
+            "func": "test_hidden_initial_with_explicit_initial_on_bound_form",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5115,
+            "func": "test_hidden_initial_with_explicit_initial_on_bound_form",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/forms_tests/tests/test_forms.py",
+            "line": 5120,
+            "func": "MyForm",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 326,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 284,
+            "func": "widget_attrs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 15,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/validators.py",
+            "line": 605,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 28,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 30,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 223,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 191,
+            "func": "media_property",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 75,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 72,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/__init__.py",
+            "line": 94,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 363,
+            "func": "gettext",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 108,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 250,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 242,
+            "func": "__deepcopy__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 131,
+            "func": "order_fields",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 175,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 243,
+            "func": "get_bound_field",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 17,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 203,
+            "func": "add_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 212,
+            "func": "add_initial_prefix",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 229,
+            "func": "auto_id",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/utils.py",
+            "line": 16,
+            "func": "pretty_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 84,
+            "func": "as_widget",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 257,
+            "func": "build_widget_attrs",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 49,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 253,
+            "func": "initial",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 515,
+            "func": "get_initial_for_field",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 314,
+            "func": "use_required_attribute",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 248,
+            "func": "is_hidden",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 129,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/boundfield.py",
+            "line": 122,
+            "func": "data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/forms.py",
+            "line": 216,
+            "func": "_widget_data_value",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 292,
+            "func": "value_from_datadict",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 203,
+            "func": "bound_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/fields.py",
+            "line": 169,
+            "func": "prepare_value",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 278,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 332,
+            "func": "get_context",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 256,
+            "func": "format_value",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 288,
+            "func": "build_attrs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/forms/widgets.py",
+            "line": 283,
+            "func": "_render",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 27,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/forms/renderers.py",
+            "line": 33,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 32,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 170,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 153,
+            "func": "find_template",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 28,
+            "func": "get_template",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 72,
+            "func": "cache_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 49,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 57,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 273,
+            "func": "make_context",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 136,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 31,
+            "func": "_reset_dicts",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 169,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 201,
+            "func": "push_state",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 48,
+            "func": "push",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 147,
+            "func": "bind_template",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 105,
+            "func": "instrumented_test_render",
+            "is_test": true,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1005,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 958,
+            "func": "render_annotated",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 174,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 712,
+            "func": "resolve",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 243,
+            "func": "construct_relative_path",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 197,
+            "func": "select_template",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 43,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/loader_tags.py",
+            "line": 202,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 20,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 867,
+            "func": "_resolve_lookup",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 78,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/base.py",
+            "line": 1037,
+            "func": "render_value_in_context",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/utils/timezone.py",
+            "line": 181,
+            "func": "template_localtime",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/formats.py",
+            "line": 199,
+            "func": "localize",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 82,
+            "func": "conditional_escape",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 239,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 241,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/utils/html.py",
+            "line": 17,
+            "func": "escape",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 310,
+            "func": "render",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 58,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/template/smartif.py",
+            "line": 105,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/template/defaulttags.py",
+            "line": 877,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/utils/safestring.py",
+            "line": 58,
+            "func": "mark_safe",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/defaultfilters.py",
+            "line": 263,
+            "func": "stringformat",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 89,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 90,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 62,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 162,
+            "func": "update",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 57,
+            "func": "pop",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "django/template/context.py",
+            "line": 23,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 24
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-16229",
+  "messages": []
+}

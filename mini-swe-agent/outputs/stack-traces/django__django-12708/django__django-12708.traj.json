@@ -1,0 +1,1362 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/schema/tests_bug.py b/tests/schema/tests_bug.py\nnew file mode 100644\nindex 0000000000..5a7b8c10ca\n--- /dev/null\n+++ b/tests/schema/tests_bug.py\n@@ -0,0 +1,84 @@\n+\"\"\"\n+Test for the bug: Migration crashes deleting an index_together if there is a \n+unique_together on the same fields.\n+\n+See: https://code.djangoproject.com/ticket/29298\n+\n+The bug occurs because:\n+1. When deleting index_together, _delete_composed_index is called with {'index': True}\n+2. This finds BOTH the index constraint AND the unique constraint (which is also an index)\n+3. It raises ValueError because it expects exactly 1 constraint\n+\n+The fix would be to exclude unique constraints when looking for index constraints,\n+and to exclude index constraints when looking for unique constraints.\n+\"\"\"\n+from django.db import connection, models\n+from django.test import TransactionTestCase, skipUnlessDBFeature\n+from django.test.utils import isolate_apps\n+\n+\n+class DeleteIndexTogetherWithUniqueTogetherTests(TransactionTestCase):\n+    \"\"\"\n+    Tests for the bug where deleting an index_together crashes when there's\n+    also a unique_together on the same fields.\n+    \n+    The issue is that _delete_composed_index finds both constraints (unique and index)\n+    and raises ValueError because it expects exactly one constraint.\n+    \"\"\"\n+    available_apps = []\n+    \n+    def tearDown(self):\n+        # Clean up any leftover tables\n+        for model in getattr(self, '_test_models', []):\n+            try:\n+                with connection.schema_editor() as editor:\n+                    editor.delete_model(model)\n+            except Exception:\n+                pass\n+\n+    @skipUnlessDBFeature('allows_multiple_constraints_on_same_fields')\n+    @isolate_apps('schema')\n+    def test_delete_index_together_when_unique_together_exists(self):\n+        \"\"\"\n+        Test that deleting an index_together works when unique_together exists\n+        on the same fields.\n+        \n+        This reproduces the bug where:\n+        1. Create a model with both index_together and unique_together on the same fields\n+        2. Try to delete the index_together\n+        3. This should not crash with \"ValueError: Found wrong number (2) of constraints\"\n+        \n+        The fix: When looking for an index to delete, we should exclude unique constraints.\n+        \"\"\"\n+        self._test_models = []\n+        \n+        class TestModel(models.Model):\n+            field1 = models.CharField(max_length=100)\n+            field2 = models.CharField(max_length=100)\n+            \n+            class Meta:\n+                app_label = 'schema'\n+                unique_together = [('field1', 'field2')]\n+                index_together = [('field1', 'field2')]\n+        \n+        self._test_models.append(TestModel)\n+        \n+        # Create the table\n+        with connection.schema_editor() as editor:\n+            editor.create_model(TestModel)\n+        \n+        # Try to delete the index_together - this should work, not crash\n+        # The bug causes this to raise:\n+        # ValueError: Found wrong number (2) of constraints for schema_testmodel(field1, field2)\n+        with connection.schema_editor() as editor:\n+            editor.alter_index_together(\n+                TestModel,\n+                [('field1', 'field2')],  # old_index_together\n+                []  # new_index_together\n+            )\n+        \n+        # Verify the index_together is gone (the index was removed)\n+        self.assertEqual(TestModel._meta.index_together, [])\n+        \n+        # Verify the unique_together is still there (which is the correct behavior)\n+        self.assertEqual(TestModel._meta.unique_together, [('field1', 'field2')])\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_delete_index_together_when_unique_together_exists (schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests) ... ERROR\n\n======================================================================\nERROR: test_delete_index_together_when_unique_together_exists (schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/testcases.py\", line 1215, in skip_wrapper\n    return test_func(*args, **kwargs)\n  File \"/testbed/django/test/utils.py\", line 381, in inner\n    return func(*args, **kwargs)\n  File \"/testbed/tests/schema/tests_bug.py\", line 77, in test_delete_index_together_when_unique_together_exists\n    []  # new_index_together\n  File \"/testbed/django/db/backends/base/schema.py\", line 396, in alter_index_together\n    self._delete_composed_index(model, fields, {'index': True}, self.sql_delete_index)\n  File \"/testbed/django/db/backends/base/schema.py\", line 414, in _delete_composed_index\n    \", \".join(columns),\nValueError: Found wrong number (2) of constraints for schema_testmodel(field1, field2)\n\n----------------------------------------------------------------------\nRan 1 test in 0.012s\n\nFAILED (errors=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 schema.tests_bug` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application schema\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, schema, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "schema.tests_bug.DeleteIndexTogetherWithUniqueTogetherTests.test_delete_index_together_when_unique_together_exists": {
+        "exception_frames": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1200,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 376,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 335,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 834,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/testcases.py",
+            "line": 1200,
+            "func": "skip_wrapper",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/__init__.py",
+            "line": 27,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1253,
+            "func": "<lambda>",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1253,
+            "func": "<genexpr>",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 376,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 335,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 834,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 61,
+            "func": "populate",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 81,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 13,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 54,
+            "func": "_path_from_module",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 102,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 104,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 204,
+            "func": "import_models",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 63,
+            "func": "module_has_submodule",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 362,
+            "func": "clear_cache",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 142,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 213,
+            "func": "ready",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "tests/schema/tests_bug.py",
+            "line": 39,
+            "func": "test_delete_index_together_when_unique_together_exists",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/schema/tests_bug.py",
+            "line": 55,
+            "func": "TestModel",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 983,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 587,
+            "func": "validators",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 14,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/validators.py",
+            "line": 302,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/schema/tests_bug.py",
+            "line": 59,
+            "func": "Meta",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 74,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 79,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 67,
+            "func": "_has_contribute_to_class",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 243,
+            "func": "get_containing_app_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 73,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 324,
+            "func": "add_to_class",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 147,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 409,
+            "func": "camel_case_to_spaces",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 238,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 37,
+            "func": "normalize_together",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 52,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 208,
+            "func": "_format_names_with_class",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 186,
+            "func": "__wrapper__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 93,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 275,
+            "func": "max_name_length",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 196,
+            "func": "truncate_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 182,
+            "func": "split_identifier",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 129,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 53,
+            "func": "subclass_exception",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 753,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 746,
+            "func": "set_attributes_from_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 791,
+            "func": "get_attname_column",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 788,
+            "func": "get_attname",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 260,
+            "func": "add_field",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 290,
+            "func": "setup_pk",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 720,
+            "func": "_expire_cache",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 132,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 520,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 169,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 330,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 220,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 433,
+            "func": "fields",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 747,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 59,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 228,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 450,
+            "func": "is_not_an_m2m_field",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 453,
+            "func": "is_not_a_generic_relation",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 456,
+            "func": "is_not_a_generic_foreign_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 134,
+            "func": "label_lower",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 357,
+            "func": "managers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 20,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 26,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 120,
+            "func": "_set_creation_counter",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 112,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 256,
+            "func": "add_manager",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 156,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 212,
+            "func": "register_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 417,
+            "func": "do_pending_operations",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 183,
+            "func": "get_models",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 137,
+            "func": "check_models_ready",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 332,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 625,
+            "func": "schema_editor",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 96,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/sqlite3/schema.py",
+            "line": 21,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 298,
+            "func": "disable_constraint_checking",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/asyncio.py",
+            "line": 14,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 256,
+            "func": "cursor",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 234,
+            "func": "_cursor",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 214,
+            "func": "ensure_connection",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 66,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 266,
+            "func": "create_cursor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 223,
+            "func": "_prepare_cursor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 544,
+            "func": "validate_thread_sharing",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 529,
+            "func": "allow_thread_sharing",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 152,
+            "func": "queries_logged",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 588,
+            "func": "make_cursor",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 69,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 32,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 65,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 71,
+            "func": "_execute_with_wrappers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 77,
+            "func": "_execute",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 445,
+            "func": "validate_no_broken_transaction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 407,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 35,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 21,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 105,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 285,
+            "func": "atomic",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 164,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 168,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 13,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 387,
+            "func": "get_autocommit",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 392,
+            "func": "set_autocommit",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 439,
+            "func": "validate_no_atomic_block",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 385,
+            "func": "_start_transaction_under_autocommit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 317,
+            "func": "create_model",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 147,
+            "func": "table_sql",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 152,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 524,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 1084,
+            "func": "_create_unique_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/ddl_references.py",
+            "line": 44,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 206,
+            "func": "column_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 709,
+            "func": "db_parameters",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 668,
+            "func": "db_type",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 653,
+            "func": "db_type_parameters",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 264,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2424,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 656,
+            "func": "db_check",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 734,
+            "func": "db_tablespace",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 722,
+            "func": "db_type_suffix",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 144,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 166,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 60,
+            "func": "autoinc_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 269,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 730,
+            "func": "unique",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 196,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 121,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 988,
+            "func": "_model_indexes_sql",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 1007,
+            "func": "_field_indexes_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 1016,
+            "func": "_field_should_be_indexed",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 949,
+            "func": "_create_index_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 939,
+            "func": "_get_index_tablespace_sql",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 985,
+            "func": "_index_columns",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/schema.py",
+            "line": 34,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 311,
+            "func": "check_constraints",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 112,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/ddl_references.py",
+            "line": 199,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 1085,
+            "func": "create_unique_name",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 910,
+            "func": "_create_index_name",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 213,
+            "func": "names_digest",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/ddl_references.py",
+            "line": 95,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/ddl_references.py",
+            "line": 85,
+            "func": "col_str",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 417,
+            "func": "convert_query",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 962,
+            "func": "create_index_name",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 196,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 261,
+            "func": "commit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 239,
+            "func": "_commit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 286,
+            "func": "_set_autocommit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 645,
+            "func": "run_and_clear_commit_hooks",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 307,
+            "func": "enable_constraint_checking",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 386,
+            "func": "alter_index_together",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 392,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 402,
+            "func": "_delete_composed_index",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 1142,
+            "func": "_constraint_names",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/introspection.py",
+            "line": 27,
+            "func": "identifier_converter",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 342,
+            "func": "get_constraints",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 78,
+            "func": "get_table_description",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 92,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 95,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 85,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 17,
+            "func": "get_field_size",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 375,
+            "func": "_setup",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/utils/regex_helper.py",
+            "line": 342,
+            "func": "_compile",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 264,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 359,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 312,
+            "func": "_parse_table_constraints",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 318,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 222,
+            "func": "_parse_column_or_constraint_definition",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 183,
+            "func": "get_primary_key_column",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/sqlite3/introspection.py",
+            "line": 206,
+            "func": "_get_foreign_key_constraints",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 271,
+            "func": "rollback",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 244,
+            "func": "_rollback",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 338,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 840,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "tests/schema/tests_bug.py",
+            "line": 30,
+            "func": "tearDown",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/backends/sqlite3/schema.py",
+            "line": 307,
+            "func": "delete_model",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/base/schema.py",
+            "line": 334,
+            "func": "delete_model",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-12708",
+  "messages": []
+}

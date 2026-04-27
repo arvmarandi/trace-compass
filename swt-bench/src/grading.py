@@ -67,10 +67,25 @@ def get_logs_eval(
 
     if not Path(log_fp).exists():
         # likely due to a timeout
-        return {}, False
+        return {}, False, ""
     with open(log_fp) as f:
         raw_content = f.read()
         # remove installation logs
+
+    # STACK TRACE HERE:
+    stack_traces = []
+
+    # find Pythonic stack traces
+    python_traces = re.findall(r"(Traceback \(most recent call last\):.*?)(?=\n\+|$)", raw_content, re.DOTALL)
+    stack_traces.extend(python_traces)
+
+    # find all Pytest failure blocks (if standard tracebacks weren't used)
+    pytest_blocks = re.findall(r"(_+ [^_]+ _+.*?)(?=\n={3,}|$)", raw_content, re.DOTALL)
+    stack_traces.extend(pytest_blocks)
+
+    # join both stack traces into one string
+    final_stack_trace = "\n\n" + "="*50 + "\n\n".join(stack_traces)
+
     if "trace.py --count -C coverage.cover" in raw_content:
         # NOTE: does not work when not computing coverage
         content = re.split(r"\n\+ python3 [^\n]*trace.py --count -C coverage.cover [^\n]*\n", raw_content, flags=re.MULTILINE)[1]
@@ -96,11 +111,11 @@ def get_logs_eval(
         # or "applied patch" not in content.lower()
     ):
         # Eval patch was not applied successfully
-        return {}, False
+        return {}, False, final_stack_trace
 
     # # Get status map of evaluation results
     # content =
-    return log_parser(content), "applied patch" in raw_content.lower()
+    return log_parser(content), "applied patch" in raw_content.lower(), final_stack_trace
 
 
 def get_coverage_eval(output_path: str) -> Dict:
@@ -220,7 +235,6 @@ def get_resolution_success(report_pred: dict[str, list[str]], report_base: dict[
     not_added_x2f = len(pred_p2f.difference(base_p2f)) == 0 and (len(pred_f2f.difference(base_f2f)) == 0)
 
     return added_p2f and not_added_x2f, len(pred_f2p.difference(base_f2p))
-
     
 
 def extract_changed_lines_from_patch(patch: str) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]]]:
@@ -299,6 +313,7 @@ def get_pred_report(
     patch_applied:bool,
     golden_code_patch: str,
     test_results: List[Dict[str, str]],
+    stack_traces: List[str],
     coverage_results: List[Dict[str, List[Tuple[int,int]]]],
     include_tests_status: bool,
 ) -> dict[str, Any]:
@@ -330,6 +345,8 @@ def get_pred_report(
         }
 
     report_map[instance_id]["patch_exists"] = True
+
+    report_map[instance_id]["stack_traces"] = stack_traces
 
     if not patch_applied:
         return report_map
@@ -408,15 +425,18 @@ def report_results(
     # Get report from test output
     logger.info(f"Grading answer for {instance_id}...")
     test_results = []
+    stack_traces = []
     coverage_results = []
 
     patch_applied = []
     if output_paths is not None:
         for output_path in output_paths:
-            test_result, patch_applied_ = get_logs_eval(output_path, repo, exec_mode)
+            test_result, patch_applied_, stack_trace = get_logs_eval(output_path, repo, exec_mode)
             patch_applied.append(patch_applied_)
             coverage_result = get_coverage_eval(output_path)
             test_results.append(test_result)
+            if stack_trace:
+                stack_traces.append(stack_trace)
             coverage_results.append(coverage_result)
 
         report = get_pred_report(
@@ -424,6 +444,7 @@ def report_results(
             patch_applied=patch_applied[0],
             golden_code_patch=golden_code_patch,
             test_results=test_results,
+            stack_traces=stack_traces,
             coverage_results=coverage_results,
             include_tests_status=True,
         )
@@ -433,6 +454,7 @@ def report_results(
             patch_applied=False,
             golden_code_patch=golden_code_patch,
             test_results=None,
+            stack_traces=None,
             coverage_results=None,
             include_tests_status=True,
         )

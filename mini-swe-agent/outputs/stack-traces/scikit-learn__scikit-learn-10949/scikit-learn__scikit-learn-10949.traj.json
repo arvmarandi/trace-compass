@@ -1,0 +1,118 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/test_warn_on_dtype_dataframe.py b/test_warn_on_dtype_dataframe.py\nnew file mode 100644\nindex 000000000..d6e2fab5f\n--- /dev/null\n+++ b/test_warn_on_dtype_dataframe.py\n@@ -0,0 +1,134 @@\n+\"\"\"\n+Test for warn_on_dtype with DataFrame input.\n+\n+This test verifies that warn_on_dtype=True raises a DataConversionWarning\n+when a pandas DataFrame (or DataFrame-like object) with dtype object is\n+converted to float64.\n+\n+The bug being tested: warn_on_dtype has no effect when input is a pandas\n+DataFrame because the code doesn't properly detect the original dtype.\n+\"\"\"\n+\n+import warnings\n+import numpy as np\n+import pytest\n+\n+# Workaround for Python 3.11 compatibility\n+import sys\n+import collections\n+import collections.abc\n+collections.Sequence = collections.abc.Sequence\n+\n+# Import MockDataFrame directly without going through sklearn's __init__\n+sys.path.insert(0, '/testbed')\n+\n+# Import the mocking module directly\n+from sklearn.utils.mocking import MockDataFrame\n+\n+# Import the validation module directly\n+from sklearn.utils.validation import check_array\n+\n+# Import the exception\n+from sklearn.exceptions import DataConversionWarning\n+\n+\n+class MockDataFrameWithDtypeWithoutKind:\n+    \"\"\"\n+    Mock DataFrame that has a dtype attribute that doesn't have a 'kind' attribute.\n+    \n+    This simulates the case where df.dtype exists but doesn't have a 'kind'\n+    attribute (which would cause dtype_orig to be set to None in the buggy code).\n+    \"\"\"\n+    def __init__(self, array, dtype_name):\n+        self.array = array\n+        self.values = array\n+        self.shape = array.shape\n+        self.ndim = array.ndim\n+        self._dtype_name = dtype_name\n+        \n+    @property\n+    def dtype(self):\n+        # Return a dtype-like object that doesn't have a 'kind' attribute\n+        class FakeDtype:\n+            def __init__(self, name):\n+                self.name = name\n+            def __repr__(self):\n+                return f\"dtype('{self.name}')\"\n+        return FakeDtype(self._dtype_name)\n+    \n+    def __len__(self):\n+        return len(self.array)\n+\n+    def __array__(self, dtype=None):\n+        return self.array\n+\n+\n+def test_check_array_warn_on_dtype_dataframe_object_conversion():\n+    \"\"\"\n+    Test that check_array warns when DataFrame with object dtype\n+    is converted to float64.\n+    \n+    This test reproduces the bug described in the PR where\n+    warn_on_dtype=True has no effect when input is a pandas DataFrame.\n+    \n+    Expected behavior: A DataConversionWarning should be raised when\n+    a DataFrame with dtype object is converted to float64.\n+    \n+    Actual behavior (buggy): No warning is raised because:\n+    1. In older pandas: df.dtype might not have a 'kind' attribute, causing\n+       dtype_orig to be set to None.\n+    2. In newer pandas: df.dtype doesn't exist at all.\n+    \"\"\"\n+    # Create a mock dataframe with object dtype\n+    X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=object)\n+    \n+    # Create a DataFrame-like object that has a dtype attribute without 'kind'\n+    # This simulates what happens when pandas DataFrame's dtype attribute\n+    # doesn't have the 'kind' attribute\n+    X_df = MockDataFrameWithDtypeWithoutKind(X, 'object')\n+    \n+    # Verify the mock has a dtype attribute\n+    assert hasattr(X_df, 'dtype'), \"MockDataFrame should have dtype attribute\"\n+    \n+    # Verify the dtype doesn't have a 'kind' attribute (the bug condition)\n+    dtype_orig = getattr(X_df, 'dtype', None)\n+    assert dtype_orig is not None, \"dtype should not be None\"\n+    assert not hasattr(dtype_orig, 'kind'), \"dtype should not have 'kind' attribute (bug condition)\"\n+    \n+    # Call check_array with warn_on_dtype=True\n+    # This should raise a DataConversionWarning because the input\n+    # dtype (object) is different from the output dtype (float64)\n+    with warnings.catch_warnings(record=True) as w:\n+        warnings.simplefilter(\"always\")\n+        result = check_array(X_df, warn_on_dtype=True)\n+        \n+        # Check that the warning was raised\n+        data_conversion_warnings = [\n+            warning for warning in w \n+            if issubclass(warning.category, DataConversionWarning)\n+        ]\n+        \n+        # This assertion will fail with the buggy code\n+        # The bug is that dtype_orig is set to None because dtype doesn't have 'kind'\n+        assert len(data_conversion_warnings) == 1, (\n+            f\"Expected 1 DataConversionWarning for object dtype conversion, \"\n+            f\"but got {len(data_conversion_warnings)}. \"\n+            f\"warn_on_dtype=True should raise a warning when DataFrame \"\n+            f\"with dtype object is converted to float64.\"\n+        )\n+        \n+        # Verify the warning message contains the expected text\n+        warning_msg = str(data_conversion_warnings[0].message)\n+        assert 'object' in warning_msg.lower(), (\n+            f\"Warning message should mention 'object' dtype, \"\n+            f\"but got: {warning_msg}\"\n+        )\n+        \n+        # Verify the result is float\n+        assert result.dtype.kind == 'f', (\n+            f\"Expected float64 output, got {result.dtype}\"\n+        )\n+\n+\n+if __name__ == '__main__':\n+    pytest.main([__file__, '-v'])\n",
+    "stack_traces": [
+      "__________ test_check_array_warn_on_dtype_dataframe_object_conversion __________\n\n    def test_check_array_warn_on_dtype_dataframe_object_conversion():\n        \"\"\"\n        Test that check_array warns when DataFrame with object dtype\n        is converted to float64.\n    \n        This test reproduces the bug described in the PR where\n        warn_on_dtype=True has no effect when input is a pandas DataFrame.\n    \n        Expected behavior: A DataConversionWarning should be raised when\n        a DataFrame with dtype object is converted to float64.\n    \n        Actual behavior (buggy): No warning is raised because:\n        1. In older pandas: df.dtype might not have a 'kind' attribute, causing\n           dtype_orig to be set to None.\n        2. In newer pandas: df.dtype doesn't exist at all.\n        \"\"\"\n        # Create a mock dataframe with object dtype\n        X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=object)\n    \n        # Create a DataFrame-like object that has a dtype attribute without 'kind'\n        # This simulates what happens when pandas DataFrame's dtype attribute\n        # doesn't have the 'kind' attribute\n        X_df = MockDataFrameWithDtypeWithoutKind(X, 'object')\n    \n        # Verify the mock has a dtype attribute\n        assert hasattr(X_df, 'dtype'), \"MockDataFrame should have dtype attribute\"\n    \n        # Verify the dtype doesn't have a 'kind' attribute (the bug condition)\n        dtype_orig = getattr(X_df, 'dtype', None)\n        assert dtype_orig is not None, \"dtype should not be None\"\n        assert not hasattr(dtype_orig, 'kind'), \"dtype should not have 'kind' attribute (bug condition)\"\n    \n        # Call check_array with warn_on_dtype=True\n        # This should raise a DataConversionWarning because the input\n        # dtype (object) is different from the output dtype (float64)\n        with warnings.catch_warnings(record=True) as w:\n            warnings.simplefilter(\"always\")\n            result = check_array(X_df, warn_on_dtype=True)\n    \n            # Check that the warning was raised\n            data_conversion_warnings = [\n                warning for warning in w\n                if issubclass(warning.category, DataConversionWarning)\n            ]\n    \n            # This assertion will fail with the buggy code\n            # The bug is that dtype_orig is set to None because dtype doesn't have 'kind'\n>           assert len(data_conversion_warnings) == 1, (\n                f\"Expected 1 DataConversionWarning for object dtype conversion, \"\n                f\"but got {len(data_conversion_warnings)}. \"\n                f\"warn_on_dtype=True should raise a warning when DataFrame \"\n                f\"with dtype object is converted to float64.\"\n            )\nE           AssertionError: Expected 1 DataConversionWarning for object dtype conversion, but got 0. warn_on_dtype=True should raise a warning when DataFrame with dtype object is converted to float64.\nE           assert 0 == 1\nE            +  where 0 = len([])\n\ntest_warn_on_dtype_dataframe.py:113: AssertionError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/test_warn_on_dtype_dataframe.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 1 item\n\ntest_warn_on_dtype_dataframe.py F                                        [100%]\n\n=================================== FAILURES ===================================\n__________ test_check_array_warn_on_dtype_dataframe_object_conversion __________\n\n    def test_check_array_warn_on_dtype_dataframe_object_conversion():\n        \"\"\"\n        Test that check_array warns when DataFrame with object dtype\n        is converted to float64.\n    \n        This test reproduces the bug described in the PR where\n        warn_on_dtype=True has no effect when input is a pandas DataFrame.\n    \n        Expected behavior: A DataConversionWarning should be raised when\n        a DataFrame with dtype object is converted to float64.\n    \n        Actual behavior (buggy): No warning is raised because:\n        1. In older pandas: df.dtype might not have a 'kind' attribute, causing\n           dtype_orig to be set to None.\n        2. In newer pandas: df.dtype doesn't exist at all.\n        \"\"\"\n        # Create a mock dataframe with object dtype\n        X = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=object)\n    \n        # Create a DataFrame-like object that has a dtype attribute without 'kind'\n        # This simulates what happens when pandas DataFrame's dtype attribute\n        # doesn't have the 'kind' attribute\n        X_df = MockDataFrameWithDtypeWithoutKind(X, 'object')\n    \n        # Verify the mock has a dtype attribute\n        assert hasattr(X_df, 'dtype'), \"MockDataFrame should have dtype attribute\"\n    \n        # Verify the dtype doesn't have a 'kind' attribute (the bug condition)\n        dtype_orig = getattr(X_df, 'dtype', None)\n        assert dtype_orig is not None, \"dtype should not be None\"\n        assert not hasattr(dtype_orig, 'kind'), \"dtype should not have 'kind' attribute (bug condition)\"\n    \n        # Call check_array with warn_on_dtype=True\n        # This should raise a DataConversionWarning because the input\n        # dtype (object) is different from the output dtype (float64)\n        with warnings.catch_warnings(record=True) as w:\n            warnings.simplefilter(\"always\")\n            result = check_array(X_df, warn_on_dtype=True)\n    \n            # Check that the warning was raised\n            data_conversion_warnings = [\n                warning for warning in w\n                if issubclass(warning.category, DataConversionWarning)\n            ]\n    \n            # This assertion will fail with the buggy code\n            # The bug is that dtype_orig is set to None because dtype doesn't have 'kind'\n>           assert len(data_conversion_warnings) == 1, (\n                f\"Expected 1 DataConversionWarning for object dtype conversion, \"\n                f\"but got {len(data_conversion_warnings)}. \"\n                f\"warn_on_dtype=True should raise a warning when DataFrame \"\n                f\"with dtype object is converted to float64.\"\n            )\nE           AssertionError: Expected 1 DataConversionWarning for object dtype conversion, but got 0. warn_on_dtype=True should raise a warning when DataFrame with dtype object is converted to float64.\nE           assert 0 == 1\nE            +  where 0 = len([])\n\ntest_warn_on_dtype_dataframe.py:113: AssertionError\n=========================== short test summary info ============================\nFAILED test_warn_on_dtype_dataframe.py::test_check_array_warn_on_dtype_dataframe_object_conversion\n============================== 1 failed in 0.39s ===============================\n\n",
+    "settrace_traces": {
+      "test_warn_on_dtype_dataframe.py::test_check_array_warn_on_dtype_dataframe_object_conversion": {
+        "exception_frames": [
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 66,
+            "func": "test_check_array_warn_on_dtype_dataframe_object_conversion",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 66,
+            "func": "test_check_array_warn_on_dtype_dataframe_object_conversion",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 42,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 49,
+            "func": "dtype",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 52,
+            "func": "FakeDtype",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 354,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 62,
+            "func": "__array__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 347,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 40,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 12,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 148,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 175,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 127,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "test_warn_on_dtype_dataframe.py",
+            "line": 107,
+            "func": "<listcomp>",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-10949",
+  "messages": []
+}

@@ -1,0 +1,2131 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/astropy/io/ascii/tests/test_rst_header_rows.py b/astropy/io/ascii/tests/test_rst_header_rows.py\nnew file mode 100644\nindex 000000000..50b30da72\n--- /dev/null\n+++ b/astropy/io/ascii/tests/test_rst_header_rows.py\n@@ -0,0 +1,129 @@\n+# Licensed under a 3-clause BSD style license - see LICENSE.rst\n+\"\"\"\n+Tests for RST header_rows support.\n+\n+These tests verify that the RestructuredText (RST) writer/reader\n+supports the header_rows parameter, similar to fixed_width format.\n+\"\"\"\n+\n+from io import StringIO\n+\n+import pytest\n+\n+from astropy import units as u\n+from astropy.io import ascii\n+from astropy.table import QTable\n+\n+\n+def test_rst_write_with_header_rows():\n+    \"\"\"Test that RST writer accepts header_rows parameter.\"\"\"\n+    tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n+\n+    out = StringIO()\n+    # This should work without raising TypeError\n+    tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n+\n+    output = out.getvalue()\n+    lines = output.splitlines()\n+\n+    # Check that we have multiple header rows (at least 4 header lines:\n+    # position line, name line, unit line, position line)\n+    # For RST format, the output should look like:\n+    # ===== ========\n+    # wave response\n+    #   nm       ct\n+    # ===== ========\n+    # 350.0      0.7\n+    # 950.0      1.2\n+    # ===== ========\n+    assert len(lines) == 7  # 4 header lines + 2 data lines + bottom position line\n+    assert \"wave\" in lines[1]\n+    assert \"response\" in lines[1]\n+    assert \"nm\" in lines[2]\n+    assert \"ct\" in lines[2]\n+    assert \"350.0\" in lines[3]\n+    assert \"950.0\" in lines[4]\n+\n+\n+def test_rst_read_with_header_rows():\n+    \"\"\"Test that RST reader accepts header_rows parameter.\"\"\"\n+    # RST table with header_rows=['name', 'unit']\n+    table = \"\"\"\\\n+===== ========\n+ wave response\n+   nm       ct\n+===== ========\n+350.0      0.7\n+950.0      1.2\n+===== ========\n+\"\"\"\n+    # This should work without raising TypeError\n+    tbl = ascii.read(table, format=\"rst\", header_rows=[\"name\", \"unit\"])\n+\n+    assert \"wave\" in tbl.colnames\n+    assert \"response\" in tbl.colnames\n+\n+    # Check that units are read correctly\n+    assert tbl[\"wave\"].unit == u.nm\n+    assert tbl[\"response\"].unit == u.ct\n+\n+\n+def test_rst_roundtrip_with_header_rows():\n+    \"\"\"Test that RST format can round-trip with header_rows.\"\"\"\n+    tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n+\n+    out = StringIO()\n+    tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n+    output = out.getvalue()\n+\n+    # Read it back\n+    tbl2 = ascii.read(output, format=\"rst\", header_rows=[\"name\", \"unit\"])\n+\n+    assert tbl2[\"wave\"].unit == u.nm\n+    assert tbl2[\"response\"].unit == u.ct\n+    assert len(tbl2) == 2\n+    assert list(tbl2[\"wave\"]) == [350.0, 950.0]\n+    assert list(tbl2[\"response\"]) == [0.7, 1.2]\n+\n+\n+def test_rst_default_header_rows():\n+    \"\"\"Test that RST still works with default header_rows=['name'].\"\"\"\n+    tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n+\n+    out = StringIO()\n+    # Should work without header_rows argument\n+    tbl.write(out, format=\"ascii.rst\")\n+\n+    output = out.getvalue()\n+    lines = output.splitlines()\n+\n+    # Default RST format has position line, name line, position line, data, position line\n+    assert len(lines) == 6\n+    assert \"wave\" in lines[1]\n+    assert \"response\" in lines[1]\n+\n+\n+def test_rst_header_rows_from_pr_description():\n+    \"\"\"\n+    Test case from PR description - RST should work with header_rows parameter\n+    just like fixed_width format.\n+    \n+    This test reproduces the exact use case described in the PR.\n+    \"\"\"\n+    tbl = QTable({\"wave\": [350, 950] * u.nm, \"response\": [0.7, 1.2] * u.count})\n+\n+    # This is the exact code from the PR description that was failing\n+    # It should work without raising TypeError\n+    out = StringIO()\n+    tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n+    \n+    output = out.getvalue()\n+    \n+    # Verify the output contains both name and unit rows\n+    lines = output.splitlines()\n+    \n+    # Should have header rows: position, name, unit, position, data..., position\n+    # At minimum: ===== ======== (position), wave response (name), nm ct (unit), etc.\n+    assert len(lines) >= 5\n+    assert \"wave\" in lines[1]\n+    assert \"nm\" in lines[2]\n",
+    "stack_traces": [
+      "_______________________ test_rst_write_with_header_rows ________________________\n\n    def test_rst_write_with_header_rows():\n        \"\"\"Test that RST writer accepts header_rows parameter.\"\"\"\n        tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        out = StringIO()\n        # This should work without raising TypeError\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:24: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffdd406970>\nserialize_method = None, args = (<_io.StringIO object at 0x7fffdd257c10>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7fffdd257c10>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7fffdd257c10>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7fffdd257c10>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError\n________________________ test_rst_read_with_header_rows ________________________\n\n    def test_rst_read_with_header_rows():\n        \"\"\"Test that RST reader accepts header_rows parameter.\"\"\"\n        # RST table with header_rows=['name', 'unit']\n        table = \"\"\"\\\n    ===== ========\n     wave response\n       nm       ct\n    ===== ========\n    350.0      0.7\n    950.0      1.2\n    ===== ========\n    \"\"\"\n        # This should work without raising TypeError\n>       tbl = ascii.read(table, format=\"rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:61: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = '===== ========\\n wave response\\n   nm       ct\\n===== ========\\n350.0      0.7\\n950.0      1.2\\n===== ========\\n'\nguess = False\nkwargs = {'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'format': 'rst', 'header_rows': ['name', 'unit']}\ndat = None, fast_reader = {'enable': True}, format = 'rst'\nnew_kwargs = {'Reader': <class 'astropy.io.ascii.rst.RST'>, 'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\nReader = <class 'astropy.io.ascii.rst.RST'>, encoding = None\n\n    def read(table, guess=None, **kwargs):\n        # This the final output from reading. Static analysis indicates the reading\n        # logic (which is indeed complex) might not define `dat`, thus do so here.\n        dat = None\n    \n        # Docstring defined below\n        del _read_trace[:]\n    \n        # Downstream readers might munge kwargs\n        kwargs = copy.deepcopy(kwargs)\n    \n        _validate_read_write_kwargs(\"read\", **kwargs)\n    \n        # Convert 'fast_reader' key in kwargs into a dict if not already and make sure\n        # 'enable' key is available.\n        fast_reader = _get_fast_reader_dict(kwargs)\n        kwargs[\"fast_reader\"] = fast_reader\n    \n        if fast_reader[\"enable\"] and fast_reader.get(\"chunk_size\"):\n            return _read_in_chunks(table, **kwargs)\n    \n        if \"fill_values\" not in kwargs:\n            kwargs[\"fill_values\"] = [(\"\", \"0\")]\n    \n        # If an Outputter is supplied in kwargs that will take precedence.\n        if (\n            \"Outputter\" in kwargs\n        ):  # user specified Outputter, not supported for fast reading\n            fast_reader[\"enable\"] = False\n    \n        format = kwargs.get(\"format\")\n        # Dictionary arguments are passed by reference per default and thus need\n        # special protection:\n        new_kwargs = copy.deepcopy(kwargs)\n        kwargs[\"fast_reader\"] = copy.deepcopy(fast_reader)\n    \n        # Get the Reader class based on possible format and Reader kwarg inputs.\n        Reader = _get_format_class(format, kwargs.get(\"Reader\"), \"Reader\")\n        if Reader is not None:\n            new_kwargs[\"Reader\"] = Reader\n            format = Reader._format_name\n    \n        # Remove format keyword if there, this is only allowed in read() not get_reader()\n        if \"format\" in new_kwargs:\n            del new_kwargs[\"format\"]\n    \n        if guess is None:\n            guess = _GUESS\n    \n        if guess:\n            # If ``table`` is probably an HTML file then tell guess function to add\n            # the HTML reader at the top of the guess list.  This is in response to\n            # issue #3691 (and others) where libxml can segfault on a long non-HTML\n            # file, thus prompting removal of the HTML reader from the default\n            # guess list.\n            new_kwargs[\"guess_html\"] = _probably_html(table)\n    \n            # If `table` is a filename or readable file object then read in the\n            # file now.  This prevents problems in Python 3 with the file object\n            # getting closed or left at the file end.  See #3132, #3013, #3109,\n            # #2001.  If a `readme` arg was passed that implies CDS format, in\n            # which case the original `table` as the data filename must be left\n            # intact.\n            if \"readme\" not in new_kwargs:\n                encoding = kwargs.get(\"encoding\")\n                try:\n                    table = _expand_user_if_path(table)\n                    with get_readable_fileobj(table, encoding=encoding) as fileobj:\n                        table = fileobj.read()\n                except ValueError:  # unreadable or invalid binary file\n                    raise\n                except Exception:\n                    pass\n                else:\n                    # Ensure that `table` has at least one \\r or \\n in it\n                    # so that the core.BaseInputter test of\n                    # ('\\n' not in table and '\\r' not in table)\n                    # will fail and so `table` cannot be interpreted there\n                    # as a filename.  See #4160.\n                    if not re.search(r\"[\\r\\n]\", table):\n                        table = table + os.linesep\n    \n                    # If the table got successfully read then look at the content\n                    # to see if is probably HTML, but only if it wasn't already\n                    # identified as HTML based on the filename.\n                    if not new_kwargs[\"guess_html\"]:\n                        new_kwargs[\"guess_html\"] = _probably_html(table)\n    \n            # Get the table from guess in ``dat``.  If ``dat`` comes back as None\n            # then there was just one set of kwargs in the guess list so fall\n            # through below to the non-guess way so that any problems result in a\n            # more useful traceback.\n            dat = _guess(table, new_kwargs, format, fast_reader)\n            if dat is None:\n                guess = False\n    \n        if not guess:\n            if format is None:\n                reader = get_reader(**new_kwargs)\n                format = reader._format_name\n    \n            table = _expand_user_if_path(table)\n    \n            # Try the fast reader version of `format` first if applicable.  Note that\n            # if user specified a fast format (e.g. format='fast_basic') this test\n            # will fail and the else-clause below will be used.\n            if fast_reader[\"enable\"] and f\"fast_{format}\" in core.FAST_CLASSES:\n                fast_kwargs = copy.deepcopy(new_kwargs)\n                fast_kwargs[\"Reader\"] = core.FAST_CLASSES[f\"fast_{format}\"]\n                fast_reader_rdr = get_reader(**fast_kwargs)\n                try:\n                    dat = fast_reader_rdr.read(table)\n                    _read_trace.append(\n                        {\n                            \"kwargs\": copy.deepcopy(fast_kwargs),\n                            \"Reader\": fast_reader_rdr.__class__,\n                            \"status\": \"Success with fast reader (no guessing)\",\n                        }\n                    )\n                except (\n                    core.ParameterError,\n                    cparser.CParserError,\n                    UnicodeEncodeError,\n                ) as err:\n                    # special testing value to avoid falling back on the slow reader\n                    if fast_reader[\"enable\"] == \"force\":\n                        raise core.InconsistentTableError(\n                            f\"fast reader {fast_reader_rdr.__class__} exception: {err}\"\n                        )\n                    # If the fast reader doesn't work, try the slow version\n                    reader = get_reader(**new_kwargs)\n                    dat = reader.read(table)\n                    _read_trace.append(\n                        {\n                            \"kwargs\": copy.deepcopy(new_kwargs),\n                            \"Reader\": reader.__class__,\n                            \"status\": (\n                                \"Success with slow reader after failing\"\n                                \" with fast (no guessing)\"\n                            ),\n                        }\n                    )\n            else:\n>               reader = get_reader(**new_kwargs)\n\nastropy/io/ascii/ui.py:425: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nReader = <class 'astropy.io.ascii.rst.RST'>, Inputter = None, Outputter = None\nkwargs = {'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\n\n    def get_reader(Reader=None, Inputter=None, Outputter=None, **kwargs):\n        \"\"\"\n        Initialize a table reader allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Reader class.\n    \n        Parameters\n        ----------\n        Reader : `~astropy.io.ascii.BaseReader`\n            Reader class (DEPRECATED). Default is :class:`Basic`.\n        Inputter : `~astropy.io.ascii.BaseInputter`\n            Inputter class\n        Outputter : `~astropy.io.ascii.BaseOutputter`\n            Outputter class\n        delimiter : str\n            Column delimiter string\n        comment : str\n            Regular expression defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        header_start : int\n            Line index for the header line not counting comment or blank lines.\n            A line with only whitespace is considered blank.\n        data_start : int\n            Line index for the start of data not counting comment or blank lines.\n            A line with only whitespace is considered blank.\n        data_end : int\n            Line index for the end of data not counting comment or blank lines.\n            This value can be negative to count from the end.\n        converters : dict\n            Dict of converters.\n        data_Splitter : `~astropy.io.ascii.BaseSplitter`\n            Splitter class to split data columns.\n        header_Splitter : `~astropy.io.ascii.BaseSplitter`\n            Splitter class to split header columns.\n        names : list\n            List of names corresponding to each data column.\n        include_names : list, optional\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``).\n        fill_values : tuple, list of tuple\n            Specification of fill values for bad or missing table values.\n        fill_include_names : list\n            List of names to include in fill_values.\n        fill_exclude_names : list\n            List of names to exclude from fill_values (applied after ``fill_include_names``).\n    \n        Returns\n        -------\n        reader : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format reader instance\n        \"\"\"\n        # This function is a light wrapper around core._get_reader to provide a\n        # public interface with a default Reader.\n        if Reader is None:\n            # Default reader is Basic unless fast reader is forced\n            fast_reader = _get_fast_reader_dict(kwargs)\n            if fast_reader[\"enable\"] == \"force\":\n                Reader = fastbasic.FastBasic\n            else:\n                Reader = basic.Basic\n    \n>       reader = core._get_reader(Reader, Inputter=Inputter, Outputter=Outputter, **kwargs)\n\nastropy/io/ascii/ui.py:183: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nReader = <class 'astropy.io.ascii.rst.RST'>, Inputter = None, Outputter = None\nkwargs = {'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nreader_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_reader(Reader, Inputter=None, Outputter=None, **kwargs):\n        \"\"\"Initialize a table reader allowing for common customizations.  See ui.get_reader()\n        for param docs.  This routine is for internal (package) use only and is useful\n        because it depends only on the \"core\" module.\n        \"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        if issubclass(Reader, FastBasic):  # Fast readers handle args separately\n            if Inputter is not None:\n                kwargs[\"Inputter\"] = Inputter\n            return Reader(**kwargs)\n    \n        # If user explicitly passed a fast reader with enable='force'\n        # (e.g. by passing non-default options), raise an error for slow readers\n        if \"fast_reader\" in kwargs:\n            if kwargs[\"fast_reader\"][\"enable\"] == \"force\":\n                raise ParameterError(\n                    \"fast_reader required with \"\n                    \"{}, but this is not a fast C reader: {}\".format(\n                        kwargs[\"fast_reader\"], Reader\n                    )\n                )\n            else:\n                del kwargs[\"fast_reader\"]  # Otherwise ignore fast_reader parameter\n    \n        reader_kwargs = {k: v for k, v in kwargs.items() if k not in extra_reader_pars}\n>       reader = Reader(**reader_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1692: TypeError\n_____________________ test_rst_roundtrip_with_header_rows ______________________\n\n    def test_rst_roundtrip_with_header_rows():\n        \"\"\"Test that RST format can round-trip with header_rows.\"\"\"\n        tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        out = StringIO()\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:76: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffddbeec70>\nserialize_method = None, args = (<_io.StringIO object at 0x7ffffabc44c0>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7ffffabc44c0>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7ffffabc44c0>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7ffffabc44c0>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError\n___________________ test_rst_header_rows_from_pr_description ___________________\n\n    def test_rst_header_rows_from_pr_description():\n        \"\"\"\n        Test case from PR description - RST should work with header_rows parameter\n        just like fixed_width format.\n    \n        This test reproduces the exact use case described in the PR.\n        \"\"\"\n        tbl = QTable({\"wave\": [350, 950] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        # This is the exact code from the PR description that was failing\n        # It should work without raising TypeError\n        out = StringIO()\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:118: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffdd4079a0>\nserialize_method = None, args = (<_io.StringIO object at 0x7fffdd7340d0>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7fffdd7340d0>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7fffdd7340d0>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7fffdd7340d0>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-7.4.0, pluggy-1.3.0\n\nRunning tests with Astropy version 5.3.dev133+ga5917978b.d20250910.\nRunning tests in astropy/io/ascii/tests/test_rst_header_rows.py.\n\nDate: 2026-04-26T23:25:51\n\nPlatform: Linux-6.12.54-linuxkit-x86_64-with-glibc2.35\n\nExecutable: /opt/miniconda3/envs/testbed/bin/python\n\nFull Python Version: \n3.9.20 (main, Oct  3 2024, 07:27:41) \n[GCC 11.2.0]\n\nencodings: sys: utf-8, locale: UTF-8, filesystem: utf-8\nbyteorder: little\nfloat info: dig: 15, mant_dig: 15\n\nPackage versions: \nNumpy: 1.25.2\nScipy: not available\nMatplotlib: not available\nh5py: not available\nPandas: not available\nPyERFA: 2.0.0.3\nCython: not available\nScikit-image: not available\nasdf: not available\npyarrow: not available\n\nUsing Astropy options: remote_data: none.\n\nCI: undefined\nARCH_ON_CI: undefined\nIS_CRON: undefined\n\nrootdir: /testbed\nconfigfile: setup.cfg\nplugins: mock-3.11.1, arraydiff-0.5.0, hypothesis-6.82.6, openfiles-0.5.0, astropy-0.10.0, cov-4.1.0, remotedata-0.4.0, astropy-header-0.2.2, xdist-3.3.1, filter-subpackage-0.1.2, doctestplus-1.0.0\ncollected 5 items\n\nastropy/io/ascii/tests/test_rst_header_rows.py FFF.F                     [100%]\n\n=================================== FAILURES ===================================\n_______________________ test_rst_write_with_header_rows ________________________\n\n    def test_rst_write_with_header_rows():\n        \"\"\"Test that RST writer accepts header_rows parameter.\"\"\"\n        tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        out = StringIO()\n        # This should work without raising TypeError\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:24: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffdd406970>\nserialize_method = None, args = (<_io.StringIO object at 0x7fffdd257c10>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7fffdd257c10>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7fffdd257c10>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7fffdd257c10>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError\n________________________ test_rst_read_with_header_rows ________________________\n\n    def test_rst_read_with_header_rows():\n        \"\"\"Test that RST reader accepts header_rows parameter.\"\"\"\n        # RST table with header_rows=['name', 'unit']\n        table = \"\"\"\\\n    ===== ========\n     wave response\n       nm       ct\n    ===== ========\n    350.0      0.7\n    950.0      1.2\n    ===== ========\n    \"\"\"\n        # This should work without raising TypeError\n>       tbl = ascii.read(table, format=\"rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:61: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = '===== ========\\n wave response\\n   nm       ct\\n===== ========\\n350.0      0.7\\n950.0      1.2\\n===== ========\\n'\nguess = False\nkwargs = {'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'format': 'rst', 'header_rows': ['name', 'unit']}\ndat = None, fast_reader = {'enable': True}, format = 'rst'\nnew_kwargs = {'Reader': <class 'astropy.io.ascii.rst.RST'>, 'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\nReader = <class 'astropy.io.ascii.rst.RST'>, encoding = None\n\n    def read(table, guess=None, **kwargs):\n        # This the final output from reading. Static analysis indicates the reading\n        # logic (which is indeed complex) might not define `dat`, thus do so here.\n        dat = None\n    \n        # Docstring defined below\n        del _read_trace[:]\n    \n        # Downstream readers might munge kwargs\n        kwargs = copy.deepcopy(kwargs)\n    \n        _validate_read_write_kwargs(\"read\", **kwargs)\n    \n        # Convert 'fast_reader' key in kwargs into a dict if not already and make sure\n        # 'enable' key is available.\n        fast_reader = _get_fast_reader_dict(kwargs)\n        kwargs[\"fast_reader\"] = fast_reader\n    \n        if fast_reader[\"enable\"] and fast_reader.get(\"chunk_size\"):\n            return _read_in_chunks(table, **kwargs)\n    \n        if \"fill_values\" not in kwargs:\n            kwargs[\"fill_values\"] = [(\"\", \"0\")]\n    \n        # If an Outputter is supplied in kwargs that will take precedence.\n        if (\n            \"Outputter\" in kwargs\n        ):  # user specified Outputter, not supported for fast reading\n            fast_reader[\"enable\"] = False\n    \n        format = kwargs.get(\"format\")\n        # Dictionary arguments are passed by reference per default and thus need\n        # special protection:\n        new_kwargs = copy.deepcopy(kwargs)\n        kwargs[\"fast_reader\"] = copy.deepcopy(fast_reader)\n    \n        # Get the Reader class based on possible format and Reader kwarg inputs.\n        Reader = _get_format_class(format, kwargs.get(\"Reader\"), \"Reader\")\n        if Reader is not None:\n            new_kwargs[\"Reader\"] = Reader\n            format = Reader._format_name\n    \n        # Remove format keyword if there, this is only allowed in read() not get_reader()\n        if \"format\" in new_kwargs:\n            del new_kwargs[\"format\"]\n    \n        if guess is None:\n            guess = _GUESS\n    \n        if guess:\n            # If ``table`` is probably an HTML file then tell guess function to add\n            # the HTML reader at the top of the guess list.  This is in response to\n            # issue #3691 (and others) where libxml can segfault on a long non-HTML\n            # file, thus prompting removal of the HTML reader from the default\n            # guess list.\n            new_kwargs[\"guess_html\"] = _probably_html(table)\n    \n            # If `table` is a filename or readable file object then read in the\n            # file now.  This prevents problems in Python 3 with the file object\n            # getting closed or left at the file end.  See #3132, #3013, #3109,\n            # #2001.  If a `readme` arg was passed that implies CDS format, in\n            # which case the original `table` as the data filename must be left\n            # intact.\n            if \"readme\" not in new_kwargs:\n                encoding = kwargs.get(\"encoding\")\n                try:\n                    table = _expand_user_if_path(table)\n                    with get_readable_fileobj(table, encoding=encoding) as fileobj:\n                        table = fileobj.read()\n                except ValueError:  # unreadable or invalid binary file\n                    raise\n                except Exception:\n                    pass\n                else:\n                    # Ensure that `table` has at least one \\r or \\n in it\n                    # so that the core.BaseInputter test of\n                    # ('\\n' not in table and '\\r' not in table)\n                    # will fail and so `table` cannot be interpreted there\n                    # as a filename.  See #4160.\n                    if not re.search(r\"[\\r\\n]\", table):\n                        table = table + os.linesep\n    \n                    # If the table got successfully read then look at the content\n                    # to see if is probably HTML, but only if it wasn't already\n                    # identified as HTML based on the filename.\n                    if not new_kwargs[\"guess_html\"]:\n                        new_kwargs[\"guess_html\"] = _probably_html(table)\n    \n            # Get the table from guess in ``dat``.  If ``dat`` comes back as None\n            # then there was just one set of kwargs in the guess list so fall\n            # through below to the non-guess way so that any problems result in a\n            # more useful traceback.\n            dat = _guess(table, new_kwargs, format, fast_reader)\n            if dat is None:\n                guess = False\n    \n        if not guess:\n            if format is None:\n                reader = get_reader(**new_kwargs)\n                format = reader._format_name\n    \n            table = _expand_user_if_path(table)\n    \n            # Try the fast reader version of `format` first if applicable.  Note that\n            # if user specified a fast format (e.g. format='fast_basic') this test\n            # will fail and the else-clause below will be used.\n            if fast_reader[\"enable\"] and f\"fast_{format}\" in core.FAST_CLASSES:\n                fast_kwargs = copy.deepcopy(new_kwargs)\n                fast_kwargs[\"Reader\"] = core.FAST_CLASSES[f\"fast_{format}\"]\n                fast_reader_rdr = get_reader(**fast_kwargs)\n                try:\n                    dat = fast_reader_rdr.read(table)\n                    _read_trace.append(\n                        {\n                            \"kwargs\": copy.deepcopy(fast_kwargs),\n                            \"Reader\": fast_reader_rdr.__class__,\n                            \"status\": \"Success with fast reader (no guessing)\",\n                        }\n                    )\n                except (\n                    core.ParameterError,\n                    cparser.CParserError,\n                    UnicodeEncodeError,\n                ) as err:\n                    # special testing value to avoid falling back on the slow reader\n                    if fast_reader[\"enable\"] == \"force\":\n                        raise core.InconsistentTableError(\n                            f\"fast reader {fast_reader_rdr.__class__} exception: {err}\"\n                        )\n                    # If the fast reader doesn't work, try the slow version\n                    reader = get_reader(**new_kwargs)\n                    dat = reader.read(table)\n                    _read_trace.append(\n                        {\n                            \"kwargs\": copy.deepcopy(new_kwargs),\n                            \"Reader\": reader.__class__,\n                            \"status\": (\n                                \"Success with slow reader after failing\"\n                                \" with fast (no guessing)\"\n                            ),\n                        }\n                    )\n            else:\n>               reader = get_reader(**new_kwargs)\n\nastropy/io/ascii/ui.py:425: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nReader = <class 'astropy.io.ascii.rst.RST'>, Inputter = None, Outputter = None\nkwargs = {'fast_reader': {'enable': True}, 'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\n\n    def get_reader(Reader=None, Inputter=None, Outputter=None, **kwargs):\n        \"\"\"\n        Initialize a table reader allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Reader class.\n    \n        Parameters\n        ----------\n        Reader : `~astropy.io.ascii.BaseReader`\n            Reader class (DEPRECATED). Default is :class:`Basic`.\n        Inputter : `~astropy.io.ascii.BaseInputter`\n            Inputter class\n        Outputter : `~astropy.io.ascii.BaseOutputter`\n            Outputter class\n        delimiter : str\n            Column delimiter string\n        comment : str\n            Regular expression defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        header_start : int\n            Line index for the header line not counting comment or blank lines.\n            A line with only whitespace is considered blank.\n        data_start : int\n            Line index for the start of data not counting comment or blank lines.\n            A line with only whitespace is considered blank.\n        data_end : int\n            Line index for the end of data not counting comment or blank lines.\n            This value can be negative to count from the end.\n        converters : dict\n            Dict of converters.\n        data_Splitter : `~astropy.io.ascii.BaseSplitter`\n            Splitter class to split data columns.\n        header_Splitter : `~astropy.io.ascii.BaseSplitter`\n            Splitter class to split header columns.\n        names : list\n            List of names corresponding to each data column.\n        include_names : list, optional\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``).\n        fill_values : tuple, list of tuple\n            Specification of fill values for bad or missing table values.\n        fill_include_names : list\n            List of names to include in fill_values.\n        fill_exclude_names : list\n            List of names to exclude from fill_values (applied after ``fill_include_names``).\n    \n        Returns\n        -------\n        reader : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format reader instance\n        \"\"\"\n        # This function is a light wrapper around core._get_reader to provide a\n        # public interface with a default Reader.\n        if Reader is None:\n            # Default reader is Basic unless fast reader is forced\n            fast_reader = _get_fast_reader_dict(kwargs)\n            if fast_reader[\"enable\"] == \"force\":\n                Reader = fastbasic.FastBasic\n            else:\n                Reader = basic.Basic\n    \n>       reader = core._get_reader(Reader, Inputter=Inputter, Outputter=Outputter, **kwargs)\n\nastropy/io/ascii/ui.py:183: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nReader = <class 'astropy.io.ascii.rst.RST'>, Inputter = None, Outputter = None\nkwargs = {'fill_values': [('', '0')], 'header_rows': ['name', 'unit']}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nreader_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_reader(Reader, Inputter=None, Outputter=None, **kwargs):\n        \"\"\"Initialize a table reader allowing for common customizations.  See ui.get_reader()\n        for param docs.  This routine is for internal (package) use only and is useful\n        because it depends only on the \"core\" module.\n        \"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        if issubclass(Reader, FastBasic):  # Fast readers handle args separately\n            if Inputter is not None:\n                kwargs[\"Inputter\"] = Inputter\n            return Reader(**kwargs)\n    \n        # If user explicitly passed a fast reader with enable='force'\n        # (e.g. by passing non-default options), raise an error for slow readers\n        if \"fast_reader\" in kwargs:\n            if kwargs[\"fast_reader\"][\"enable\"] == \"force\":\n                raise ParameterError(\n                    \"fast_reader required with \"\n                    \"{}, but this is not a fast C reader: {}\".format(\n                        kwargs[\"fast_reader\"], Reader\n                    )\n                )\n            else:\n                del kwargs[\"fast_reader\"]  # Otherwise ignore fast_reader parameter\n    \n        reader_kwargs = {k: v for k, v in kwargs.items() if k not in extra_reader_pars}\n>       reader = Reader(**reader_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1692: TypeError\n_____________________ test_rst_roundtrip_with_header_rows ______________________\n\n    def test_rst_roundtrip_with_header_rows():\n        \"\"\"Test that RST format can round-trip with header_rows.\"\"\"\n        tbl = QTable({\"wave\": [350.0, 950.0] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        out = StringIO()\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:76: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffddbeec70>\nserialize_method = None, args = (<_io.StringIO object at 0x7ffffabc44c0>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7ffffabc44c0>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7ffffabc44c0>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7ffffabc44c0>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError\n___________________ test_rst_header_rows_from_pr_description ___________________\n\n    def test_rst_header_rows_from_pr_description():\n        \"\"\"\n        Test case from PR description - RST should work with header_rows parameter\n        just like fixed_width format.\n    \n        This test reproduces the exact use case described in the PR.\n        \"\"\"\n        tbl = QTable({\"wave\": [350, 950] * u.nm, \"response\": [0.7, 1.2] * u.count})\n    \n        # This is the exact code from the PR description that was failing\n        # It should work without raising TypeError\n        out = StringIO()\n>       tbl.write(out, format=\"ascii.rst\", header_rows=[\"name\", \"unit\"])\n\nastropy/io/ascii/tests/test_rst_header_rows.py:118: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.table.connect.TableWrite object at 0x7fffdd4079a0>\nserialize_method = None, args = (<_io.StringIO object at 0x7fffdd7340d0>,)\nkwargs = {'format': 'ascii.rst', 'header_rows': ['name', 'unit']}\ninstance = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\n\n    def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n>           self.registry.write(instance, *args, **kwargs)\n\nastropy/table/connect.py:130: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = <astropy.io.registry.core.UnifiedIORegistry object at 0x7fffddc0d460>\ndata = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nformat = 'ascii.rst', args = (<_io.StringIO object at 0x7fffdd7340d0>,)\nkwargs = {'header_rows': ['name', 'unit']}\nwriter = functools.partial(<function io_write at 0x7fffddaee790>, 'ascii.rst')\n\n    def write(self, data, *args, format=None, **kwargs):\n        \"\"\"\n        Write out data.\n    \n        Parameters\n        ----------\n        data : object\n            The data to write.\n        *args\n            The arguments passed to this method depend on the format.\n        format : str or None\n        **kwargs\n            The arguments passed to this method depend on the format.\n    \n        Returns\n        -------\n        object or None\n            The output of the registered writer. Most often `None`.\n    \n            .. versionadded:: 4.3\n        \"\"\"\n        # Expand a tilde-prefixed path if present in args[0]\n        args = _expand_user_in_args(args)\n    \n        if format is None:\n            path = None\n            fileobj = None\n            if len(args):\n                if isinstance(args[0], PATH_TYPES):\n                    # path might be a os.PathLike object\n                    if isinstance(args[0], os.PathLike):\n                        args = (os.fspath(args[0]),) + args[1:]\n                    path = args[0]\n                    fileobj = None\n                elif hasattr(args[0], \"read\"):\n                    path = None\n                    fileobj = args[0]\n    \n            format = self._get_valid_format(\n                \"write\", data.__class__, path, fileobj, args, kwargs\n            )\n    \n        writer = self.get_writer(format, data.__class__)\n>       return writer(data, *args, **kwargs)\n\nastropy/io/registry/core.py:385: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nformat = 'rst'\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\nfilename = <_io.StringIO object at 0x7fffdd7340d0>\nkwargs = {'format': 'rst', 'header_rows': ['name', 'unit']}\nwrite = <function write at 0x7fffdd95da60>\n\n    def io_write(format, table, filename, **kwargs):\n        from .ui import write\n    \n        if format != \"ascii\":\n            format = re.sub(r\"^ascii\\.\", \"\", format)\n            kwargs[\"format\"] = format\n>       return write(table, filename, **kwargs)\n\nastropy/io/ascii/connect.py:28: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ntable = <QTable length=2>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\n  350.0      0.7\n  950.0      1.2\noutput = <_io.StringIO object at 0x7fffdd7340d0>, format = 'rst'\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\noverwrite = False, kwargs = {'header_rows': ['name', 'unit']}, names = None\ntable0 = <QTable length=0>\n  wave  response\n   nm      ct   \nfloat64 float64 \n------- --------\ndiff_format_with_names = set()\n\n    def write(\n        table,\n        output=None,\n        format=None,\n        Writer=None,\n        fast_writer=True,\n        *,\n        overwrite=False,\n        **kwargs,\n    ):\n        # Docstring inserted below\n    \n        _validate_read_write_kwargs(\n            \"write\", format=format, fast_writer=fast_writer, overwrite=overwrite, **kwargs\n        )\n    \n        if isinstance(output, (str, bytes, os.PathLike)):\n            output = os.path.expanduser(output)\n            if not overwrite and os.path.lexists(output):\n                raise OSError(NOT_OVERWRITING_MSG.format(output))\n    \n        if output is None:\n            output = sys.stdout\n    \n        # Ensure that `table` is a Table subclass.\n        names = kwargs.get(\"names\")\n        if isinstance(table, Table):\n            # While we are only going to read data from columns, we may need to\n            # to adjust info attributes such as format, so we make a shallow copy.\n            table = table.__class__(table, names=names, copy=False)\n        else:\n            # Otherwise, create a table from the input.\n            table = Table(table, names=names, copy=False)\n    \n        table0 = table[:0].copy()\n        core._apply_include_exclude_names(\n            table0,\n            kwargs.get(\"names\"),\n            kwargs.get(\"include_names\"),\n            kwargs.get(\"exclude_names\"),\n        )\n        diff_format_with_names = set(kwargs.get(\"formats\", [])) - set(table0.colnames)\n    \n        if diff_format_with_names:\n            warnings.warn(\n                \"The key(s) {} specified in the formats argument do not match a column\"\n                \" name.\".format(diff_format_with_names),\n                AstropyWarning,\n            )\n    \n        if table.has_mixin_columns:\n            fast_writer = False\n    \n        Writer = _get_format_class(format, Writer, \"Writer\")\n>       writer = get_writer(Writer=Writer, fast_writer=fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:975: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\n\n    def get_writer(Writer=None, fast_writer=True, **kwargs):\n        \"\"\"\n        Initialize a table writer allowing for common customizations.  Most of the\n        default behavior for various parameters is determined by the Writer class.\n    \n        Parameters\n        ----------\n        Writer : ``Writer``\n            Writer class (DEPRECATED). Defaults to :class:`Basic`.\n        delimiter : str\n            Column delimiter string\n        comment : str\n            String defining a comment line in table\n        quotechar : str\n            One-character string to quote fields containing special characters\n        formats : dict\n            Dictionary of format specifiers or formatting functions\n        strip_whitespace : bool\n            Strip surrounding whitespace from column values.\n        names : list\n            List of names corresponding to each data column\n        include_names : list\n            List of names to include in output.\n        exclude_names : list\n            List of names to exclude from output (applied after ``include_names``)\n        fast_writer : bool\n            Whether to use the fast Cython writer.\n    \n        Returns\n        -------\n        writer : `~astropy.io.ascii.BaseReader` subclass\n            ASCII format writer instance\n        \"\"\"\n        if Writer is None:\n            Writer = basic.Basic\n        if \"strip_whitespace\" not in kwargs:\n            kwargs[\"strip_whitespace\"] = True\n>       writer = core._get_writer(Writer, fast_writer, **kwargs)\n\nastropy/io/ascii/ui.py:901: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nWriter = <class 'astropy.io.ascii.rst.RST'>, fast_writer = False\nkwargs = {'header_rows': ['name', 'unit'], 'strip_whitespace': True}\nFastBasic = <class 'astropy.io.ascii.fastbasic.FastBasic'>\nwriter_kwargs = {'header_rows': ['name', 'unit']}\n\n    def _get_writer(Writer, fast_writer, **kwargs):\n        \"\"\"Initialize a table writer allowing for common customizations. This\n        routine is for internal (package) use only and is useful because it depends\n        only on the \"core\" module.\"\"\"\n    \n        from .fastbasic import FastBasic\n    \n        # A value of None for fill_values imply getting the default string\n        # representation of masked values (depending on the writer class), but the\n        # machinery expects a list.  The easiest here is to just pop the value off,\n        # i.e. fill_values=None is the same as not providing it at all.\n        if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n            del kwargs[\"fill_values\"]\n    \n        if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n            return Writer(**kwargs)\n        elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n            # Switch to fast writer\n            kwargs[\"fast_writer\"] = fast_writer\n            return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n    \n        writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n>       writer = Writer(**writer_kwargs)\nE       TypeError: __init__() got an unexpected keyword argument 'header_rows'\n\nastropy/io/ascii/core.py:1815: TypeError\n=========================== short test summary info ============================\nFAILED astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_write_with_header_rows\nFAILED astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_read_with_header_rows\nFAILED astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_roundtrip_with_header_rows\nFAILED astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_header_rows_from_pr_description\n========================= 4 failed, 1 passed in 0.14s ==========================\n<frozen importlib._bootstrap>:228: RuntimeWarning: numpy.ndarray size changed, may indicate binary incompatibility. Expected 80 from C header, got 96 from PyObject\n\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/astropy/io/ascii/tests/test_rst_header_rows.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_write_with_header_rows": {
+        "exception_frames": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 18,
+            "func": "test_rst_write_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 18,
+            "func": "test_rst_write_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 2009,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/utils/misc.py",
+            "line": 57,
+            "func": "isiterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 584,
+            "func": "__array_finalize__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 829,
+            "func": "_set_unit",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 686,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2201,
+            "func": "_set_masked",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 870,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1147,
+            "func": "_check_names_dtype",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1416,
+            "func": "_init_from_dict",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1222,
+            "func": "_init_from_list",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 44,
+            "func": "_auto_names",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 47,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 308,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 417,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 522,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 550,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 488,
+            "func": "_validate_val",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 593,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 637,
+            "func": "_parse_with_caching",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 651,
+            "func": "_check_value",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 1073,
+            "func": "is_string",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 746,
+            "func": "_is_num_param",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1241,
+            "func": "_convert_data_to_col",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4219,
+            "func": "_is_mixin_for_table",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 193,
+            "func": "has_info_class",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 358,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2217,
+            "func": "ColumnClass",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1284,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 764,
+            "func": "_new_view",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1002,
+            "func": "unit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/mixins/registry.py",
+            "line": 49,
+            "func": "get_mixin_handler",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 68,
+            "func": "col_copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 577,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 787,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 562,
+            "func": "parent_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1461,
+            "func": "_init_from_cols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1464,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1333,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1058,
+            "func": "isscalar",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 938,
+            "func": "to_value",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4226,
+            "func": "_convert_col_for_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1522,
+            "func": "_make_table_from_cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1540,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 281,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1547,
+            "func": "_set_col_parent_table_and_mask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2190,
+            "func": "masked",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1561,
+            "func": "itercols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2068,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 608,
+            "func": "indices",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 895,
+            "func": "_set_column_attribute",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 155,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 123,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 41,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/compat.py",
+            "line": 66,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 127,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/info.py",
+            "line": 128,
+            "func": "serialize_method_as",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 50,
+            "func": "registry",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 342,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 15,
+            "func": "_expand_user_in_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 314,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 330,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 330,
+            "func": "_is_best_match",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 341,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/connect.py",
+            "line": 22,
+            "func": "io_write",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 921,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 215,
+            "func": "_validate_read_write_kwargs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 261,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 218,
+            "func": "is_ducktype",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/utils/metadata.py",
+            "line": 432,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2228,
+            "func": "colnames",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 585,
+            "func": "__set__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2232,
+            "func": "_is_list_or_tuple_of_str",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1487,
+            "func": "_new_from_slice",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 3648,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1258,
+            "func": "_apply_include_exclude_names",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1152,
+            "func": "_deduplicate_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1647,
+            "func": "has_mixin_columns",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 187,
+            "func": "_get_format_class",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 864,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1793,
+            "func": "_get_writer",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1814,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ]
+      },
+      "astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_read_with_header_rows": {
+        "exception_frames": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 48,
+            "func": "test_rst_read_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 282,
+            "func": "read",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 48,
+            "func": "test_rst_read_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 282,
+            "func": "read",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 215,
+            "func": "_validate_read_write_kwargs",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 203,
+            "func": "_get_fast_reader_dict",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 187,
+            "func": "_get_format_class",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 53,
+            "func": "_probably_html",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 98,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 265,
+            "func": "_expand_user_if_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/utils/data.py",
+            "line": 186,
+            "func": "get_readable_fileobj",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 308,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 417,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 522,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 567,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 484,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 510,
+            "func": "_initialise",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 550,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 313,
+            "func": "set",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 488,
+            "func": "_validate_val",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 593,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 637,
+            "func": "_parse_with_caching",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 651,
+            "func": "_check_value",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 839,
+            "func": "is_float",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 746,
+            "func": "_is_num_param",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/utils/data.py",
+            "line": 171,
+            "func": "_requires_fsspec",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/utils/data.py",
+            "line": 145,
+            "func": "is_url",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 449,
+            "func": "_guess",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 654,
+            "func": "_get_guess_kwargs_list",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 121,
+            "func": "get_reader",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1665,
+            "func": "_get_reader",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1691,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_roundtrip_with_header_rows": {
+        "exception_frames": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 71,
+            "func": "test_rst_roundtrip_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 71,
+            "func": "test_rst_roundtrip_with_header_rows",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 2009,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/utils/misc.py",
+            "line": 57,
+            "func": "isiterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 584,
+            "func": "__array_finalize__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 829,
+            "func": "_set_unit",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 686,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2201,
+            "func": "_set_masked",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 870,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1147,
+            "func": "_check_names_dtype",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1416,
+            "func": "_init_from_dict",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1222,
+            "func": "_init_from_list",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 44,
+            "func": "_auto_names",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 47,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 308,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 417,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 522,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 550,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 488,
+            "func": "_validate_val",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 593,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 637,
+            "func": "_parse_with_caching",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 651,
+            "func": "_check_value",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 1073,
+            "func": "is_string",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 746,
+            "func": "_is_num_param",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1241,
+            "func": "_convert_data_to_col",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4219,
+            "func": "_is_mixin_for_table",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 193,
+            "func": "has_info_class",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 358,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2217,
+            "func": "ColumnClass",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1284,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 764,
+            "func": "_new_view",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1002,
+            "func": "unit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/mixins/registry.py",
+            "line": 49,
+            "func": "get_mixin_handler",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 68,
+            "func": "col_copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 577,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 787,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 562,
+            "func": "parent_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1461,
+            "func": "_init_from_cols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1464,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1333,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1058,
+            "func": "isscalar",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 938,
+            "func": "to_value",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4226,
+            "func": "_convert_col_for_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1522,
+            "func": "_make_table_from_cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1540,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 281,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1547,
+            "func": "_set_col_parent_table_and_mask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2190,
+            "func": "masked",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1561,
+            "func": "itercols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2068,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 608,
+            "func": "indices",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 895,
+            "func": "_set_column_attribute",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 155,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 123,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 41,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/compat.py",
+            "line": 66,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 127,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/info.py",
+            "line": 128,
+            "func": "serialize_method_as",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 50,
+            "func": "registry",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 342,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 15,
+            "func": "_expand_user_in_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 314,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 330,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 330,
+            "func": "_is_best_match",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 341,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/connect.py",
+            "line": 22,
+            "func": "io_write",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 921,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 215,
+            "func": "_validate_read_write_kwargs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 261,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 218,
+            "func": "is_ducktype",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/utils/metadata.py",
+            "line": 432,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2228,
+            "func": "colnames",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 585,
+            "func": "__set__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2232,
+            "func": "_is_list_or_tuple_of_str",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1487,
+            "func": "_new_from_slice",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 3648,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1258,
+            "func": "_apply_include_exclude_names",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1152,
+            "func": "_deduplicate_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1647,
+            "func": "has_mixin_columns",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 187,
+            "func": "_get_format_class",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 864,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1793,
+            "func": "_get_writer",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1814,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ]
+      },
+      "astropy/io/ascii/tests/test_rst_header_rows.py::test_rst_header_rows_from_pr_description": {
+        "exception_frames": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 106,
+            "func": "test_rst_header_rows_from_pr_description",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "astropy/io/ascii/tests/test_rst_header_rows.py",
+            "line": 106,
+            "func": "test_rst_header_rows_from_pr_description",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 856,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 434,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/units/core.py",
+            "line": 2009,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/utils/misc.py",
+            "line": 57,
+            "func": "isiterable",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 506,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 584,
+            "func": "__array_finalize__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 829,
+            "func": "_set_unit",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 686,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2201,
+            "func": "_set_masked",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 870,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1147,
+            "func": "_check_names_dtype",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1416,
+            "func": "_init_from_dict",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1222,
+            "func": "_init_from_list",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 44,
+            "func": "_auto_names",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 47,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 308,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 417,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 522,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/configobj.py",
+            "line": 550,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/config/configuration.py",
+            "line": 488,
+            "func": "_validate_val",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 593,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 637,
+            "func": "_parse_with_caching",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 651,
+            "func": "_check_value",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 1073,
+            "func": "is_string",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/extern/configobj/validate.py",
+            "line": 746,
+            "func": "_is_num_param",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1241,
+            "func": "_convert_data_to_col",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4219,
+            "func": "_is_mixin_for_table",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 193,
+            "func": "has_info_class",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 358,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2217,
+            "func": "ColumnClass",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1284,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 764,
+            "func": "_new_view",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1002,
+            "func": "unit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/mixins/registry.py",
+            "line": 49,
+            "func": "get_mixin_handler",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/column.py",
+            "line": 68,
+            "func": "col_copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 577,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 787,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 562,
+            "func": "parent_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1461,
+            "func": "_init_from_cols",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1464,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1333,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 1058,
+            "func": "isscalar",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/units/quantity.py",
+            "line": 938,
+            "func": "to_value",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 4226,
+            "func": "_convert_col_for_table",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1522,
+            "func": "_make_table_from_cols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1540,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 281,
+            "func": "__setitem__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1547,
+            "func": "_set_col_parent_table_and_mask",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2190,
+            "func": "masked",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1561,
+            "func": "itercols",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2068,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 608,
+            "func": "indices",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 895,
+            "func": "_set_column_attribute",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 155,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 123,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 41,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/compat.py",
+            "line": 66,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/table/connect.py",
+            "line": 127,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "astropy/table/info.py",
+            "line": 128,
+            "func": "serialize_method_as",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/interface.py",
+            "line": 50,
+            "func": "registry",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 342,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 15,
+            "func": "_expand_user_in_args",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 314,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/registry/core.py",
+            "line": 330,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 330,
+            "func": "_is_best_match",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/registry/base.py",
+            "line": 341,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/connect.py",
+            "line": 22,
+            "func": "io_write",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 921,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 215,
+            "func": "_validate_read_write_kwargs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 261,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 218,
+            "func": "is_ducktype",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "astropy/utils/metadata.py",
+            "line": 432,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2228,
+            "func": "colnames",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/utils/data_info.py",
+            "line": 585,
+            "func": "__set__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 2232,
+            "func": "_is_list_or_tuple_of_str",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1487,
+            "func": "_new_from_slice",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 3648,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1258,
+            "func": "_apply_include_exclude_names",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1152,
+            "func": "_deduplicate_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/table/table.py",
+            "line": 1647,
+            "func": "has_mixin_columns",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 187,
+            "func": "_get_format_class",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/ui.py",
+            "line": 864,
+            "func": "get_writer",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1793,
+            "func": "_get_writer",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "astropy/io/ascii/core.py",
+            "line": 1814,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "astropy__astropy-14182",
+  "messages": []
+}

@@ -1,0 +1,725 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/model_inheritance/models.py b/tests/model_inheritance/models.py\nindex a4f9cfe696..a22b93b62d 100644\n--- a/tests/model_inheritance/models.py\n+++ b/tests/model_inheritance/models.py\n@@ -194,3 +194,25 @@ class Child(Parent):\n \n class GrandChild(Child):\n     pass\n+\n+\n+#\n+# Models for testing ordering inheritance with \"-pk\"\n+#\n+\n+class OrderedParent(models.Model):\n+    \"\"\"A parent model with descending ordering by pk.\"\"\"\n+    name = models.CharField(max_length=80)\n+\n+    class Meta:\n+        ordering = ['-pk']\n+\n+\n+class OrderedChild(OrderedParent):\n+    \"\"\"A child model inheriting from OrderedParent.\"\"\"\n+    pass\n+\n+\n+class OrderedGrandChild(OrderedChild):\n+    \"\"\"A grandchild model inheriting through multiple levels.\"\"\"\n+    pass\n+++ b/tests/model_inheritance/test_inherited_ordering.py\n@@ -0,0 +1,77 @@\n+\"\"\"\n+Tests for ordering inherited from parent model.\n+\n+Regression tests for the issue where inherited models don't correctly\n+order by \"-pk\" when specified on Parent.Meta.ordering.\n+\"\"\"\n+from django.test import TestCase\n+\n+from .models import (\n+    OrderedChild,\n+    OrderedGrandChild,\n+    OrderedParent,\n+)\n+\n+\n+class InheritedOrderingTests(TestCase):\n+    \"\"\"\n+    Test that ordering is correctly inherited from parent models,\n+    especially when using \"-pk\" (descending primary key ordering).\n+    \"\"\"\n+\n+    def test_inherited_ordering_meta_attribute(self):\n+        \"\"\"\n+        Test that a child model correctly inherits the Meta.ordering\n+        attribute from its parent.\n+        \"\"\"\n+        # Parent has explicit ordering\n+        self.assertEqual(OrderedParent._meta.ordering, ['-pk'])\n+        \n+        # Child should inherit the ordering\n+        self.assertEqual(OrderedChild._meta.ordering, ['-pk'])\n+        \n+        # GrandChild should also inherit the ordering\n+        self.assertEqual(OrderedGrandChild._meta.ordering, ['-pk'])\n+\n+    def test_child_model_order_by_pk_descending(self):\n+        \"\"\"\n+        Test that querying a child model uses descending order (DESC)\n+        when inherited from parent with Meta.ordering = ['-pk'].\n+        \n+        This is a regression test for the bug where:\n+        - Parent model has Meta.ordering = [\"-pk\"]\n+        - Child model inherits from Parent\n+        - Querying Child.objects.all() resulted in ASC ordering instead of DESC\n+        \n+        The bug was caused by find_ordering_name passing 'order' parameter \n+        (extracted from get_order_dir) to recursive calls, which incorrectly\n+        changed the direction when processing related model ordering.\n+        \"\"\"\n+        query = str(OrderedChild.objects.all().query)\n+        \n+        # The query should contain ORDER BY with DESC\n+        # This test will FAIL before the fix is applied\n+        self.assertIn('DESC', query.upper())\n+\n+    def test_parent_model_order_by_pk_descending(self):\n+        \"\"\"\n+        Test that querying the parent model directly also uses descending order.\n+        This serves as a control - the parent model should work correctly.\n+        \"\"\"\n+        query = str(OrderedParent.objects.all().query)\n+        \n+        # The query should contain ORDER BY with DESC\n+        self.assertIn('DESC', query.upper())\n+        \n+    def test_grandchild_model_order_by_pk_descending(self):\n+        \"\"\"\n+        Test that querying a grandchild model (multiple levels of inheritance)\n+        uses descending order when the root parent has Meta.ordering = ['-pk'].\n+        \n+        Note: This test passes even with the bug because of how the recursive\n+        ordering resolution works through multiple inheritance levels.\n+        \"\"\"\n+        query = str(OrderedGrandChild.objects.all().query)\n+        \n+        # The query should contain ORDER BY with DESC\n+        self.assertIn('DESC', query.upper())\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_child_model_order_by_pk_descending (model_inheritance.test_inherited_ordering.InheritedOrderingTests) ... FAIL\ntest_grandchild_model_order_by_pk_descending (model_inheritance.test_inherited_ordering.InheritedOrderingTests) ... ok\ntest_inherited_ordering_meta_attribute (model_inheritance.test_inherited_ordering.InheritedOrderingTests) ... ok\ntest_parent_model_order_by_pk_descending (model_inheritance.test_inherited_ordering.InheritedOrderingTests) ... ok\n\n======================================================================\nFAIL: test_child_model_order_by_pk_descending (model_inheritance.test_inherited_ordering.InheritedOrderingTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_inheritance/test_inherited_ordering.py\", line 54, in test_child_model_order_by_pk_descending\n    self.assertIn('DESC', query.upper())\nAssertionError: 'DESC' not found in 'SELECT \"MODEL_INHERITANCE_ORDEREDPARENT\".\"ID\", \"MODEL_INHERITANCE_ORDEREDPARENT\".\"NAME\", \"MODEL_INHERITANCE_ORDEREDCHILD\".\"ORDEREDPARENT_PTR_ID\" FROM \"MODEL_INHERITANCE_ORDEREDCHILD\" INNER JOIN \"MODEL_INHERITANCE_ORDEREDPARENT\" ON (\"MODEL_INHERITANCE_ORDEREDCHILD\".\"ORDEREDPARENT_PTR_ID\" = \"MODEL_INHERITANCE_ORDEREDPARENT\".\"ID\") ORDER BY \"MODEL_INHERITANCE_ORDEREDPARENT\".\"ID\" ASC'\n\n----------------------------------------------------------------------\nRan 4 tests in 0.003s\n\nFAILED (failures=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 model_inheritance.models model_inheritance.test_inherited_ordering` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application model_inheritance\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, model_inheritance, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table model_inheritance_worker\n    Creating table model_inheritance_student\n    Creating table model_inheritance_post\n    Creating table model_inheritance_comment\n    Creating table model_inheritance_link\n    Creating table model_inheritance_chef\n    Creating table model_inheritance_place\n    Creating table my_restaurant\n    Creating table model_inheritance_italianrestaurant\n    Creating table model_inheritance_supplier\n    Creating table model_inheritance_parkinglot\n    Creating table model_inheritance_title\n    Creating table model_inheritance_mixinmodel\n    Creating table model_inheritance_base\n    Creating table model_inheritance_subbase\n    Creating table model_inheritance_grandparent\n    Creating table model_inheritance_parent\n    Creating table model_inheritance_child\n    Creating table model_inheritance_grandchild\n    Creating table model_inheritance_orderedparent\n    Creating table model_inheritance_orderedchild\n    Creating table model_inheritance_orderedgrandchild\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "model_inheritance.test_inherited_ordering.InheritedOrderingTests.test_child_model_order_by_pk_descending": {
+        "exception_frames": [
+          {
+            "file": "tests/model_inheritance/test_inherited_ordering.py",
+            "line": 36,
+            "func": "test_child_model_order_by_pk_descending",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 249,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 260,
+            "func": "sql_with_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 479,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 44,
+            "func": "pre_sql_setup",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 265,
+            "func": "get_order_by",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 4,
+            "func": "make_hashable",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_inheritance/test_inherited_ordering.py",
+            "line": 36,
+            "func": "test_child_model_order_by_pk_descending",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 174,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 332,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 377,
+            "func": "managers_map",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 379,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 146,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 139,
+            "func": "get_queryset",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 187,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 14,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 146,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 203,
+            "func": "query",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 249,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 260,
+            "func": "sql_with_params",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 273,
+            "func": "get_compiler",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 325,
+            "func": "compiler",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 22,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 479,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 44,
+            "func": "pre_sql_setup",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 38,
+            "func": "setup_query",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 39,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 916,
+            "func": "get_initial_alias",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 280,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 151,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 936,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 959,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 733,
+            "func": "table_alias",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 193,
+            "func": "get_select",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2148,
+            "func": "extra_select",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 631,
+            "func": "get_default_columns",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1057,
+            "func": "deferred_to_columns",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 647,
+            "func": "deferred_to_data",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 244,
+            "func": "base_table",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 758,
+            "func": "ref_alias",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 467,
+            "func": "concrete_fields",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 59,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 228,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 477,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 984,
+            "func": "join_parent_model",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 579,
+            "func": "get_base_chain",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 607,
+            "func": "get_ancestor_link",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1517,
+            "func": "setup_joins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1421,
+            "func": "names_to_path",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 710,
+            "func": "get_path_info",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2237,
+            "func": "is_nullable",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 674,
+            "func": "get_joining_columns",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 676,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 126,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 117,
+            "func": "equals",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 395,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 514,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 404,
+            "func": "cached_col",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 761,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 1017,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 895,
+            "func": "target_field",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2129,
+            "func": "annotation_select",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 416,
+            "func": "compile",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 772,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 399,
+            "func": "quote_name_unless_alias",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 166,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 377,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 409,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 265,
+            "func": "get_order_by",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2256,
+            "func": "get_order_dir",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 699,
+            "func": "find_ordering_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 735,
+            "func": "_setup_joins",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1619,
+            "func": "trim_joins",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 733,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1555,
+            "func": "final_transformer",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 228,
+            "func": "resolve_expression",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 343,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 163,
+            "func": "__getstate__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 1112,
+            "func": "get_source_expressions",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 246,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 178,
+            "func": "set_source_expressions",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 41,
+            "func": "check_expression_support",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 4,
+            "func": "make_hashable",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/itercompat.py",
+            "line": 1,
+            "func": "is_iterable",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 32,
+            "func": "split_having",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 168,
+            "func": "contains_aggregate",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 162,
+            "func": "_contains_aggregate",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 165,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 389,
+            "func": "get_extra_select",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 58,
+            "func": "get_group_by",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 675,
+            "func": "get_distinct",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 748,
+            "func": "get_from_clause",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 155,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 696,
+            "func": "get_extra_restriction",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 65,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 819,
+            "func": "reset_refcounts",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 762,
+            "func": "unref_alias",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-12470",
+  "messages": []
+}

@@ -1,0 +1,186 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/user_commands/test_management_utility.py b/tests/user_commands/test_management_utility.py\nnew file mode 100644\nindex 0000000000..c433ff772a\n--- /dev/null\n+++ b/tests/user_commands/test_management_utility.py\n@@ -0,0 +1,78 @@\n+\"\"\"\n+Tests for ManagementUtility prog_name handling.\n+\n+This test file verifies the fix for the bug where ManagementUtility\n+doesn't pass its computed prog_name to the CommandParser created for\n+parsing --settings and --pythonpath options.\n+\n+See: https://code.djangoproject.com/ticket/XXXXX\n+\"\"\"\n+import sys\n+from unittest import mock\n+\n+from django.core.management import ManagementUtility\n+from django.core.management.base import CommandParser\n+from django.test import SimpleTestCase\n+\n+\n+class ManagementUtilityProgNameTests(SimpleTestCase):\n+    \"\"\"\n+    Tests that ManagementUtility uses its computed prog_name\n+    when creating internal parsers, rather than relying on sys.argv.\n+    \"\"\"\n+\n+    def test_parser_prog_from_argv_not_sys_argv(self):\n+        \"\"\"\n+        Test that the internal CommandParser receives the prog_name\n+        computed from argv, not sys.argv[0].\n+        \n+        This tests the bug described in the PR where ManagementUtility\n+        computes self.prog_name from the passed argv, but doesn't pass\n+        it to the CommandParser created for parsing --settings and --pythonpath.\n+        \"\"\"\n+        original_argv = sys.argv[:]\n+        captured_calls = []\n+        \n+        class MockCommandParser(CommandParser):\n+            \"\"\"Subclass that captures initialization arguments.\"\"\"\n+            def __init__(self, *args, **kwargs):\n+                # Capture the 'prog' kwarg before calling super\n+                captured_calls.append({\n+                    'args': args,\n+                    'kwargs': kwargs.copy(),\n+                })\n+                super().__init__(*args, **kwargs)\n+        \n+        try:\n+            sys.argv[0] = '/usr/bin/sys_prog'\n+            \n+            custom_prog = 'my-custom-prog'\n+            util = ManagementUtility([custom_prog, 'help'])\n+            \n+            # Verify prog_name is computed correctly\n+            self.assertEqual(util.prog_name, custom_prog)\n+            \n+            # Patch CommandParser in the management module\n+            with mock.patch('django.core.management.CommandParser', MockCommandParser):\n+                try:\n+                    util.execute()\n+                except SystemExit:\n+                    pass\n+            \n+            # The first CommandParser call is for preprocessing --settings/--pythonpath\n+            # It should be called with prog=self.prog_name (i.e., 'my-custom-prog')\n+            # If the bug exists, it will be called without prog= or prog=sys.argv[0]\n+            first_parser_call = captured_calls[0]\n+            \n+            self.assertIn(\n+                'prog', first_parser_call['kwargs'],\n+                \"CommandParser should be called with 'prog' keyword argument\"\n+            )\n+            self.assertEqual(\n+                first_parser_call['kwargs']['prog'],\n+                custom_prog,\n+                f\"CommandParser should receive prog='{custom_prog}' but got \"\n+                f\"prog='{first_parser_call['kwargs'].get('prog')}'\"\n+            )\n+        finally:\n+            sys.argv = original_argv\n",
+    "stack_traces": [],
+    "test_output": "test_parser_prog_from_argv_not_sys_argv (user_commands.test_management_utility.ManagementUtilityProgNameTests) ... FAIL\n\n======================================================================\nFAIL: test_parser_prog_from_argv_not_sys_argv (user_commands.test_management_utility.ManagementUtilityProgNameTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/user_commands/test_management_utility.py\", line 69, in test_parser_prog_from_argv_not_sys_argv\n    \"CommandParser should be called with 'prog' keyword argument\"\nAssertionError: 'prog' not found in {'usage': '%(prog)s subcommand [options] [args]', 'add_help': False, 'allow_abbrev': False} : CommandParser should be called with 'prog' keyword argument\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 user_commands.test_management_utility` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application user_commands\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\nType 'my-custom-prog help <subcommand>' for help on a specific subcommand.\n\nAvailable subcommands:\n\n[auth]\n    changepassword\n    createsuperuser\n\n[contenttypes]\n    remove_stale_contenttypes\n\n[django]\n    check\n    compilemessages\n    createcachetable\n    dbshell\n    diffsettings\n    dumpdata\n    flush\n    inspectdb\n    loaddata\n    makemessages\n    makemigrations\n    migrate\n    sendtestemail\n    shell\n    showmigrations\n    sqlflush\n    sqlmigrate\n    sqlsequencereset\n    squashmigrations\n    startapp\n    startproject\n    test\n    testserver\n\n[sessions]\n    clearsessions\n\n[staticfiles]\n    collectstatic\n    findstatic\n    runserver\n\n[user_commands]\n    common_args\n    dance\n    hal\n    mutually_exclusive_required\n    no_system_checks\n    no_translations\n    outputwrapper\n    required_constant_option\n    required_list_option\n    required_option\n    reverse_url\n    set_option\n    specific_system_checks\n    subparser\n    subparser_dest\n    subparser_required\n    transaction\n\n",
+    "settrace_traces": {
+      "user_commands.test_management_utility.ManagementUtilityProgNameTests.test_parser_prog_from_argv_not_sys_argv": {
+        "exception_frames": [
+          {
+            "file": "tests/user_commands/test_management_utility.py",
+            "line": 24,
+            "func": "test_parser_prog_from_argv_not_sys_argv",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 334,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/user_commands/test_management_utility.py",
+            "line": 38,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 51,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/user_commands/test_management_utility.py",
+            "line": 24,
+            "func": "test_parser_prog_from_argv_not_sys_argv",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/user_commands/test_management_utility.py",
+            "line": 36,
+            "func": "MockCommandParser",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 188,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 334,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/user_commands/test_management_utility.py",
+            "line": 38,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 51,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 70,
+            "func": "handle_default_options",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 147,
+            "func": "configured",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/__init__.py",
+            "line": 8,
+            "func": "setup",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 66,
+            "func": "configure_logging",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 7,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/log.py",
+            "line": 165,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 66,
+            "func": "color_style",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 12,
+            "func": "supports_color",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/urls/base.py",
+            "line": 98,
+            "func": "set_script_prefix",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 61,
+            "func": "populate",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 260,
+            "func": "autocomplete",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 195,
+            "func": "main_help_text",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/__init__.py",
+            "line": 206,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 47,
+            "func": "style_func",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13658",
+  "messages": []
+}

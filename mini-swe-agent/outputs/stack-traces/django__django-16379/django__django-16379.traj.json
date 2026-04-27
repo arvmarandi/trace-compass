@@ -1,0 +1,990 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/cache/test_filebased_race.py b/tests/cache/test_filebased_race.py\nnew file mode 100644\nindex 0000000000..038d2587f9\n--- /dev/null\n+++ b/tests/cache/test_filebased_race.py\n@@ -0,0 +1,143 @@\n+\"\"\"\n+Tests for file-based cache race conditions.\n+\n+These tests verify that the file-based cache backend handles race conditions\n+properly, specifically the race between checking if a file exists and opening it.\n+\n+Regression tests for: https://code.djangoproject.com/ticket/XXXXX\n+FileBasedCache has_key is susceptible to race conditions between\n+os.path.exists() check and open() call.\n+\"\"\"\n+import errno\n+import os\n+import shutil\n+import tempfile\n+from unittest import mock\n+\n+from django.conf import settings\n+from django.test import TestCase, override_settings\n+\n+\n+def caches_setting_for_filebased_tests(location=\"\"):\n+    return {\n+        \"default\": {\n+            \"BACKEND\": \"django.core.cache.backends.filebased.FileBasedCache\",\n+            \"LOCATION\": location,\n+        }\n+    }\n+\n+\n+@override_settings(\n+    CACHES=caches_setting_for_filebased_tests()\n+)\n+class FileBasedCacheRaceConditionTests(TestCase):\n+    \"\"\"\n+    Test cases for race condition handling in FileBasedCache.\n+    \"\"\"\n+\n+    def setUp(self):\n+        self.dirname = tempfile.mkdtemp()\n+        # Override the cache location with our temp directory\n+        for cache_params in settings.CACHES.values():\n+            cache_params[\"LOCATION\"] = self.dirname\n+        from django.test.signals import setting_changed\n+        setting_changed.send(self.__class__, setting=\"CACHES\", enter=False)\n+        from django.core.cache import cache\n+        cache._dir = os.path.abspath(self.dirname)\n+        cache._createdir()\n+        self.cache = cache\n+\n+    def tearDown(self):\n+        shutil.rmtree(self.dirname)\n+\n+    def test_has_key_handles_file_disappearing_between_exists_and_open(self):\n+        \"\"\"\n+        has_key() should handle FileNotFoundError when the file is deleted\n+        between the os.path.exists() check and the open() call.\n+\n+        This simulates a race condition where:\n+        1. has_key checks if file exists (returns True)\n+        2. Another process/thread deletes the file (e.g., _is_expired on another thread)\n+        3. has_key tries to open the file (raises FileNotFoundError)\n+\n+        Regression test for a bug where has_key didn't catch FileNotFoundError,\n+        causing cache.add() and other operations to fail unexpectedly.\n+        \"\"\"\n+        # Set a cache entry\n+        self.cache.set(\"testkey\", \"testvalue\")\n+\n+        # Get the filename for the key\n+        fname = self.cache._key_to_file(\"testkey\")\n+        \n+        # Verify the file exists\n+        self.assertTrue(os.path.exists(fname))\n+\n+        # Mock open to raise FileNotFoundError to simulate the race condition\n+        # where the file is deleted between os.path.exists() and open()\n+        original_open = open\n+        \n+        def mock_open(path, *args, **kwargs):\n+            # Convert to string if Path object\n+            path_str = str(path)\n+            if path_str == fname:\n+                # Simulate race condition: file doesn't exist even though\n+                # os.path.exists returned True earlier\n+                raise FileNotFoundError(\n+                    errno.ENOENT, os.strerror(errno.ENOENT), fname\n+                )\n+            return original_open(path, *args, **kwargs)\n+\n+        # Patch open so it raises FileNotFoundError\n+        with mock.patch(\"builtins.open\", mock_open):\n+            # This should not raise FileNotFoundError\n+            # The buggy version will raise FileNotFoundError here\n+            result = self.cache.has_key(\"testkey\")\n+            # The result should be False since the file no longer exists\n+            self.assertFalse(result)\n+\n+    def test_add_handles_has_key_file_not_found(self):\n+        \"\"\"\n+        cache.add() should not raise FileNotFoundError when has_key()\n+        encounters a race condition.\n+\n+        This is the actual failure scenario from the bug report:\n+        FileNotFoundError in add() -> has_key() -> open()\n+        \n+        When has_key can't verify the key exists due to race condition,\n+        it should return False, which causes add() to proceed and return True.\n+        \"\"\"\n+        # Set a cache entry with a specific key\n+        self.cache.set(\"racekey\", \"value\")\n+\n+        # Get the filename for this key\n+        fname = self.cache._key_to_file(\"racekey\")\n+\n+        # Verify the file exists\n+        self.assertTrue(os.path.exists(fname))\n+\n+        # Mock open to raise FileNotFoundError (simulating race condition)\n+        original_open = open\n+\n+        def mock_open(path, *args, **kwargs):\n+            path_str = str(path)\n+            if path_str == fname:\n+                raise FileNotFoundError(\n+                    errno.ENOENT, os.strerror(errno.ENOENT), fname\n+                )\n+            return original_open(path, *args, **kwargs)\n+\n+        # This should not raise FileNotFoundError\n+        # The buggy version will raise FileNotFoundError\n+        with mock.patch(\"builtins.open\", mock_open):\n+            # Try to add the same key - due to race condition, has_key returns\n+            # False (can't verify key exists), so add proceeds and returns True\n+            try:\n+                result = self.cache.add(\"racekey\", \"newvalue\")\n+                # If it doesn't raise, it should return True since has_key\n+                # couldn't verify the key exists (race condition)\n+                self.assertTrue(result)\n+            except FileNotFoundError:\n+                self.fail(\n+                    \"cache.add() raised FileNotFoundError due to race condition \"\n+                    \"in has_key() - this is the bug we're testing for\"\n+                )\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_add_handles_has_key_file_not_found (cache.test_filebased_race.FileBasedCacheRaceConditionTests)\ncache.add() should not raise FileNotFoundError when has_key() ... FAIL\ntest_has_key_handles_file_disappearing_between_exists_and_open (cache.test_filebased_race.FileBasedCacheRaceConditionTests)\nhas_key() should handle FileNotFoundError when the file is deleted ... ERROR\n\n======================================================================\nERROR: test_has_key_handles_file_disappearing_between_exists_and_open (cache.test_filebased_race.FileBasedCacheRaceConditionTests)\nhas_key() should handle FileNotFoundError when the file is deleted\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/cache/test_filebased_race.py\", line 94, in test_has_key_handles_file_disappearing_between_exists_and_open\n    result = self.cache.has_key(\"testkey\")\n  File \"/testbed/django/core/cache/backends/filebased.py\", line 94, in has_key\n    with open(fname, \"rb\") as f:\n  File \"/testbed/tests/cache/test_filebased_race.py\", line 85, in mock_open\n    raise FileNotFoundError(\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/django_sx8s_5qh/tmpzun4op9e/c0a24cbc88f0861d41f4dfd74b3d752c.djcache'\n\n======================================================================\nFAIL: test_add_handles_has_key_file_not_found (cache.test_filebased_race.FileBasedCacheRaceConditionTests)\ncache.add() should not raise FileNotFoundError when has_key()\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/cache/test_filebased_race.py\", line 135, in test_add_handles_has_key_file_not_found\n    result = self.cache.add(\"racekey\", \"newvalue\")\n  File \"/testbed/django/core/cache/backends/filebased.py\", line 26, in add\n    if self.has_key(key, version):\n  File \"/testbed/django/core/cache/backends/filebased.py\", line 94, in has_key\n    with open(fname, \"rb\") as f:\n  File \"/testbed/tests/cache/test_filebased_race.py\", line 124, in mock_open\n    raise FileNotFoundError(\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/django_sx8s_5qh/tmpduf7l_0m/a899661a9cd41e1022fed0b8b06c3068.djcache'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/tests/cache/test_filebased_race.py\", line 140, in test_add_handles_has_key_file_not_found\n    self.fail(\nAssertionError: cache.add() raised FileNotFoundError due to race condition in has_key() - this is the bug we're testing for\n\n----------------------------------------------------------------------\nRan 2 tests in 0.003s\n\nFAILED (failures=1, errors=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 cache.test_filebased_race` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application cache\nFound 2 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, cache, contenttypes, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table cache_poll\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "cache.test_filebased_race.FileBasedCacheRaceConditionTests.test_add_handles_has_key_file_not_found": {
+        "exception_frames": [
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 38,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 176,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 60,
+            "func": "close_caches",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 83,
+            "func": "close_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 75,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 76,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 38,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 234,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 176,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 54,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 60,
+            "func": "close_caches",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 83,
+            "func": "close_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 75,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 72,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 76,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 48,
+            "func": "configure_settings",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 36,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 57,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 85,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 91,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 114,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 122,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 136,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 142,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 150,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 161,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 170,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 182,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 193,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 203,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 113,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/contrib/messages/apps.py",
+            "line": 8,
+            "func": "update_level_tags",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/files/storage/mixins.py",
+            "line": 2,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 17,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 42,
+            "func": "create_connection",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 59,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 42,
+            "func": "get_key_func",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 115,
+            "func": "_createdir",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 98,
+            "func": "test_add_handles_has_key_file_not_found",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 46,
+            "func": "set",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 124,
+            "func": "_key_to_file",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 119,
+            "func": "make_and_validate_key",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 97,
+            "func": "make_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 31,
+            "func": "default_key_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 110,
+            "func": "validate_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 391,
+            "func": "memcache_key_warnings",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 98,
+            "func": "_cull",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 161,
+            "func": "_list_cache_files",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 166,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 41,
+            "func": "_write_content",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 85,
+            "func": "get_backend_timeout",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/files/move.py",
+            "line": 30,
+            "func": "file_move_safe",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/files/move.py",
+            "line": 16,
+            "func": "_samefile",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 25,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 91,
+            "func": "has_key",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 121,
+            "func": "mock_open",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 50,
+            "func": "tearDown",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ]
+      },
+      "cache.test_filebased_race.FileBasedCacheRaceConditionTests.test_has_key_handles_file_disappearing_between_exists_and_open": {
+        "exception_frames": [
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 38,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 176,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 60,
+            "func": "close_caches",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 83,
+            "func": "close_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 75,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 76,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 38,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 291,
+            "func": "__getattribute__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 152,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 234,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 176,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 54,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 60,
+            "func": "close_caches",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 83,
+            "func": "close_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 75,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 72,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 76,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 383,
+            "func": "close",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 48,
+            "func": "configure_settings",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 36,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 57,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 85,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 91,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 114,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 122,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 136,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 142,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 150,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 161,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 170,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 182,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 193,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 203,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 113,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/contrib/messages/apps.py",
+            "line": 8,
+            "func": "update_level_tags",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/files/storage/mixins.py",
+            "line": 2,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 17,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/cache/__init__.py",
+            "line": 42,
+            "func": "create_connection",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 59,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 42,
+            "func": "get_key_func",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 115,
+            "func": "_createdir",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 53,
+            "func": "test_has_key_handles_file_disappearing_between_exists_and_open",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 46,
+            "func": "set",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 124,
+            "func": "_key_to_file",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 119,
+            "func": "make_and_validate_key",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 97,
+            "func": "make_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 31,
+            "func": "default_key_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 110,
+            "func": "validate_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 391,
+            "func": "memcache_key_warnings",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 98,
+            "func": "_cull",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 161,
+            "func": "_list_cache_files",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 166,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 41,
+            "func": "_write_content",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/cache/backends/base.py",
+            "line": 85,
+            "func": "get_backend_timeout",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/files/move.py",
+            "line": 30,
+            "func": "file_move_safe",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/files/move.py",
+            "line": 16,
+            "func": "_samefile",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/cache/backends/filebased.py",
+            "line": 91,
+            "func": "has_key",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 79,
+            "func": "mock_open",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/cache/test_filebased_race.py",
+            "line": 50,
+            "func": "tearDown",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-16379",
+  "messages": []
+}

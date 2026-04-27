@@ -1,0 +1,114 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/dbshell/test_postgresql.py b/tests/dbshell/test_postgresql.py\nindex 02924d0bcc..b96e03e4be 100644\n--- a/tests/dbshell/test_postgresql.py\n+++ b/tests/dbshell/test_postgresql.py\n@@ -154,7 +154,7 @@ class PostgreSqlDbshellCommandTestCase(SimpleTestCase):\n     def test_parameters(self):\n         self.assertEqual(\n             self.settings_to_cmd_args_env({\"NAME\": \"dbname\"}, [\"--help\"]),\n-            ([\"psql\", \"dbname\", \"--help\"], None),\n+            ([\"psql\", \"--help\", \"dbname\"], None),\n         )\n \n     @skipUnless(connection.vendor == \"postgresql\", \"Requires a PostgreSQL connection\")\n@@ -184,3 +184,43 @@ class PostgreSqlDbshellCommandTestCase(SimpleTestCase):\n         with self.assertRaises(subprocess.CalledProcessError) as ctx:\n             subprocess.run(args, check=True, env=env)\n         self.assertNotIn(\"somepassword\", str(ctx.exception))\n+\n+    def test_parameters_and_dbname_order(self):\n+        \"\"\"\n+        Test that parameters are placed before the database name in the\n+        psql command. PostgreSQL's psql expects all options to precede the\n+        database name.\n+        \n+        This is a regression test for the issue where additional dbshell\n+        parameters (like '-c \"SELECT * FROM table\"') were placed after\n+        the database name, causing psql to ignore them.\n+        \"\"\"\n+        args, env = self.settings_to_cmd_args_env(\n+            {\"NAME\": \"mydb\"}, [\"-c\", \"SELECT * FROM some_table;\"]\n+        )\n+        # psql expects options to come before the database name\n+        # So the order should be: psql -c \"...\" mydb\n+        # NOT: psql mydb -c \"...\"\n+        self.assertIn(\"-c\", args)\n+        self.assertIn(\"SELECT * FROM some_table;\", args)\n+        self.assertIn(\"mydb\", args)\n+        # Find the index of dbname and -c\n+        dbname_index = args.index(\"mydb\")\n+        c_index = args.index(\"-c\")\n+        select_index = args.index(\"SELECT * FROM some_table;\")\n+        # The -c option and its argument should come before the database name\n+        self.assertLess(c_index, dbname_index)\n+        self.assertLess(select_index, dbname_index)\n+\n+    def test_parameters_at_end_of_args(self):\n+        \"\"\"\n+        Test that the database name is always the last positional argument\n+        in the psql command, after all options and parameters.\n+        \"\"\"\n+        args, env = self.settings_to_cmd_args_env(\n+            {\"NAME\": \"testdb\", \"USER\": \"testuser\"},\n+            [\"--help\"]\n+        )\n+        # The database name should come after all parameters\n+        # Expected order: psql -U testuser --help testdb\n+        self.assertEqual(args, [\"psql\", \"-U\", \"testuser\", \"--help\", \"testdb\"])\n",
+    "stack_traces": [],
+    "test_output": "test_accent (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_basic (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_column (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_crash_password_does_not_leak (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_nopass (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_parameters (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... FAIL\ntest_parameters_and_dbname_order (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\nTest that parameters are placed before the database name in the ... FAIL\ntest_parameters_at_end_of_args (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\nTest that the database name is always the last positional argument ... FAIL\ntest_passfile (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_service (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\ntest_sigint_handler (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\nSIGINT is ignored in Python and passed to psql to abort queries. ... skipped 'Requires a PostgreSQL connection'\ntest_ssl_certificate (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase) ... ok\n\n======================================================================\nFAIL: test_parameters (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dbshell/test_postgresql.py\", line 155, in test_parameters\n    self.assertEqual(\nAssertionError: Tuples differ: (['psql', 'dbname', '--help'], None) != (['psql', '--help', 'dbname'], None)\n\nFirst differing element 0:\n['psql', 'dbname', '--help']\n['psql', '--help', 'dbname']\n\n- (['psql', 'dbname', '--help'], None)\n+ (['psql', '--help', 'dbname'], None)\n\n======================================================================\nFAIL: test_parameters_and_dbname_order (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\nTest that parameters are placed before the database name in the\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dbshell/test_postgresql.py\", line 212, in test_parameters_and_dbname_order\n    self.assertLess(c_index, dbname_index)\nAssertionError: 2 not less than 1\n\n======================================================================\nFAIL: test_parameters_at_end_of_args (dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase)\nTest that the database name is always the last positional argument\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/dbshell/test_postgresql.py\", line 226, in test_parameters_at_end_of_args\n    self.assertEqual(args, [\"psql\", \"-U\", \"testuser\", \"--help\", \"testdb\"])\nAssertionError: Lists differ: ['psql', '-U', 'testuser', 'testdb', '--help'] != ['psql', '-U', 'testuser', '--help', 'testdb']\n\nFirst differing element 3:\n'testdb'\n'--help'\n\n- ['psql', '-U', 'testuser', 'testdb', '--help']\n?                                    ----------\n\n+ ['psql', '-U', 'testuser', '--help', 'testdb']\n?                            ++++++++++\n\n\n----------------------------------------------------------------------\nRan 12 tests in 0.075s\n\nFAILED (failures=3, skipped=1)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 dbshell.test_postgresql` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application dbshell\nFound 12 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase.test_parameters": {
+        "exception_frames": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 154,
+            "func": "test_parameters",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 154,
+            "func": "test_parameters",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 14,
+            "func": "settings_to_cmd_args_env",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/postgresql/client.py",
+            "line": 9,
+            "func": "settings_to_cmd_args_env",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase.test_parameters_and_dbname_order": {
+        "exception_frames": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 188,
+            "func": "test_parameters_and_dbname_order",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 188,
+            "func": "test_parameters_and_dbname_order",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 14,
+            "func": "settings_to_cmd_args_env",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/postgresql/client.py",
+            "line": 9,
+            "func": "settings_to_cmd_args_env",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "dbshell.test_postgresql.PostgreSqlDbshellCommandTestCase.test_parameters_at_end_of_args": {
+        "exception_frames": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 215,
+            "func": "test_parameters_at_end_of_args",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 215,
+            "func": "test_parameters_at_end_of_args",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/dbshell/test_postgresql.py",
+            "line": 14,
+            "func": "settings_to_cmd_args_env",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/postgresql/client.py",
+            "line": 9,
+            "func": "settings_to_cmd_args_env",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-15851",
+  "messages": []
+}

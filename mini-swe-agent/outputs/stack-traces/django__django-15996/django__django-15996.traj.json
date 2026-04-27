@@ -1,0 +1,280 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/migrations/test_enum_combined_flags.py b/tests/migrations/test_enum_combined_flags.py\nnew file mode 100644\nindex 0000000000..1370f6bac8\n--- /dev/null\n+++ b/tests/migrations/test_enum_combined_flags.py\n@@ -0,0 +1,122 @@\n+\"\"\"\n+Tests for combined enum.Flag serialization in migrations.\n+\n+Regression tests for https://code.djangoproject.com/ticket/33916\n+\"\"\"\n+\n+import enum\n+import re\n+\n+from django.db import models\n+from django.db.migrations.writer import MigrationWriter\n+from django.test import SimpleTestCase\n+\n+\n+class IntFlagEnum(enum.IntFlag):\n+    A = 1\n+    B = 2\n+    C = 4\n+\n+\n+class CombinedEnumFlagSerializationTests(SimpleTestCase):\n+    \"\"\"\n+    Tests for serialization of combined enum.Flag values.\n+    \n+    When working with a field like:\n+        regex_flags = models.IntegerField(default=re.UNICODE | re.IGNORECASE)\n+    \n+    The EnumSerializer aims to work with the .name of the item, but if there\n+    is no single item for the given value (because it's a combination of flags),\n+    then there is no such name. The serializer should use enum._decompose to \n+    obtain a list of names and create an expression to create the enum value \n+    by \"ORing\" the items together.\n+    \"\"\"\n+\n+    def test_combined_flags_serialize_format(self):\n+        \"\"\"\n+        Test that combined Flag values are serialized with OR expression.\n+        \n+        The serialized output should be:\n+            module.FlagEnum['A'] | module.FlagEnum['B']\n+        NOT:\n+            module.FlagEnum['A|B']\n+        \"\"\"\n+        combined = IntFlagEnum.A | IntFlagEnum.B\n+        result, imports = MigrationWriter.serialize(combined)\n+        \n+        # The expected format is an OR expression of individual members\n+        self.assertEqual(\n+            result,\n+            \"migrations.test_enum_combined_flags.IntFlagEnum['A'] | \"\n+            \"migrations.test_enum_combined_flags.IntFlagEnum['B']\",\n+        )\n+        self.assertEqual(imports, {\"import migrations.test_enum_combined_flags\"})\n+\n+    def test_combined_flags_can_be_evaluated(self):\n+        \"\"\"\n+        Test that the serialized combined Flag can be evaluated to the original value.\n+        \n+        This is the key regression test: the serialized expression must be valid\n+        Python that can be evaluated without errors.\n+        \"\"\"\n+        combined = IntFlagEnum.A | IntFlagEnum.B\n+        result, imports = MigrationWriter.serialize(combined)\n+        \n+        # Build and execute the code\n+        code = \"%s\\ntest_value_result = %s\" % (\"\\n\".join(imports), result)\n+        d = {}\n+        try:\n+            exec(code, d)\n+        except Exception as e:\n+            self.fail(\n+                f\"Failed to evaluate serialized combined Flag '{result}': \"\n+                f\"{type(e).__name__}: {e}\"\n+            )\n+        \n+        # Verify the result equals the original value\n+        self.assertEqual(d['test_value_result'], combined)\n+\n+    def test_three_combined_flags_serialize(self):\n+        \"\"\"Test serialization of three combined flags.\"\"\"\n+        combined = IntFlagEnum.A | IntFlagEnum.B | IntFlagEnum.C\n+        result, imports = MigrationWriter.serialize(combined)\n+        \n+        # Should contain all three individual flags\n+        self.assertIn(\"IntFlagEnum['A']\", result)\n+        self.assertIn(\"IntFlagEnum['B']\", result)\n+        self.assertIn(\"IntFlagEnum['C']\", result)\n+        \n+        # Should be OR'd together\n+        self.assertEqual(result.count('|'), 2)  # A | B | C has 2 | operators\n+\n+    def test_re_module_combined_flags(self):\n+        \"\"\"\n+        Test serialization of re module combined flags.\n+        \n+        This was the original use case in the bug report:\n+            regex_flags = models.IntegerField(default=re.UNICODE | re.IGNORECASE)\n+        \"\"\"\n+        combined = re.UNICODE | re.IGNORECASE\n+        result, imports = MigrationWriter.serialize(combined)\n+        \n+        # Should produce an OR expression with individual flag names\n+        self.assertIn(\"re.RegexFlag['IGNORECASE']\", result)\n+        self.assertIn(\"re.RegexFlag['UNICODE']\", result)\n+        self.assertIn(\"|\", result)\n+        self.assertEqual(imports, {\"import re\"})\n+        \n+        # The serialized code should be evaluable\n+        code = \"%s\\ntest_value_result = %s\" % (\"\\n\".join(imports), result)\n+        d = {'re': re}\n+        exec(code, d)\n+        self.assertEqual(d['test_value_result'], combined)\n+\n+    def test_field_default_with_combined_flags(self):\n+        \"\"\"Test that a field with combined Flag default serializes correctly.\"\"\"\n+        field = models.IntegerField(default=IntFlagEnum.A | IntFlagEnum.B)\n+        result, imports = MigrationWriter.serialize(field)\n+        \n+        # The default in the serialized field should be an OR expression\n+        self.assertIn(\"IntFlagEnum['A']\", result)\n+        self.assertIn(\"IntFlagEnum['B']\", result)\n+        self.assertIn(\"|\", result)\n",
+    "stack_traces": [],
+    "test_output": "test_combined_flags_can_be_evaluated (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that the serialized combined Flag can be evaluated to the original value. ... FAIL\ntest_combined_flags_serialize_format (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that combined Flag values are serialized with OR expression. ... FAIL\ntest_field_default_with_combined_flags (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that a field with combined Flag default serializes correctly. ... FAIL\ntest_re_module_combined_flags (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest serialization of re module combined flags. ... FAIL\ntest_three_combined_flags_serialize (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest serialization of three combined flags. ... FAIL\n\n======================================================================\nFAIL: test_combined_flags_can_be_evaluated (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that the serialized combined Flag can be evaluated to the original value.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 69, in test_combined_flags_can_be_evaluated\n    exec(code, d)\n  File \"<string>\", line 2, in <module>\n  File \"/opt/miniconda3/envs/testbed/lib/python3.9/enum.py\", line 432, in __getitem__\n    return cls._member_map_[name]\nKeyError: None\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 71, in test_combined_flags_can_be_evaluated\n    self.fail(\nAssertionError: Failed to evaluate serialized combined Flag 'migrations.test_enum_combined_flags.IntFlagEnum[None]': KeyError: None\n\n======================================================================\nFAIL: test_combined_flags_serialize_format (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that combined Flag values are serialized with OR expression.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 48, in test_combined_flags_serialize_format\n    self.assertEqual(\nAssertionError: 'migrations.test_enum_combined_flags.IntFlagEnum[None]' != \"migrations.test_enum_combined_flags.IntF[63 chars]'B']\"\n- migrations.test_enum_combined_flags.IntFlagEnum[None]\n+ migrations.test_enum_combined_flags.IntFlagEnum['A'] | migrations.test_enum_combined_flags.IntFlagEnum['B']\n\n\n======================================================================\nFAIL: test_field_default_with_combined_flags (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest that a field with combined Flag default serializes correctly.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 120, in test_field_default_with_combined_flags\n    self.assertIn(\"IntFlagEnum['A']\", result)\nAssertionError: \"IntFlagEnum['A']\" not found in 'models.IntegerField(default=migrations.test_enum_combined_flags.IntFlagEnum[None])'\n\n======================================================================\nFAIL: test_re_module_combined_flags (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest serialization of re module combined flags.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 103, in test_re_module_combined_flags\n    self.assertIn(\"re.RegexFlag['IGNORECASE']\", result)\nAssertionError: \"re.RegexFlag['IGNORECASE']\" not found in 're.RegexFlag[None]'\n\n======================================================================\nFAIL: test_three_combined_flags_serialize (migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests)\nTest serialization of three combined flags.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/migrations/test_enum_combined_flags.py\", line 85, in test_three_combined_flags_serialize\n    self.assertIn(\"IntFlagEnum['A']\", result)\nAssertionError: \"IntFlagEnum['A']\" not found in 'migrations.test_enum_combined_flags.IntFlagEnum[None]'\n\n----------------------------------------------------------------------\nRan 5 tests in 0.002s\n\nFAILED (failures=5)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 migrations.test_enum_combined_flags` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application migrations\nFound 5 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests.test_combined_flags_can_be_evaluated": {
+        "exception_frames": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 55,
+            "func": "test_combined_flags_can_be_evaluated",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 55,
+            "func": "test_combined_flags_can_be_evaluated",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/migrations/writer.py",
+            "line": 280,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 356,
+            "func": "serializer_factory",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 23,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 125,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests.test_combined_flags_serialize_format": {
+        "exception_frames": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 35,
+            "func": "test_combined_flags_serialize_format",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 35,
+            "func": "test_combined_flags_serialize_format",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/migrations/writer.py",
+            "line": 280,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 356,
+            "func": "serializer_factory",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 23,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 125,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests.test_field_default_with_combined_flags": {
+        "exception_frames": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 114,
+            "func": "test_field_default_with_combined_flags",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 114,
+            "func": "test_field_default_with_combined_flags",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 180,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/writer.py",
+            "line": 280,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 356,
+            "func": "serializer_factory",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 23,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 211,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 494,
+            "func": "deconstruct",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 82,
+            "func": "serialize_deconstructed",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 96,
+            "func": "_serialize_path",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests.test_re_module_combined_flags": {
+        "exception_frames": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 92,
+            "func": "test_re_module_combined_flags",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 92,
+            "func": "test_re_module_combined_flags",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/migrations/writer.py",
+            "line": 280,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 356,
+            "func": "serializer_factory",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 23,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 125,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "migrations.test_enum_combined_flags.CombinedEnumFlagSerializationTests.test_three_combined_flags_serialize": {
+        "exception_frames": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 79,
+            "func": "test_three_combined_flags_serialize",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/migrations/test_enum_combined_flags.py",
+            "line": 79,
+            "func": "test_three_combined_flags_serialize",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/migrations/writer.py",
+            "line": 280,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 356,
+            "func": "serializer_factory",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 23,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/migrations/serializer.py",
+            "line": 125,
+            "func": "serialize",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-15996",
+  "messages": []
+}

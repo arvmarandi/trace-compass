@@ -1,0 +1,578 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/test_config_mode.py b/tests/test_config_mode.py\nnew file mode 100644\nindex 00000000..bd20f731\n--- /dev/null\n+++ b/tests/test_config_mode.py\n@@ -0,0 +1,141 @@\n+\"\"\"Tests for the mode parameter in flask.Config.from_file()\n+\n+This tests the feature described in the PR description:\n+- Add a file mode parameter to flask.Config.from_file()\n+- This enables using tomllib.load() which requires binary mode files\n+\"\"\"\n+import json\n+import os\n+import tempfile\n+\n+import pytest\n+\n+import flask\n+\n+\n+def common_object_test(app):\n+    \"\"\"Verify the common test config values are loaded.\"\"\"\n+    assert app.secret_key == \"config\"\n+    assert app.config[\"TEST_KEY\"] == \"foo\"\n+    assert \"TestConfig\" not in app.config\n+\n+\n+class TestFromFileModeParameter:\n+    \"\"\"Tests for the mode parameter in from_file().\n+    \n+    These tests verify that the `mode` parameter is accepted by from_file()\n+    and that the file is opened with the specified mode.\n+    \n+    Currently failing tests (3):\n+    - test_from_file_with_text_mode: Uses mode=\"r\" - fails because mode param doesn't exist\n+    - test_from_file_binary_mode_with_tomllib: Uses mode=\"rb\" with tomllib - fails because mode param doesn't exist  \n+    - test_from_file_binary_mode_custom_loader: Uses mode=\"rb\" with custom loader - fails because mode param doesn't exist\n+    \n+    After the fix, all tests should pass.\n+    \"\"\"\n+\n+    def test_from_file_with_text_mode(self):\n+        \"\"\"Test that from_file() accepts the mode parameter with text mode 'r'.\n+        \n+        This test verifies that the mode parameter is accepted when explicitly\n+        set to text mode 'r'.\n+        \"\"\"\n+        app = flask.Flask(__name__)\n+        current_dir = os.path.dirname(os.path.abspath(__file__))\n+        \n+        # Test that the mode parameter is accepted with text mode\n+        app.config.from_file(\n+            os.path.join(current_dir, \"static\", \"config.json\"),\n+            json.load,\n+            mode=\"r\"  # Explicit text mode\n+        )\n+        common_object_test(app)\n+\n+    def test_from_file_binary_mode_with_tomllib(self):\n+        \"\"\"Test that from_file() works with tomllib.load() when mode='rb'.\n+        \n+        Python 3.11's tomllib.load() requires binary mode files.\n+        This test verifies that passing mode='rb' enables using tomllib.\n+        \n+        This is the primary use case mentioned in the PR description:\n+        app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\n+        \"\"\"\n+        import tomllib\n+        \n+        # Create a TOML file in a temp directory\n+        with tempfile.TemporaryDirectory() as tmpdir:\n+            toml_file = os.path.join(tmpdir, \"config.toml\")\n+            toml_content = \"\"\"\n+TEST_KEY = \"foo\"\n+SECRET_KEY = \"config\"\n+\"\"\"\n+            with open(toml_file, \"w\") as f:\n+                f.write(toml_content)\n+            \n+            app = flask.Flask(__name__)\n+            app.config.root_path = tmpdir\n+            \n+            # This should work with mode=\"rb\" to satisfy tomllib's requirement\n+            app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\n+            \n+            common_object_test(app)\n+\n+    def test_from_file_binary_mode_custom_loader(self):\n+        \"\"\"Test from_file() with binary mode using a custom loader that needs binary IO.\n+        \n+        This simulates a scenario where a custom loader requires binary mode,\n+        similar to tomllib.load().\n+        \"\"\"\n+        def load_binary_json(f):\n+            \"\"\"A loader that expects binary mode (like tomllib).\n+            \n+            This loader reads the content as bytes and decodes it,\n+            simulating what a binary-mode loader does.\n+            \"\"\"\n+            content = f.read()\n+            if isinstance(content, bytes):\n+                content = content.decode('utf-8')\n+            return json.loads(content)\n+        \n+        app = flask.Flask(__name__)\n+        current_dir = os.path.dirname(os.path.abspath(__file__))\n+        \n+        # Test with explicit binary mode\n+        app.config.from_file(\n+            os.path.join(current_dir, \"static\", \"config.json\"),\n+            load_binary_json,\n+            mode=\"rb\"\n+        )\n+        common_object_test(app)\n+\n+    def test_from_file_default_mode_is_text(self):\n+        \"\"\"Test that the default mode is still text mode for backwards compatibility.\n+        \n+        When no mode is specified, from_file() should open the file in text mode\n+        (the default), maintaining backwards compatibility.\n+        \"\"\"\n+        app = flask.Flask(__name__)\n+        current_dir = os.path.dirname(os.path.abspath(__file__))\n+        \n+        # Without mode parameter, should work with text-mode loaders\n+        app.config.from_file(\n+            os.path.join(current_dir, \"static\", \"config.json\"),\n+            json.load\n+        )\n+        common_object_test(app)\n+\n+    def test_from_file_invalid_mode_type(self):\n+        \"\"\"Test that an invalid mode parameter raises TypeError.\n+        \n+        Passing an invalid mode type (not a string) should raise a TypeError.\n+        \"\"\"\n+        app = flask.Flask(__name__)\n+        current_dir = os.path.dirname(os.path.abspath(__file__))\n+        \n+        # Passing an invalid mode type should raise a TypeError\n+        with pytest.raises(TypeError):\n+            app.config.from_file(\n+                os.path.join(current_dir, \"static\", \"config.json\"),\n+                json.load,\n+                mode=123  # Invalid mode type, should be a string\n+            )\n",
+    "stack_traces": [
+      "___________ TestFromFileModeParameter.test_from_file_with_text_mode ____________\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffe62ae50>\n\n    def test_from_file_with_text_mode(self):\n        \"\"\"Test that from_file() accepts the mode parameter with text mode 'r'.\n    \n        This test verifies that the mode parameter is accepted when explicitly\n        set to text mode 'r'.\n        \"\"\"\n        app = flask.Flask(__name__)\n        current_dir = os.path.dirname(os.path.abspath(__file__))\n    \n        # Test that the mode parameter is accepted with text mode\n>       app.config.from_file(\n            os.path.join(current_dir, \"static\", \"config.json\"),\n            json.load,\n            mode=\"r\"  # Explicit text mode\n        )\nE       TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:47: TypeError\n______ TestFromFileModeParameter.test_from_file_binary_mode_with_tomllib _______\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffe7a3710>\n\n        def test_from_file_binary_mode_with_tomllib(self):\n            \"\"\"Test that from_file() works with tomllib.load() when mode='rb'.\n    \n            Python 3.11's tomllib.load() requires binary mode files.\n            This test verifies that passing mode='rb' enables using tomllib.\n    \n            This is the primary use case mentioned in the PR description:\n            app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\n            \"\"\"\n            import tomllib\n    \n            # Create a TOML file in a temp directory\n            with tempfile.TemporaryDirectory() as tmpdir:\n                toml_file = os.path.join(tmpdir, \"config.toml\")\n                toml_content = \"\"\"\n    TEST_KEY = \"foo\"\n    SECRET_KEY = \"config\"\n    \"\"\"\n                with open(toml_file, \"w\") as f:\n                    f.write(toml_content)\n    \n                app = flask.Flask(__name__)\n                app.config.root_path = tmpdir\n    \n                # This should work with mode=\"rb\" to satisfy tomllib's requirement\n>               app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\nE               TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:79: TypeError\n______ TestFromFileModeParameter.test_from_file_binary_mode_custom_loader ______\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffdabc1d0>\n\n    def test_from_file_binary_mode_custom_loader(self):\n        \"\"\"Test from_file() with binary mode using a custom loader that needs binary IO.\n    \n        This simulates a scenario where a custom loader requires binary mode,\n        similar to tomllib.load().\n        \"\"\"\n        def load_binary_json(f):\n            \"\"\"A loader that expects binary mode (like tomllib).\n    \n            This loader reads the content as bytes and decodes it,\n            simulating what a binary-mode loader does.\n            \"\"\"\n            content = f.read()\n            if isinstance(content, bytes):\n                content = content.decode('utf-8')\n            return json.loads(content)\n    \n        app = flask.Flask(__name__)\n        current_dir = os.path.dirname(os.path.abspath(__file__))\n    \n        # Test with explicit binary mode\n>       app.config.from_file(\n            os.path.join(current_dir, \"static\", \"config.json\"),\n            load_binary_json,\n            mode=\"rb\"\n        )\nE       TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:104: TypeError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/tests/test_config_mode.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.11.10, pytest-7.3.0, pluggy-1.0.0\nrootdir: /testbed\nconfigfile: pyproject.toml\ncollected 5 items\n\ntests/test_config_mode.py FFF..                                          [100%]\n\n=================================== FAILURES ===================================\n___________ TestFromFileModeParameter.test_from_file_with_text_mode ____________\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffe62ae50>\n\n    def test_from_file_with_text_mode(self):\n        \"\"\"Test that from_file() accepts the mode parameter with text mode 'r'.\n    \n        This test verifies that the mode parameter is accepted when explicitly\n        set to text mode 'r'.\n        \"\"\"\n        app = flask.Flask(__name__)\n        current_dir = os.path.dirname(os.path.abspath(__file__))\n    \n        # Test that the mode parameter is accepted with text mode\n>       app.config.from_file(\n            os.path.join(current_dir, \"static\", \"config.json\"),\n            json.load,\n            mode=\"r\"  # Explicit text mode\n        )\nE       TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:47: TypeError\n______ TestFromFileModeParameter.test_from_file_binary_mode_with_tomllib _______\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffe7a3710>\n\n        def test_from_file_binary_mode_with_tomllib(self):\n            \"\"\"Test that from_file() works with tomllib.load() when mode='rb'.\n    \n            Python 3.11's tomllib.load() requires binary mode files.\n            This test verifies that passing mode='rb' enables using tomllib.\n    \n            This is the primary use case mentioned in the PR description:\n            app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\n            \"\"\"\n            import tomllib\n    \n            # Create a TOML file in a temp directory\n            with tempfile.TemporaryDirectory() as tmpdir:\n                toml_file = os.path.join(tmpdir, \"config.toml\")\n                toml_content = \"\"\"\n    TEST_KEY = \"foo\"\n    SECRET_KEY = \"config\"\n    \"\"\"\n                with open(toml_file, \"w\") as f:\n                    f.write(toml_content)\n    \n                app = flask.Flask(__name__)\n                app.config.root_path = tmpdir\n    \n                # This should work with mode=\"rb\" to satisfy tomllib's requirement\n>               app.config.from_file(\"config.toml\", tomllib.load, mode=\"rb\")\nE               TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:79: TypeError\n______ TestFromFileModeParameter.test_from_file_binary_mode_custom_loader ______\n\nself = <test_config_mode.TestFromFileModeParameter object at 0x7ffffdabc1d0>\n\n    def test_from_file_binary_mode_custom_loader(self):\n        \"\"\"Test from_file() with binary mode using a custom loader that needs binary IO.\n    \n        This simulates a scenario where a custom loader requires binary mode,\n        similar to tomllib.load().\n        \"\"\"\n        def load_binary_json(f):\n            \"\"\"A loader that expects binary mode (like tomllib).\n    \n            This loader reads the content as bytes and decodes it,\n            simulating what a binary-mode loader does.\n            \"\"\"\n            content = f.read()\n            if isinstance(content, bytes):\n                content = content.decode('utf-8')\n            return json.loads(content)\n    \n        app = flask.Flask(__name__)\n        current_dir = os.path.dirname(os.path.abspath(__file__))\n    \n        # Test with explicit binary mode\n>       app.config.from_file(\n            os.path.join(current_dir, \"static\", \"config.json\"),\n            load_binary_json,\n            mode=\"rb\"\n        )\nE       TypeError: Config.from_file() got an unexpected keyword argument 'mode'\n\ntests/test_config_mode.py:104: TypeError\n=========================== short test summary info ============================\nFAILED tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_with_text_mode\nFAILED tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_binary_mode_with_tomllib\nFAILED tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_binary_mode_custom_loader\n========================= 3 failed, 2 passed in 0.03s ==========================\n\n",
+    "settrace_traces": {
+      "tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_with_text_mode": {
+        "exception_frames": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 37,
+            "func": "test_from_file_with_text_mode",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 37,
+            "func": "test_from_file_with_text_mode",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 76,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 240,
+            "func": "static_folder",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 271,
+            "func": "static_url_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 562,
+            "func": "get_root_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 815,
+            "func": "_find_package_path",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 607,
+            "func": "make_config",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 28,
+            "func": "get_debug_flag",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/config.py",
+            "line": 73,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 623,
+            "func": "make_aborter",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/json/provider.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 247,
+            "func": "has_static_folder",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 47,
+            "func": "wrapper_func",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 522,
+            "func": "_check_setup_finished",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1019,
+            "func": "add_url_rule",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1043,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 534,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_binary_mode_with_tomllib": {
+        "exception_frames": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 54,
+            "func": "test_from_file_binary_mode_with_tomllib",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 54,
+            "func": "test_from_file_binary_mode_with_tomllib",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 76,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 240,
+            "func": "static_folder",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 271,
+            "func": "static_url_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 562,
+            "func": "get_root_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 815,
+            "func": "_find_package_path",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 607,
+            "func": "make_config",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 28,
+            "func": "get_debug_flag",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/config.py",
+            "line": 73,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 623,
+            "func": "make_aborter",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/json/provider.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 247,
+            "func": "has_static_folder",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 47,
+            "func": "wrapper_func",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 522,
+            "func": "_check_setup_finished",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1019,
+            "func": "add_url_rule",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1043,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 534,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "tests/test_config_mode.py::TestFromFileModeParameter::test_from_file_binary_mode_custom_loader": {
+        "exception_frames": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 83,
+            "func": "test_from_file_binary_mode_custom_loader",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_config_mode.py",
+            "line": 83,
+            "func": "test_from_file_binary_mode_custom_loader",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 367,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 76,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 240,
+            "func": "static_folder",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 271,
+            "func": "static_url_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 562,
+            "func": "get_root_path",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 635,
+            "func": "auto_find_instance_path",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 883,
+            "func": "find_package",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 815,
+            "func": "_find_package_path",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 806,
+            "func": "_path_is_relative_to",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 607,
+            "func": "make_config",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/helpers.py",
+            "line": 28,
+            "func": "get_debug_flag",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/config.py",
+            "line": 73,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 623,
+            "func": "make_aborter",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/json/provider.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 247,
+            "func": "has_static_folder",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/scaffold.py",
+            "line": 47,
+            "func": "wrapper_func",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 522,
+            "func": "_check_setup_finished",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1019,
+            "func": "add_url_rule",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 1043,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/flask/app.py",
+            "line": 534,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "pallets__flask-4992",
+  "messages": []
+}

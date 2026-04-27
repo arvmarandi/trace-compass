@@ -1,0 +1,93 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/utils_tests/test_http_date_rfc7231.py b/tests/utils_tests/test_http_date_rfc7231.py\nnew file mode 100644\nindex 0000000000..35b5a2a6e0\n--- /dev/null\n+++ b/tests/utils_tests/test_http_date_rfc7231.py\n@@ -0,0 +1,168 @@\n+\"\"\"\n+Tests for RFC 7231 compliant two-digit year handling in parse_http_date.\n+\n+RFC 7231 section 7.1.1.1 states:\n+\"Recipients of a timestamp value in rfc850-date format, which uses a\n+two-digit year, MUST interpret a timestamp that appears to be more\n+than 50 years in the future as representing the most recent year in\n+the past that had the same last two digits.\"\n+\n+This test file tests this behavior.\n+\n+BUG: The current implementation uses hard-coded ranges (0-69 -> 2000-2069,\n+70-99 -> 1970-1999) instead of comparing against the current year.\n+\"\"\"\n+import unittest\n+from datetime import datetime\n+\n+from django.utils.http import parse_http_date\n+\n+\n+class RFC7231TwoDigitYearTests(unittest.TestCase):\n+    \"\"\"\n+    Tests for RFC 7231 compliant two-digit year interpretation.\n+    \n+    The key rule is: if a two-digit year would result in a year more than\n+    50 years in the future, interpret it as the most recent year in the\n+    past with the same last two digits.\n+    \n+    These tests verify the fix for the bug where the implementation uses\n+    hard-coded ranges instead of comparing against the current year.\n+    \"\"\"\n+\n+    def test_two_digit_year_70_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"70\" should be interpreted as 2070.\n+        \n+        The two-digit year \"70\" becomes 2070 when we add 2000.\n+        2070 - 2026 = 44 years in the future, which is less than 50 years.\n+        Therefore, it should be interpreted as 2070.\n+        \n+        The current buggy implementation gives 1970 (since 70 >= 70).\n+        This test should FAIL with the current implementation.\n+        \"\"\"\n+        # In year 2026, \"70\" -> 2070 (since 2070 is only 44 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-70 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(2070, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_75_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"75\" should be interpreted as 2075.\n+        \n+        The two-digit year \"75\" becomes 2075 when we add 2000.\n+        2075 - 2026 = 49 years in the future, which is less than 50 years.\n+        Therefore, it should be interpreted as 2075.\n+        \n+        The current buggy implementation gives 1975 (since 75 >= 70).\n+        This test should FAIL with the current implementation.\n+        \"\"\"\n+        # In year 2026, \"75\" -> 2075 (since 2075 is only 49 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-75 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(2075, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_76_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"76\" should be interpreted as 1976.\n+        \n+        The two-digit year \"76\" becomes 2076 when we add 2000.\n+        2076 - 2026 = 50 years in the future, which is NOT more than 50 years.\n+        Wait, let me reconsider...\n+        \n+        2076 - 2026 = 50 years in the future.\n+        The RFC says \"more than 50 years in the future\", so exactly 50 years\n+        should still be interpreted as the future year.\n+        \n+        So in year 2026, \"76\" should become 2076 (50 years future).\n+        \n+        The current buggy implementation gives 1976 (since 76 >= 70).\n+        This test should FAIL with the current implementation.\n+        \"\"\"\n+        # In year 2026, \"76\" -> 2076 (since 2076 is exactly 50 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-76 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(2076, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_77_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"77\" should be interpreted as 1977.\n+        \n+        The two-digit year \"77\" becomes 2077 when we add 2000.\n+        2077 - 2026 = 51 years in the future, which is MORE than 50 years.\n+        Therefore, it should be interpreted as 1977 (the most recent year\n+        in the past with the same last two digits).\n+        \n+        The current buggy implementation gives 1977 (since 77 >= 70).\n+        This test should PASS with both current and fixed implementation.\n+        \"\"\"\n+        # In year 2026, \"77\" -> 1977 (since 2077 would be 51 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-77 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(1977, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_99_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"99\" should be interpreted as 1999.\n+        \n+        The two-digit year \"99\" becomes 2099 when we add 2000.\n+        2099 - 2026 = 73 years in the future, which is MORE than 50 years.\n+        Therefore, it should be interpreted as 1999.\n+        \n+        The current buggy implementation gives 1999 (since 99 >= 70).\n+        This test should PASS with both current and fixed implementation.\n+        \"\"\"\n+        # In year 2026, \"99\" -> 1999 (since 2099 would be 73 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-99 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(1999, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_50_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"50\" should be interpreted as 2050.\n+        \n+        The two-digit year \"50\" becomes 2050 when we add 2000.\n+        2050 - 2026 = 24 years in the future, which is less than 50 years.\n+        Therefore, it should be interpreted as 2050.\n+        \n+        The current buggy implementation gives 2050 (since 50 < 70).\n+        This test should PASS with both current and fixed implementation.\n+        \"\"\"\n+        # In year 2026, \"50\" -> 2050 (since 2050 is only 24 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-50 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(2050, 11, 6, 8, 49, 37)\n+        )\n+\n+    def test_two_digit_year_69_in_year_2026(self):\n+        \"\"\"\n+        In year 2026, two-digit \"69\" should be interpreted as 2069.\n+        \n+        The two-digit year \"69\" becomes 2069 when we add 2000.\n+        2069 - 2026 = 43 years in the future, which is less than 50 years.\n+        Therefore, it should be interpreted as 2069.\n+        \n+        The current buggy implementation gives 2069 (since 69 < 70).\n+        This test should PASS with both current and fixed implementation.\n+        \"\"\"\n+        # In year 2026, \"69\" -> 2069 (since 2069 is only 43 years in future)\n+        parsed = parse_http_date('Sunday, 06-Nov-69 08:49:37 GMT')\n+        self.assertEqual(\n+            datetime.utcfromtimestamp(parsed),\n+            datetime(2069, 11, 6, 8, 49, 37)\n+        )\n+\n+\n+if __name__ == '__main__':\n+    unittest.main()\n",
+    "stack_traces": [],
+    "test_output": "test_two_digit_year_50_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... ok\ntest_two_digit_year_69_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... ok\ntest_two_digit_year_70_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... FAIL\ntest_two_digit_year_75_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... FAIL\ntest_two_digit_year_76_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... FAIL\ntest_two_digit_year_77_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... ok\ntest_two_digit_year_99_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests) ... ok\n\n======================================================================\nFAIL: test_two_digit_year_70_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/utils_tests/test_http_date_rfc7231.py\", line 48, in test_two_digit_year_70_in_year_2026\n    datetime(2070, 11, 6, 8, 49, 37)\nAssertionError: datetime.datetime(1970, 11, 6, 8, 49, 37) != datetime.datetime(2070, 11, 6, 8, 49, 37)\n\n======================================================================\nFAIL: test_two_digit_year_75_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/utils_tests/test_http_date_rfc7231.py\", line 66, in test_two_digit_year_75_in_year_2026\n    datetime(2075, 11, 6, 8, 49, 37)\nAssertionError: datetime.datetime(1975, 11, 6, 8, 49, 37) != datetime.datetime(2075, 11, 6, 8, 49, 37)\n\n======================================================================\nFAIL: test_two_digit_year_76_in_year_2026 (utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/utils_tests/test_http_date_rfc7231.py\", line 90, in test_two_digit_year_76_in_year_2026\n    datetime(2076, 11, 6, 8, 49, 37)\nAssertionError: datetime.datetime(1976, 11, 6, 8, 49, 37) != datetime.datetime(2076, 11, 6, 8, 49, 37)\n\n----------------------------------------------------------------------\nRan 7 tests in 0.001s\n\nFAILED (failures=3)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 utils_tests.test_http_date_rfc7231` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application utils_tests\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests.test_two_digit_year_70_in_year_2026": {
+        "exception_frames": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 33,
+            "func": "test_two_digit_year_70_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 33,
+            "func": "test_two_digit_year_70_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 158,
+            "func": "parse_http_date",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests.test_two_digit_year_75_in_year_2026": {
+        "exception_frames": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 51,
+            "func": "test_two_digit_year_75_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 51,
+            "func": "test_two_digit_year_75_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 158,
+            "func": "parse_http_date",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "utils_tests.test_http_date_rfc7231.RFC7231TwoDigitYearTests.test_two_digit_year_76_in_year_2026": {
+        "exception_frames": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 69,
+            "func": "test_two_digit_year_76_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/utils_tests/test_http_date_rfc7231.py",
+            "line": 69,
+            "func": "test_two_digit_year_76_in_year_2026",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/utils/http.py",
+            "line": 158,
+            "func": "parse_http_date",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-11848",
+  "messages": []
+}

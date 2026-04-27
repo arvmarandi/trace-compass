@@ -1,0 +1,793 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sklearn/neighbors/tests/test_n_neighbors_validation.py b/sklearn/neighbors/tests/test_n_neighbors_validation.py\nnew file mode 100644\nindex 000000000..1ffab0584\n--- /dev/null\n+++ b/sklearn/neighbors/tests/test_n_neighbors_validation.py\n@@ -0,0 +1,87 @@\n+\"\"\"Test for n_neighbors parameter validation with float values.\n+\n+This tests the fix for the issue where passing float values for\n+n_neighbors parameter (e.g., n_neighbors=3.) raises a confusing\n+TypeError instead of a helpful error message.\n+\n+The expected behavior after the fix is:\n+1. Float n_neighbors in constructor should raise ValueError at fit() time\n+2. Float n_neighbors in kneighbors() should raise ValueError\n+\n+See: https://github.com/scikit-learn/scikit-learn/issues/XXXXX\n+\"\"\"\n+import pytest\n+import numpy as np\n+\n+from sklearn.neighbors import NearestNeighbors, KNeighborsClassifier, KNeighborsRegressor\n+\n+\n+def test_n_neighbors_float_constructor():\n+    \"\"\"Test that float n_neighbors in constructor raises ValueError.\n+    \n+    Before the fix, this would either:\n+    - Raise a TypeError deep in the code (kd_tree/binary_tree.pxi) at kneighbors()\n+    - Or work but fail later when kneighbors() is called\n+    \n+    After the fix, this should raise a clear ValueError at construction time\n+    or at fit() time with a helpful message.\n+    \"\"\"\n+    X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n+    \n+    # This should raise ValueError with a helpful message\n+    # The error could be raised at construction time or at fit() time\n+    with pytest.raises(ValueError):\n+        neigh = NearestNeighbors(n_neighbors=3.)\n+        neigh.fit(X)\n+\n+\n+def test_n_neighbors_float_kneighbors():\n+    \"\"\"Test that float n_neighbors in kneighbors() raises ValueError.\n+    \n+    Before the fix, this would raise a TypeError:\n+    \"TypeError: 'float' object cannot be interpreted as an integer\"\n+    \n+    After the fix, this should raise a clear ValueError.\n+    \"\"\"\n+    X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n+    \n+    neigh = NearestNeighbors(n_neighbors=3)\n+    neigh.fit(X)\n+    \n+    # This should raise ValueError with a helpful message, not TypeError\n+    with pytest.raises(ValueError):\n+        neigh.kneighbors(X, n_neighbors=3.)\n+\n+\n+def test_n_neighbors_float_kneighbors_graph():\n+    \"\"\"Test that float n_neighbors in kneighbors_graph() raises ValueError.\"\"\"\n+    X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n+    \n+    neigh = NearestNeighbors(n_neighbors=3)\n+    neigh.fit(X)\n+    \n+    # This should raise ValueError with a helpful message\n+    with pytest.raises(ValueError):\n+        neigh.kneighbors_graph(X, n_neighbors=3.)\n+\n+\n+def test_n_neighbors_float_kneighbors_classifier():\n+    \"\"\"Test that float n_neighbors in KNeighborsClassifier raises ValueError.\"\"\"\n+    X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n+    y = np.array([0, 0, 0, 1, 1])\n+    \n+    # This should raise ValueError with a helpful message at construction time\n+    with pytest.raises(ValueError):\n+        clf = KNeighborsClassifier(n_neighbors=3.)\n+        clf.fit(X, y)\n+\n+\n+def test_n_neighbors_float_kneighbors_regressor():\n+    \"\"\"Test that float n_neighbors in KNeighborsRegressor raises ValueError.\"\"\"\n+    X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n+    y = np.array([0, 0, 0, 1, 1])\n+    \n+    # This should raise ValueError with a helpful message at construction time\n+    with pytest.raises(ValueError):\n+        reg = KNeighborsRegressor(n_neighbors=3.)\n+        reg.fit(X, y)\n",
+    "stack_traces": [
+      "______________________ test_n_neighbors_float_constructor ______________________\n\n    def test_n_neighbors_float_constructor():\n        \"\"\"Test that float n_neighbors in constructor raises ValueError.\n    \n        Before the fix, this would either:\n        - Raise a TypeError deep in the code (kd_tree/binary_tree.pxi) at kneighbors()\n        - Or work but fail later when kneighbors() is called\n    \n        After the fix, this should raise a clear ValueError at construction time\n        or at fit() time with a helpful message.\n        \"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        # This should raise ValueError with a helpful message\n        # The error could be raised at construction time or at fit() time\n        with pytest.raises(ValueError):\n            neigh = NearestNeighbors(n_neighbors=3.)\n>           neigh.fit(X)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:35: Failed\n______________________ test_n_neighbors_float_kneighbors _______________________\n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nbound = <built-in method argpartition of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapfunc(obj, method, *args, **kwds):\n        bound = getattr(obj, method, None)\n        if bound is None:\n            return _wrapit(obj, method, *args, **kwds)\n    \n        try:\n>           return bound(*args, **kwds)\nE           TypeError: Partition index must be integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:58: TypeError\n\nDuring handling of the above exception, another exception occurred:\n\n    def test_n_neighbors_float_kneighbors():\n        \"\"\"Test that float n_neighbors in kneighbors() raises ValueError.\n    \n        Before the fix, this would raise a TypeError:\n        \"TypeError: 'float' object cannot be interpreted as an integer\"\n    \n        After the fix, this should raise a clear ValueError.\n        \"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        neigh = NearestNeighbors(n_neighbors=3)\n        neigh.fit(X)\n    \n        # This should raise ValueError with a helpful message, not TypeError\n        with pytest.raises(ValueError):\n>           neigh.kneighbors(X, n_neighbors=3.)\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:53: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NearestNeighbors(algorithm='auto', leaf_size=30, metric='minkowski',\n         metric_params=None, n_jobs=1, n_neighbors=3, p=2, radius=1.0)\nX = array([[ 1,  2],\n       [ 3,  4],\n       [ 5,  6],\n       [ 7,  8],\n       [ 9, 10]])\nn_neighbors = 3.0, return_distance = True\n\n    def kneighbors(self, X=None, n_neighbors=None, return_distance=True):\n        \"\"\"Finds the K-neighbors of a point.\n    \n        Returns indices of and distances to the neighbors of each point.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_query, n_features), \\\n                or (n_query, n_indexed) if metric == 'precomputed'\n            The query point or points.\n            If not provided, neighbors of each indexed point are returned.\n            In this case, the query point is not considered its own neighbor.\n    \n        n_neighbors : int\n            Number of neighbors to get (default is the value\n            passed to the constructor).\n    \n        return_distance : boolean, optional. Defaults to True.\n            If False, distances will not be returned\n    \n        Returns\n        -------\n        dist : array\n            Array representing the lengths to points, only present if\n            return_distance=True\n    \n        ind : array\n            Indices of the nearest points in the population matrix.\n    \n        Examples\n        --------\n        In the following example, we construct a NeighborsClassifier\n        class from an array representing our data set and ask who's\n        the closest point to [1,1,1]\n    \n        >>> samples = [[0., 0., 0.], [0., .5, 0.], [1., 1., .5]]\n        >>> from sklearn.neighbors import NearestNeighbors\n        >>> neigh = NearestNeighbors(n_neighbors=1)\n        >>> neigh.fit(samples) # doctest: +ELLIPSIS\n        NearestNeighbors(algorithm='auto', leaf_size=30, ...)\n        >>> print(neigh.kneighbors([[1., 1., 1.]])) # doctest: +ELLIPSIS\n        (array([[0.5]]), array([[2]]))\n    \n        As you can see, it returns [[0.5]], and [[2]], which means that the\n        element is at distance 0.5 and is the third element of samples\n        (indexes start at 0). You can also query for multiple points:\n    \n        >>> X = [[0., 1., 0.], [1., 0., 1.]]\n        >>> neigh.kneighbors(X, return_distance=False) # doctest: +ELLIPSIS\n        array([[1],\n               [2]]...)\n    \n        \"\"\"\n        check_is_fitted(self, \"_fit_method\")\n    \n        if n_neighbors is None:\n            n_neighbors = self.n_neighbors\n    \n        if X is not None:\n            query_is_train = False\n            X = check_array(X, accept_sparse='csr')\n        else:\n            query_is_train = True\n            X = self._fit_X\n            # Include an extra neighbor to account for the sample itself being\n            # returned, which is removed later\n            n_neighbors += 1\n    \n        train_size = self._fit_X.shape[0]\n        if n_neighbors > train_size:\n            raise ValueError(\n                \"Expected n_neighbors <= n_samples, \"\n                \" but n_samples = %d, n_neighbors = %d\" %\n                (train_size, n_neighbors)\n            )\n        n_samples, _ = X.shape\n        sample_range = np.arange(n_samples)[:, None]\n    \n        n_jobs = _get_n_jobs(self.n_jobs)\n        if self._fit_method == 'brute':\n            # for efficiency, use squared euclidean distances\n            if self.effective_metric_ == 'euclidean':\n                dist = pairwise_distances(X, self._fit_X, 'euclidean',\n                                          n_jobs=n_jobs, squared=True)\n            else:\n                dist = pairwise_distances(\n                    X, self._fit_X, self.effective_metric_, n_jobs=n_jobs,\n                    **self.effective_metric_params_)\n    \n>           neigh_ind = np.argpartition(dist, n_neighbors - 1, axis=1)\n\nsklearn/neighbors/base.py:362: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nargs = (array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]]), 2.0)\nkwargs = {'axis': 1}\nrelevant_args = (array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]]),)\n\n>   ???\n\n<__array_function__ internals>:6: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\na = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nkth = 2.0, axis = 1, kind = 'introselect', order = None\n\n    @array_function_dispatch(_argpartition_dispatcher)\n    def argpartition(a, kth, axis=-1, kind='introselect', order=None):\n        \"\"\"\n        Perform an indirect partition along the given axis using the\n        algorithm specified by the `kind` keyword. It returns an array of\n        indices of the same shape as `a` that index data along the given\n        axis in partitioned order.\n    \n        .. versionadded:: 1.8.0\n    \n        Parameters\n        ----------\n        a : array_like\n            Array to sort.\n        kth : int or sequence of ints\n            Element index to partition by. The k-th element will be in its\n            final sorted position and all smaller elements will be moved\n            before it and all larger elements behind it. The order all\n            elements in the partitions is undefined. If provided with a\n            sequence of k-th it will partition all of them into their sorted\n            position at once.\n        axis : int or None, optional\n            Axis along which to sort. The default is -1 (the last axis). If\n            None, the flattened array is used.\n        kind : {'introselect'}, optional\n            Selection algorithm. Default is 'introselect'\n        order : str or list of str, optional\n            When `a` is an array with fields defined, this argument\n            specifies which fields to compare first, second, etc. A single\n            field can be specified as a string, and not all fields need be\n            specified, but unspecified fields will still be used, in the\n            order in which they come up in the dtype, to break ties.\n    \n        Returns\n        -------\n        index_array : ndarray, int\n            Array of indices that partition `a` along the specified axis.\n            If `a` is one-dimensional, ``a[index_array]`` yields a partitioned `a`.\n            More generally, ``np.take_along_axis(a, index_array, axis=a)`` always\n            yields the partitioned `a`, irrespective of dimensionality.\n    \n        See Also\n        --------\n        partition : Describes partition algorithms used.\n        ndarray.partition : Inplace partition.\n        argsort : Full indirect sort.\n        take_along_axis : Apply ``index_array`` from argpartition\n                          to an array as if by calling partition.\n    \n        Notes\n        -----\n        See `partition` for notes on the different selection algorithms.\n    \n        Examples\n        --------\n        One dimensional array:\n    \n        >>> x = np.array([3, 4, 2, 1])\n        >>> x[np.argpartition(x, 3)]\n        array([2, 1, 3, 4])\n        >>> x[np.argpartition(x, (1, 3))]\n        array([1, 2, 3, 4])\n    \n        >>> x = [3, 4, 2, 1]\n        >>> np.array(x)[np.argpartition(x, 3)]\n        array([2, 1, 3, 4])\n    \n        Multi-dimensional array:\n    \n        >>> x = np.array([[3, 4, 2], [1, 3, 1]])\n        >>> index_array = np.argpartition(x, kth=1, axis=-1)\n        >>> np.take_along_axis(x, index_array, axis=-1)  # same as np.partition(x, kth=1)\n        array([[2, 3, 4],\n               [1, 1, 3]])\n    \n        \"\"\"\n>       return _wrapfunc(a, 'argpartition', kth, axis=axis, kind=kind, order=order)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:832: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nbound = <built-in method argpartition of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapfunc(obj, method, *args, **kwds):\n        bound = getattr(obj, method, None)\n        if bound is None:\n            return _wrapit(obj, method, *args, **kwds)\n    \n        try:\n            return bound(*args, **kwds)\n        except TypeError:\n            # A TypeError occurs if the object does have such a method in its\n            # class, but its signature is not identical to that of NumPy's. This\n            # situation has occurred in the case of a downstream library like\n            # 'pandas'.\n            #\n            # Call _wrapit from within the except clause to ensure a potential\n            # exception has a traceback chain.\n>           return _wrapit(obj, method, *args, **kwds)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:67: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nwrap = <built-in method __array_wrap__ of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapit(obj, method, *args, **kwds):\n        try:\n            wrap = obj.__array_wrap__\n        except AttributeError:\n            wrap = None\n>       result = getattr(asarray(obj), method)(*args, **kwds)\nE       TypeError: Partition index must be integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:44: TypeError\n___________________ test_n_neighbors_float_kneighbors_graph ____________________\n\n    def test_n_neighbors_float_kneighbors_graph():\n        \"\"\"Test that float n_neighbors in kneighbors_graph() raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        neigh = NearestNeighbors(n_neighbors=3)\n        neigh.fit(X)\n    \n        # This should raise ValueError with a helpful message\n        with pytest.raises(ValueError):\n>           neigh.kneighbors_graph(X, n_neighbors=3.)\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:65: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NearestNeighbors(algorithm='auto', leaf_size=30, metric='minkowski',\n         metric_params=None, n_jobs=1, n_neighbors=3, p=2, radius=1.0)\nX = array([[ 1,  2],\n       [ 3,  4],\n       [ 5,  6],\n       [ 7,  8],\n       [ 9, 10]])\nn_neighbors = 3.0, mode = 'connectivity'\n\n    def kneighbors_graph(self, X=None, n_neighbors=None,\n                         mode='connectivity'):\n        \"\"\"Computes the (weighted) graph of k-Neighbors for points in X\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_query, n_features), \\\n                or (n_query, n_indexed) if metric == 'precomputed'\n            The query point or points.\n            If not provided, neighbors of each indexed point are returned.\n            In this case, the query point is not considered its own neighbor.\n    \n        n_neighbors : int\n            Number of neighbors for each sample.\n            (default is value passed to the constructor).\n    \n        mode : {'connectivity', 'distance'}, optional\n            Type of returned matrix: 'connectivity' will return the\n            connectivity matrix with ones and zeros, in 'distance' the\n            edges are Euclidean distance between points.\n    \n        Returns\n        -------\n        A : sparse matrix in CSR format, shape = [n_samples, n_samples_fit]\n            n_samples_fit is the number of samples in the fitted data\n            A[i, j] is assigned the weight of edge that connects i to j.\n    \n        Examples\n        --------\n        >>> X = [[0], [3], [1]]\n        >>> from sklearn.neighbors import NearestNeighbors\n        >>> neigh = NearestNeighbors(n_neighbors=2)\n        >>> neigh.fit(X) # doctest: +ELLIPSIS\n        NearestNeighbors(algorithm='auto', leaf_size=30, ...)\n        >>> A = neigh.kneighbors_graph(X)\n        >>> A.toarray()\n        array([[1., 0., 1.],\n               [0., 1., 1.],\n               [1., 0., 1.]])\n    \n        See also\n        --------\n        NearestNeighbors.radius_neighbors_graph\n        \"\"\"\n        if n_neighbors is None:\n            n_neighbors = self.n_neighbors\n    \n        # kneighbors does the None handling.\n        if X is not None:\n            X = check_array(X, accept_sparse='csr')\n            n_samples1 = X.shape[0]\n        else:\n            n_samples1 = self._fit_X.shape[0]\n    \n        n_samples2 = self._fit_X.shape[0]\n        n_nonzero = n_samples1 * n_neighbors\n        A_indptr = np.arange(0, n_nonzero + 1, n_neighbors)\n    \n        # construct CSR matrix representation of the k-NN graph\n        if mode == 'connectivity':\n>           A_data = np.ones(n_samples1 * n_neighbors)\n\nsklearn/neighbors/base.py:483: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nshape = 15.0, dtype = None, order = 'C'\n\n    @set_module('numpy')\n    def ones(shape, dtype=None, order='C'):\n        \"\"\"\n        Return a new array of given shape and type, filled with ones.\n    \n        Parameters\n        ----------\n        shape : int or sequence of ints\n            Shape of the new array, e.g., ``(2, 3)`` or ``2``.\n        dtype : data-type, optional\n            The desired data-type for the array, e.g., `numpy.int8`.  Default is\n            `numpy.float64`.\n        order : {'C', 'F'}, optional, default: C\n            Whether to store multi-dimensional data in row-major\n            (C-style) or column-major (Fortran-style) order in\n            memory.\n    \n        Returns\n        -------\n        out : ndarray\n            Array of ones with the given shape, dtype, and order.\n    \n        See Also\n        --------\n        ones_like : Return an array of ones with shape and type of input.\n        empty : Return a new uninitialized array.\n        zeros : Return a new array setting values to zero.\n        full : Return a new array of given shape filled with value.\n    \n    \n        Examples\n        --------\n        >>> np.ones(5)\n        array([1., 1., 1., 1., 1.])\n    \n        >>> np.ones((5,), dtype=int)\n        array([1, 1, 1, 1, 1])\n    \n        >>> np.ones((2, 1))\n        array([[1.],\n               [1.]])\n    \n        >>> s = (2,2)\n        >>> np.ones(s)\n        array([[1.,  1.],\n               [1.,  1.]])\n    \n        \"\"\"\n>       a = empty(shape, dtype, order)\nE       TypeError: 'float' object cannot be interpreted as an integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/numeric.py:192: TypeError\n_________________ test_n_neighbors_float_kneighbors_classifier _________________\n\n    def test_n_neighbors_float_kneighbors_classifier():\n        \"\"\"Test that float n_neighbors in KNeighborsClassifier raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n        y = np.array([0, 0, 0, 1, 1])\n    \n        # This should raise ValueError with a helpful message at construction time\n        with pytest.raises(ValueError):\n            clf = KNeighborsClassifier(n_neighbors=3.)\n>           clf.fit(X, y)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:76: Failed\n_________________ test_n_neighbors_float_kneighbors_regressor __________________\n\n    def test_n_neighbors_float_kneighbors_regressor():\n        \"\"\"Test that float n_neighbors in KNeighborsRegressor raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n        y = np.array([0, 0, 0, 1, 1])\n    \n        # This should raise ValueError with a helpful message at construction time\n        with pytest.raises(ValueError):\n            reg = KNeighborsRegressor(n_neighbors=3.)\n>           reg.fit(X, y)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:87: Failed"
+    ],
+    "test_output": "============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 5 items\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py FFFFF             [100%]\n\n=================================== FAILURES ===================================\n______________________ test_n_neighbors_float_constructor ______________________\n\n    def test_n_neighbors_float_constructor():\n        \"\"\"Test that float n_neighbors in constructor raises ValueError.\n    \n        Before the fix, this would either:\n        - Raise a TypeError deep in the code (kd_tree/binary_tree.pxi) at kneighbors()\n        - Or work but fail later when kneighbors() is called\n    \n        After the fix, this should raise a clear ValueError at construction time\n        or at fit() time with a helpful message.\n        \"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        # This should raise ValueError with a helpful message\n        # The error could be raised at construction time or at fit() time\n        with pytest.raises(ValueError):\n            neigh = NearestNeighbors(n_neighbors=3.)\n>           neigh.fit(X)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:35: Failed\n______________________ test_n_neighbors_float_kneighbors _______________________\n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nbound = <built-in method argpartition of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapfunc(obj, method, *args, **kwds):\n        bound = getattr(obj, method, None)\n        if bound is None:\n            return _wrapit(obj, method, *args, **kwds)\n    \n        try:\n>           return bound(*args, **kwds)\nE           TypeError: Partition index must be integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:58: TypeError\n\nDuring handling of the above exception, another exception occurred:\n\n    def test_n_neighbors_float_kneighbors():\n        \"\"\"Test that float n_neighbors in kneighbors() raises ValueError.\n    \n        Before the fix, this would raise a TypeError:\n        \"TypeError: 'float' object cannot be interpreted as an integer\"\n    \n        After the fix, this should raise a clear ValueError.\n        \"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        neigh = NearestNeighbors(n_neighbors=3)\n        neigh.fit(X)\n    \n        # This should raise ValueError with a helpful message, not TypeError\n        with pytest.raises(ValueError):\n>           neigh.kneighbors(X, n_neighbors=3.)\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:53: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NearestNeighbors(algorithm='auto', leaf_size=30, metric='minkowski',\n         metric_params=None, n_jobs=1, n_neighbors=3, p=2, radius=1.0)\nX = array([[ 1,  2],\n       [ 3,  4],\n       [ 5,  6],\n       [ 7,  8],\n       [ 9, 10]])\nn_neighbors = 3.0, return_distance = True\n\n    def kneighbors(self, X=None, n_neighbors=None, return_distance=True):\n        \"\"\"Finds the K-neighbors of a point.\n    \n        Returns indices of and distances to the neighbors of each point.\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_query, n_features), \\\n                or (n_query, n_indexed) if metric == 'precomputed'\n            The query point or points.\n            If not provided, neighbors of each indexed point are returned.\n            In this case, the query point is not considered its own neighbor.\n    \n        n_neighbors : int\n            Number of neighbors to get (default is the value\n            passed to the constructor).\n    \n        return_distance : boolean, optional. Defaults to True.\n            If False, distances will not be returned\n    \n        Returns\n        -------\n        dist : array\n            Array representing the lengths to points, only present if\n            return_distance=True\n    \n        ind : array\n            Indices of the nearest points in the population matrix.\n    \n        Examples\n        --------\n        In the following example, we construct a NeighborsClassifier\n        class from an array representing our data set and ask who's\n        the closest point to [1,1,1]\n    \n        >>> samples = [[0., 0., 0.], [0., .5, 0.], [1., 1., .5]]\n        >>> from sklearn.neighbors import NearestNeighbors\n        >>> neigh = NearestNeighbors(n_neighbors=1)\n        >>> neigh.fit(samples) # doctest: +ELLIPSIS\n        NearestNeighbors(algorithm='auto', leaf_size=30, ...)\n        >>> print(neigh.kneighbors([[1., 1., 1.]])) # doctest: +ELLIPSIS\n        (array([[0.5]]), array([[2]]))\n    \n        As you can see, it returns [[0.5]], and [[2]], which means that the\n        element is at distance 0.5 and is the third element of samples\n        (indexes start at 0). You can also query for multiple points:\n    \n        >>> X = [[0., 1., 0.], [1., 0., 1.]]\n        >>> neigh.kneighbors(X, return_distance=False) # doctest: +ELLIPSIS\n        array([[1],\n               [2]]...)\n    \n        \"\"\"\n        check_is_fitted(self, \"_fit_method\")\n    \n        if n_neighbors is None:\n            n_neighbors = self.n_neighbors\n    \n        if X is not None:\n            query_is_train = False\n            X = check_array(X, accept_sparse='csr')\n        else:\n            query_is_train = True\n            X = self._fit_X\n            # Include an extra neighbor to account for the sample itself being\n            # returned, which is removed later\n            n_neighbors += 1\n    \n        train_size = self._fit_X.shape[0]\n        if n_neighbors > train_size:\n            raise ValueError(\n                \"Expected n_neighbors <= n_samples, \"\n                \" but n_samples = %d, n_neighbors = %d\" %\n                (train_size, n_neighbors)\n            )\n        n_samples, _ = X.shape\n        sample_range = np.arange(n_samples)[:, None]\n    \n        n_jobs = _get_n_jobs(self.n_jobs)\n        if self._fit_method == 'brute':\n            # for efficiency, use squared euclidean distances\n            if self.effective_metric_ == 'euclidean':\n                dist = pairwise_distances(X, self._fit_X, 'euclidean',\n                                          n_jobs=n_jobs, squared=True)\n            else:\n                dist = pairwise_distances(\n                    X, self._fit_X, self.effective_metric_, n_jobs=n_jobs,\n                    **self.effective_metric_params_)\n    \n>           neigh_ind = np.argpartition(dist, n_neighbors - 1, axis=1)\n\nsklearn/neighbors/base.py:362: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nargs = (array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]]), 2.0)\nkwargs = {'axis': 1}\nrelevant_args = (array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]]),)\n\n>   ???\n\n<__array_function__ internals>:6: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\na = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nkth = 2.0, axis = 1, kind = 'introselect', order = None\n\n    @array_function_dispatch(_argpartition_dispatcher)\n    def argpartition(a, kth, axis=-1, kind='introselect', order=None):\n        \"\"\"\n        Perform an indirect partition along the given axis using the\n        algorithm specified by the `kind` keyword. It returns an array of\n        indices of the same shape as `a` that index data along the given\n        axis in partitioned order.\n    \n        .. versionadded:: 1.8.0\n    \n        Parameters\n        ----------\n        a : array_like\n            Array to sort.\n        kth : int or sequence of ints\n            Element index to partition by. The k-th element will be in its\n            final sorted position and all smaller elements will be moved\n            before it and all larger elements behind it. The order all\n            elements in the partitions is undefined. If provided with a\n            sequence of k-th it will partition all of them into their sorted\n            position at once.\n        axis : int or None, optional\n            Axis along which to sort. The default is -1 (the last axis). If\n            None, the flattened array is used.\n        kind : {'introselect'}, optional\n            Selection algorithm. Default is 'introselect'\n        order : str or list of str, optional\n            When `a` is an array with fields defined, this argument\n            specifies which fields to compare first, second, etc. A single\n            field can be specified as a string, and not all fields need be\n            specified, but unspecified fields will still be used, in the\n            order in which they come up in the dtype, to break ties.\n    \n        Returns\n        -------\n        index_array : ndarray, int\n            Array of indices that partition `a` along the specified axis.\n            If `a` is one-dimensional, ``a[index_array]`` yields a partitioned `a`.\n            More generally, ``np.take_along_axis(a, index_array, axis=a)`` always\n            yields the partitioned `a`, irrespective of dimensionality.\n    \n        See Also\n        --------\n        partition : Describes partition algorithms used.\n        ndarray.partition : Inplace partition.\n        argsort : Full indirect sort.\n        take_along_axis : Apply ``index_array`` from argpartition\n                          to an array as if by calling partition.\n    \n        Notes\n        -----\n        See `partition` for notes on the different selection algorithms.\n    \n        Examples\n        --------\n        One dimensional array:\n    \n        >>> x = np.array([3, 4, 2, 1])\n        >>> x[np.argpartition(x, 3)]\n        array([2, 1, 3, 4])\n        >>> x[np.argpartition(x, (1, 3))]\n        array([1, 2, 3, 4])\n    \n        >>> x = [3, 4, 2, 1]\n        >>> np.array(x)[np.argpartition(x, 3)]\n        array([2, 1, 3, 4])\n    \n        Multi-dimensional array:\n    \n        >>> x = np.array([[3, 4, 2], [1, 3, 1]])\n        >>> index_array = np.argpartition(x, kth=1, axis=-1)\n        >>> np.take_along_axis(x, index_array, axis=-1)  # same as np.partition(x, kth=1)\n        array([[2, 3, 4],\n               [1, 1, 3]])\n    \n        \"\"\"\n>       return _wrapfunc(a, 'argpartition', kth, axis=axis, kind=kind, order=order)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:832: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nbound = <built-in method argpartition of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapfunc(obj, method, *args, **kwds):\n        bound = getattr(obj, method, None)\n        if bound is None:\n            return _wrapit(obj, method, *args, **kwds)\n    \n        try:\n            return bound(*args, **kwds)\n        except TypeError:\n            # A TypeError occurs if the object does have such a method in its\n            # class, but its signature is not identical to that of NumPy's. This\n            # situation has occurred in the case of a downstream library like\n            # 'pandas'.\n            #\n            # Call _wrapit from within the except clause to ensure a potential\n            # exception has a traceback chain.\n>           return _wrapit(obj, method, *args, **kwds)\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:67: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nobj = array([[  0.,   8.,  32.,  72., 128.],\n       [  8.,   0.,   8.,  32.,  72.],\n       [ 32.,   8.,   0.,   8.,  32.],\n       [ 72.,  32.,   8.,   0.,   8.],\n       [128.,  72.,  32.,   8.,   0.]])\nmethod = 'argpartition', args = (2.0,)\nkwds = {'axis': 1, 'kind': 'introselect', 'order': None}\nwrap = <built-in method __array_wrap__ of numpy.ndarray object at 0x7fff9b77fc60>\n\n    def _wrapit(obj, method, *args, **kwds):\n        try:\n            wrap = obj.__array_wrap__\n        except AttributeError:\n            wrap = None\n>       result = getattr(asarray(obj), method)(*args, **kwds)\nE       TypeError: Partition index must be integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/fromnumeric.py:44: TypeError\n___________________ test_n_neighbors_float_kneighbors_graph ____________________\n\n    def test_n_neighbors_float_kneighbors_graph():\n        \"\"\"Test that float n_neighbors in kneighbors_graph() raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n    \n        neigh = NearestNeighbors(n_neighbors=3)\n        neigh.fit(X)\n    \n        # This should raise ValueError with a helpful message\n        with pytest.raises(ValueError):\n>           neigh.kneighbors_graph(X, n_neighbors=3.)\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:65: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = NearestNeighbors(algorithm='auto', leaf_size=30, metric='minkowski',\n         metric_params=None, n_jobs=1, n_neighbors=3, p=2, radius=1.0)\nX = array([[ 1,  2],\n       [ 3,  4],\n       [ 5,  6],\n       [ 7,  8],\n       [ 9, 10]])\nn_neighbors = 3.0, mode = 'connectivity'\n\n    def kneighbors_graph(self, X=None, n_neighbors=None,\n                         mode='connectivity'):\n        \"\"\"Computes the (weighted) graph of k-Neighbors for points in X\n    \n        Parameters\n        ----------\n        X : array-like, shape (n_query, n_features), \\\n                or (n_query, n_indexed) if metric == 'precomputed'\n            The query point or points.\n            If not provided, neighbors of each indexed point are returned.\n            In this case, the query point is not considered its own neighbor.\n    \n        n_neighbors : int\n            Number of neighbors for each sample.\n            (default is value passed to the constructor).\n    \n        mode : {'connectivity', 'distance'}, optional\n            Type of returned matrix: 'connectivity' will return the\n            connectivity matrix with ones and zeros, in 'distance' the\n            edges are Euclidean distance between points.\n    \n        Returns\n        -------\n        A : sparse matrix in CSR format, shape = [n_samples, n_samples_fit]\n            n_samples_fit is the number of samples in the fitted data\n            A[i, j] is assigned the weight of edge that connects i to j.\n    \n        Examples\n        --------\n        >>> X = [[0], [3], [1]]\n        >>> from sklearn.neighbors import NearestNeighbors\n        >>> neigh = NearestNeighbors(n_neighbors=2)\n        >>> neigh.fit(X) # doctest: +ELLIPSIS\n        NearestNeighbors(algorithm='auto', leaf_size=30, ...)\n        >>> A = neigh.kneighbors_graph(X)\n        >>> A.toarray()\n        array([[1., 0., 1.],\n               [0., 1., 1.],\n               [1., 0., 1.]])\n    \n        See also\n        --------\n        NearestNeighbors.radius_neighbors_graph\n        \"\"\"\n        if n_neighbors is None:\n            n_neighbors = self.n_neighbors\n    \n        # kneighbors does the None handling.\n        if X is not None:\n            X = check_array(X, accept_sparse='csr')\n            n_samples1 = X.shape[0]\n        else:\n            n_samples1 = self._fit_X.shape[0]\n    \n        n_samples2 = self._fit_X.shape[0]\n        n_nonzero = n_samples1 * n_neighbors\n        A_indptr = np.arange(0, n_nonzero + 1, n_neighbors)\n    \n        # construct CSR matrix representation of the k-NN graph\n        if mode == 'connectivity':\n>           A_data = np.ones(n_samples1 * n_neighbors)\n\nsklearn/neighbors/base.py:483: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nshape = 15.0, dtype = None, order = 'C'\n\n    @set_module('numpy')\n    def ones(shape, dtype=None, order='C'):\n        \"\"\"\n        Return a new array of given shape and type, filled with ones.\n    \n        Parameters\n        ----------\n        shape : int or sequence of ints\n            Shape of the new array, e.g., ``(2, 3)`` or ``2``.\n        dtype : data-type, optional\n            The desired data-type for the array, e.g., `numpy.int8`.  Default is\n            `numpy.float64`.\n        order : {'C', 'F'}, optional, default: C\n            Whether to store multi-dimensional data in row-major\n            (C-style) or column-major (Fortran-style) order in\n            memory.\n    \n        Returns\n        -------\n        out : ndarray\n            Array of ones with the given shape, dtype, and order.\n    \n        See Also\n        --------\n        ones_like : Return an array of ones with shape and type of input.\n        empty : Return a new uninitialized array.\n        zeros : Return a new array setting values to zero.\n        full : Return a new array of given shape filled with value.\n    \n    \n        Examples\n        --------\n        >>> np.ones(5)\n        array([1., 1., 1., 1., 1.])\n    \n        >>> np.ones((5,), dtype=int)\n        array([1, 1, 1, 1, 1])\n    \n        >>> np.ones((2, 1))\n        array([[1.],\n               [1.]])\n    \n        >>> s = (2,2)\n        >>> np.ones(s)\n        array([[1.,  1.],\n               [1.,  1.]])\n    \n        \"\"\"\n>       a = empty(shape, dtype, order)\nE       TypeError: 'float' object cannot be interpreted as an integer\n\n/opt/miniconda3/envs/testbed/lib/python3.6/site-packages/numpy/core/numeric.py:192: TypeError\n_________________ test_n_neighbors_float_kneighbors_classifier _________________\n\n    def test_n_neighbors_float_kneighbors_classifier():\n        \"\"\"Test that float n_neighbors in KNeighborsClassifier raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n        y = np.array([0, 0, 0, 1, 1])\n    \n        # This should raise ValueError with a helpful message at construction time\n        with pytest.raises(ValueError):\n            clf = KNeighborsClassifier(n_neighbors=3.)\n>           clf.fit(X, y)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:76: Failed\n_________________ test_n_neighbors_float_kneighbors_regressor __________________\n\n    def test_n_neighbors_float_kneighbors_regressor():\n        \"\"\"Test that float n_neighbors in KNeighborsRegressor raises ValueError.\"\"\"\n        X = np.array([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]])\n        y = np.array([0, 0, 0, 1, 1])\n    \n        # This should raise ValueError with a helpful message at construction time\n        with pytest.raises(ValueError):\n            reg = KNeighborsRegressor(n_neighbors=3.)\n>           reg.fit(X, y)\nE           Failed: DID NOT RAISE <class 'ValueError'>\n\nsklearn/neighbors/tests/test_n_neighbors_validation.py:87: Failed\n=========================== short test summary info ============================\nFAILED sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_constructor\nFAILED sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors\nFAILED sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_graph\nFAILED sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_classifier\nFAILED sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_regressor\n============================== 5 failed in 0.48s ===============================\nERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/sklearn/neighbors/tests/test_n_neighbors_validation.py` failed. (See above for error)\n\n",
+    "settrace_traces": {
+      "sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_constructor": {
+        "exception_frames": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 19,
+            "func": "test_n_neighbors_float_constructor",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 19,
+            "func": "test_n_neighbors_float_constructor",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/unsupervised.py",
+            "line": 115,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 105,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 120,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 34,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 11,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 142,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 169,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 121,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors": {
+        "exception_frames": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 38,
+            "func": "test_n_neighbors_float_kneighbors",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 38,
+            "func": "test_n_neighbors_float_kneighbors",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/unsupervised.py",
+            "line": 115,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 105,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 120,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 34,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 11,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 142,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 169,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 121,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 273,
+            "func": "kneighbors",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 818,
+            "func": "check_is_fitted",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 865,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 433,
+            "func": "_get_n_jobs",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1147,
+            "func": "pairwise_distances",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1085,
+            "func": "_parallel_pairwise",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 163,
+            "func": "euclidean_distances",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 58,
+            "func": "check_pairwise_arrays",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 34,
+            "func": "_return_float_dtype",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 55,
+            "func": "row_norms",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 115,
+            "func": "safe_sparse_dot",
+            "is_test": false,
+            "call_depth": 5
+          }
+        ]
+      },
+      "sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_graph": {
+        "exception_frames": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 56,
+            "func": "test_n_neighbors_float_kneighbors_graph",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 56,
+            "func": "test_n_neighbors_float_kneighbors_graph",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/unsupervised.py",
+            "line": 115,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 105,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 120,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 800,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 34,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 11,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 142,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 169,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 121,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 423,
+            "func": "kneighbors_graph",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_classifier": {
+        "exception_frames": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 68,
+            "func": "test_n_neighbors_float_kneighbors_classifier",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 757,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 568,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 68,
+            "func": "test_n_neighbors_float_kneighbors_classifier",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/classification.py",
+            "line": 118,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 105,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 120,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 47,
+            "func": "_check_weights",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 757,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 568,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 34,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 11,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 142,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 169,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 121,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 206,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 217,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 158,
+            "func": "check_classification_targets",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 175,
+            "func": "type_of_target",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/multiclass.py",
+            "line": 112,
+            "func": "is_multilabel",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "sklearn/neighbors/tests/test_n_neighbors_validation.py::test_n_neighbors_float_kneighbors_regressor": {
+        "exception_frames": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 79,
+            "func": "test_n_neighbors_float_kneighbors_regressor",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 737,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 568,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/neighbors/tests/test_n_neighbors_validation.py",
+            "line": 79,
+            "func": "test_n_neighbors_float_kneighbors_regressor",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/neighbors/regression.py",
+            "line": 123,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 105,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 120,
+            "func": "_check_algorithm_metric",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 47,
+            "func": "_check_weights",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 737,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 568,
+            "func": "check_X_y",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 345,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 34,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 11,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 142,
+            "func": "_shape_repr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 169,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 121,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 206,
+            "func": "check_consistent_length",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 217,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/neighbors/base.py",
+            "line": 157,
+            "func": "_fit",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-11040",
+  "messages": []
+}

@@ -3,6 +3,7 @@
 """Run mini-SWE-agent on SWE-bench instances in batch mode."""
 # Read this first: https://mini-swe-agent.com/latest/usage/swebench/  (usage docs)
 
+import sys
 import concurrent.futures
 import json
 import random
@@ -146,8 +147,8 @@ def process_instance(
     # avoid inconsistent state if something here fails and there's leftover previous files
     remove_from_preds_file(output_dir / "preds.json", instance_id)
     (instance_dir / f"{instance_id}.traj.json").unlink(missing_ok=True)
-    model = get_model(config=config.get("model", {}))
-    task = instance["problem_statement"]
+    # model = get_model(config=config.get("model", {}))
+    # task = instance["problem_statement"]
 
     progress_manager.on_instance_start(instance_id)
     progress_manager.update_instance_status(instance_id, "Pulling/starting environment")
@@ -157,90 +158,127 @@ def process_instance(
     result = None
     extra_info = {}
 
+    # Load pre-generated patch from preds.json instead of running LLM generation.
+    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
+    if _preds_path.exists():
+        _preds = json.loads(_preds_path.read_text())
+        if instance_id in _preds:
+            result = _preds[instance_id].get("model_patch", "") or ""
+            _preds_model_name = _preds[instance_id].get("model_name_or_path", "pre-generated")
+            exit_status = "Submitted" if result else None
+        else:
+            _preds_model_name = "pre-generated"
+    else:
+        _preds_model_name = "pre-generated"
+
     try:
         env = get_sb_environment(config, instance)
-        agent = ProgressTrackingAgent(
-            model,
-            env,
-            progress_manager=progress_manager,
-            instance_id=instance_id,
-            **config.get("agent", {}),
-        )
+        # agent = ProgressTrackingAgent(
+        #     model,
+        #     env,
+        #     progress_manager=progress_manager,
+        #     instance_id=instance_id,
+        #     **config.get("agent", {}),
+        # )
 
 
         # PART 1: Focal Function Localization
-        prog_files = find_program_files(env)
-        llm_prog_files = None # prompt llm to retrieve relevant files 
+        # prog_files = find_program_files(env)
+        # llm_prog_files = None # prompt llm to retrieve relevant files 
 
-        # validation loop
-        for i in range(5): # 5 iterations, at most 
-            # prompt llm to retrieve relevant file
-            llm_prog_files = agent.run_func_loc1(task, prog_files)
+        # # validation loop
+        # for i in range(5): # 5 iterations, at most 
+        #     # prompt llm to retrieve relevant file
+        #     llm_prog_files = agent.run_func_loc1(task, prog_files)
 
-            # validate the paths
-            llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-            llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
+        #     # validate the paths
+        #     llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+        #     llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
 
-            if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
-                break
+        #     if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
+        #         break
 
-        validated_prog_files = []
-        for file_path in llm_prog_files:
-            val_path = find_closest_paths(file_path, prog_files)
-            if val_path:
-                validated_prog_files.append(val_path)
+        # validated_prog_files = []
+        # for file_path in llm_prog_files:
+        #     val_path = find_closest_paths(file_path, prog_files)
+        #     if val_path:
+        #         validated_prog_files.append(val_path)
 
-        # find all the functions in the selected files
-        prog_functions = find_functions(env, validated_prog_files)
+        # # find all the functions in the selected files
+        # prog_functions = find_functions(env, validated_prog_files)
 
-        # prompt llmn to retrieve relevant functions
-        prog_function_paths = agent.run_func_loc2(task, prog_functions) 
+        # # prompt llmn to retrieve relevant functions
+        # prog_function_paths = agent.run_func_loc2(task, prog_functions) 
         
 
-        # PART 2: Test Function Localization
-        # files with tests in them
-        test_files = find_test_files(env)
-        llm_test_files = None
+        # # PART 2: Test Function Localization
+        # # files with tests in them
+        # test_files = find_test_files(env)
+        # llm_test_files = None
 
-        # validation loop
-        for i in range(5): # 5 iterations, at most 
-            # prompt llm to retrieve relevant file
-            llm_test_files = agent.run_test_func_loc1(task, test_files)
+        # # validation loop
+        # for i in range(5): # 5 iterations, at most 
+        #     # prompt llm to retrieve relevant file
+        #     llm_test_files = agent.run_test_func_loc1(task, test_files)
 
-            # validate the paths
-            llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-            llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
+        #     # validate the paths
+        #     llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+        #     llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
 
-            if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
-                break
+        #     if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
+        #         break
 
-        validated_files = []
-        for file_path in llm_test_files:
-            val_path = find_closest_paths(file_path, test_files)
-            if val_path:
-                validated_files.append(val_path)
+        # validated_files = []
+        # for file_path in llm_test_files:
+        #     val_path = find_closest_paths(file_path, test_files)
+        #     if val_path:
+        #         validated_files.append(val_path)
 
-        # find all the functions in the selected files
-        test_functions = find_test_functions(env, validated_files)
+        # # find all the functions in the selected files
+        # test_functions = find_test_functions(env, validated_files)
 
-        # prompt llmn to retrieve relevant functions
-        test_function_paths = agent.run_test_func_loc2(task, test_functions)
+        # # prompt llmn to retrieve relevant functions
+        # test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
-        # PART 3: Test Generation
-        prog_bodies = get_function_bodies(env, prog_function_paths)
-        test_bodies = get_function_bodies(env, test_function_paths)
+        # # PART 3: Test Generation
+        # prog_bodies = get_function_bodies(env, prog_function_paths)
+        # test_bodies = get_function_bodies(env, test_function_paths)
 
-        info = agent.run(task, prog_bodies + test_bodies)
-        exit_status = info.get("exit_status")
-        result = info.get("submission")
+        # info = agent.run(task, prog_bodies + test_bodies)
+        # exit_status = info.get("exit_status")
+        # result = info.get("submission")
+
+        # PART 4: Generate Stack Traces and Coverage
+        if result: # if there's a patch
+            try:
+                apply_patch_to_env(env, result) # apply the diff
+                test_files = extract_test_files_from_patch(result) # parse the diff to extract the test file paths
+                if test_files:
+                    repo_id = instance.get("repo", "")
+                    version = instance.get("version", "")
+
+                    # run tests normally to capture stack traces
+                    raw_output = run_tests_in_env(env, test_files, repo_id, version)
+                    traces = extract_stack_traces(raw_output)
+                    extra_info["stack_traces"] = traces
+                    extra_info["test_output"] = raw_output
+
+                    # re-run only failing tests under sys.settrace for deep call frames
+                    settrace = run_settrace_on_failing_tests(env, raw_output, repo_id, test_files)
+                    if settrace:
+                        extra_info["settrace_traces"] = settrace
+                        
+            except Exception as trace_err:
+                logger.warning(f"Stack trace generation failed for {instance_id}: {trace_err}")
 
     except Exception as e:
         logger.error(f"Error processing instance {instance_id}: {e}", exc_info=True)
         exit_status, result = type(e).__name__, ""
         extra_info = {"traceback": traceback.format_exc(), "exception_str": str(e)}
     finally:
+        traj_path = instance_dir / f"{instance_id}.traj.json"
+        instance_dir.mkdir(parents=True, exist_ok=True)
         if agent is not None:
-            traj_path = instance_dir / f"{instance_id}.traj.json"
             agent.save(
                 traj_path,
                 {
@@ -252,8 +290,15 @@ def process_instance(
                     "instance_id": instance_id,
                 },
             )
-            logger.info(f"Saved trajectory to '{traj_path}'")
-        update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)
+        else:
+            traj_path.write_text(json.dumps({
+                "info": {"exit_status": exit_status, "submission": result, **extra_info},
+                "instance_id": instance_id,
+                "messages": [],
+            }, indent=2))
+        logger.info(f"Saved trajectory to '{traj_path}'")
+        # update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)  
+        update_preds_file(output_dir / "preds.json", instance_id, _preds_model_name, result)
         progress_manager.on_instance_end(instance_id, exit_status)
 
 
@@ -378,7 +423,10 @@ def find_test_functions(env: Environment, test_files: list[str]) -> list[str]:
                     if "class " in content and not content.strip().startswith("def"):
                         current_class = content.strip().split("class ")[1].split("(")[0].strip()
                     elif "def test_" in content:
-                        func_name = content.strip()[4:content.strip().index("(")].strip()
+                        stripped = content.strip()
+                        if not stripped.startswith("def test_") or "(" not in stripped:
+                            continue
+                        func_name = stripped[4:stripped.index("(")].strip()
                         if current_class:
                             test_functions.append(f"{file_path}::{current_class}::{func_name}")
                         else:
@@ -494,7 +542,7 @@ EOF"""
 
 
 def get_function_bodies(env, signatures_raw: str) -> str:
-    normalized = signatures_raw.replace('\\n', '\n').replace('\\\\n', '\n') # stupid LLM hallucinates backslashes for newline characters
+    normalized = signatures_raw.replace('\\n', '\n').replace('\\\\n', '\n') # LLM hallucinates backslashes for newline characters
     signatures = [s.strip() for s in normalized.split("\n") if "::" in s]
     if not signatures:
         return ""
@@ -506,6 +554,597 @@ def get_function_bodies(env, signatures_raw: str) -> str:
             results.append(f"--- {sig} ---\n{body}")
 
     return "\n\n".join(results)
+
+def apply_patch_to_env(env: Environment, patch_str: str) -> None:
+    """Write patch to container and apply it with git apply."""
+    env.execute({"command": "cat > /tmp/model.patch << 'PATCHEOF'\n" + patch_str + "\nPATCHEOF"})
+    out = env.execute({"command": "cd /testbed && git apply /tmp/model.patch 2>&1"})
+    logger.debug(f"git apply output: {out.get('output', '')}")
+    if out.get("returncode", 0) != 0:
+        # git apply refuses to create files that already exist; fall back to patch which overwrites
+        logger.debug("git apply failed, retrying with patch -p1 --force")
+        out = env.execute({"command": "cd /testbed && patch -p1 --force < /tmp/model.patch 2>&1 || true"})
+        logger.debug(f"patch output: {out.get('output', '')}")
+
+
+def extract_test_files_from_patch(patch_str: str) -> list[str]:
+    """Parse unified diff to find test files added or modified."""
+    test_files = []
+    for match in re.finditer(r"^\+\+\+ b/(.+)$", patch_str, re.MULTILINE):
+        path = match.group(1)
+        if re.search(r"(test|tests)[^/]*\.py$|/(test|tests)/", path) or re.search(r"def test_", patch_str):
+            if path not in test_files:
+                test_files.append(path)
+    return test_files
+
+
+_DJANGO_REPOS = {"django/django"}
+_SYMPY_REPOS = {"sympy/sympy"}
+_SPHINX_REPOS = {"sphinx-doc/sphinx"}
+_PYTHON_REPOS = {"swe-bench/humaneval", "nielstron/humaneval_fix"}
+
+_NON_PYTEST_REPOS = _DJANGO_REPOS | _SYMPY_REPOS | _SPHINX_REPOS | _PYTHON_REPOS
+
+# Script written into the container to re-run failing tests under sys.settrace.
+# Reads test node IDs from /tmp/settrace_ids.json, captures the 10 innermost
+# /testbed/ source frames (non-test, non-third-party) at the first exception
+# event per test, writes results to /tmp/settrace_results.json.
+_SETTRACE_RUNNER = """\
+import sys, json
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                info = {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            # Prefer exceptions that originate in test/user code over internal
+            # framework exceptions (e.g. pytest marker evaluation fires first).
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+class TracerPlugin:
+    def __init__(self):
+        self._tracer = _Tracer()
+        self.results = {}
+
+    def pytest_runtest_call(self, item):
+        self._tracer.reset()
+        sys.settrace(self._tracer)
+
+    def pytest_runtest_logreport(self, report):
+        sys.settrace(None)
+        if report.when == "call" and report.failed:
+            self.results[report.nodeid] = {
+                "exception_frames": self._tracer.frames or [],
+                "all_calls": self._tracer.all_calls,
+            }
+
+
+import pytest
+
+plugin = TracerPlugin()
+try:
+    pytest.main(["-q", "--tb=no", "--noconftest", "--override-ini=addopts="] + TEST_IDS, plugins=[plugin])
+except Exception as e:
+    sys.stderr.write(f"settrace pytest.main raised: {e}\\n")
+finally:
+    Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
+"""
+
+# Django variant: patches unittest.TestCase.run so the tracer works with Django's
+# own test runner (runtests.py). Reads dotted test IDs from /tmp/settrace_ids.json,
+# derives the module names to pass to runtests.py, and records frames for each
+# failing test via an atexit handler.
+_DJANGO_SETTRACE_RUNNER = """\
+import sys, json, unittest, atexit, runpy
+from pathlib import Path
+
+failing_ids = json.loads(Path("/tmp/settrace_ids.json").read_text())
+# Each ID is "module.Class.method"; the Django module is everything except the last two parts.
+modules = list({".".join(tid.split(".")[:-2]) for tid in failing_ids if tid.count(".") >= 2})
+
+sys.path.insert(0, "/testbed/tests")
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                info = {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+_tracer = _Tracer()
+_results = {}
+_orig_run = unittest.TestCase.run
+
+
+def _patched_run(self, result=None):
+    _tracer.reset()
+    sys.settrace(_tracer)
+    n_before = (len(result.failures) + len(result.errors)) if result else 0
+    try:
+        _orig_run(self, result)
+    finally:
+        sys.settrace(None)
+        if result is not None and len(result.failures) + len(result.errors) > n_before:
+            key = f"{self.__class__.__module__}.{self.__class__.__name__}.{self._testMethodName}"
+            _results[key] = {
+                "exception_frames": _tracer.frames or [],
+                "all_calls": _tracer.all_calls,
+            }
+
+
+unittest.TestCase.run = _patched_run
+atexit.register(lambda: Path("/tmp/settrace_results.json").write_text(json.dumps(_results, indent=2)))
+
+sys.argv = ["runtests.py", "--verbosity", "0", "--settings=test_sqlite", "--parallel", "1"] + modules
+runpy.run_path("/testbed/tests/runtests.py", run_name="__main__")
+"""
+
+
+# Sphinx variant: identical to _SETTRACE_RUNNER but without --noconftest, because
+# sphinx tests rely on fixtures defined in conftest.py (e.g. the `app` fixture via
+# @pytest.mark.sphinx). Without conftest those fixtures are missing and tests fail
+# during setup rather than call, so the tracer never fires.
+_SPHINX_SETTRACE_RUNNER = """\
+import sys, json
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                info = {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+class TracerPlugin:
+    def __init__(self):
+        self._tracer = _Tracer()
+        self.results = {}
+
+    def pytest_runtest_call(self, item):
+        self._tracer.reset()
+        sys.settrace(self._tracer)
+
+    def pytest_runtest_logreport(self, report):
+        sys.settrace(None)
+        if report.when == "call" and report.failed:
+            self.results[report.nodeid] = {
+                "exception_frames": self._tracer.frames or [],
+                "all_calls": self._tracer.all_calls,
+            }
+
+
+import pytest
+
+plugin = TracerPlugin()
+try:
+    pytest.main(["-q", "--tb=no", "--override-ini=addopts="] + TEST_IDS, plugins=[plugin])
+except Exception as e:
+    sys.stderr.write(f"settrace pytest.main raised: {e}\\n")
+finally:
+    Path("/tmp/settrace_results.json").write_text(json.dumps(plugin.results, indent=2))
+"""
+
+# Sympy variant: imports each failing test function directly from its module and
+# runs it under sys.settrace. Sympy uses its own bin/test runner (no pytest),
+# so we cannot use pytest.main here. Instead we parse the failing test IDs from
+# the bin/test output, import the module, and call the function directly.
+_SYMPY_SETTRACE_RUNNER = """\
+import sys, json, importlib
+from pathlib import Path
+
+TEST_IDS = json.loads(Path("/tmp/settrace_ids.json").read_text())
+
+_TESTBED = "/testbed/"
+_SKIP = ("site-packages",)
+_TEST_PATTERNS = ("test_", "/tests/", "_test.py", "/test/")
+
+sys.path.insert(0, "/testbed")
+
+
+def _is_source(fn):
+    if not fn or not fn.startswith(_TESTBED):
+        return False
+    rel = fn[len(_TESTBED):]
+    return not any(p in rel for p in _SKIP)
+
+
+class _Tracer:
+    def __init__(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def reset(self):
+        self._stack = []
+        self._seen_calls = set()
+        self.all_calls = []
+        self.frames = None
+
+    def __call__(self, frame, event, arg):
+        fn = frame.f_code.co_filename
+        if event == "call":
+            if _is_source(fn):
+                rel = fn[len(_TESTBED):]
+                info = {
+                    "file": rel,
+                    "line": frame.f_lineno,
+                    "func": frame.f_code.co_name,
+                    "is_test": any(p in rel for p in _TEST_PATTERNS),
+                    "call_depth": len(self._stack),
+                }
+                self._stack.append((id(frame), info))
+                key = (rel, frame.f_code.co_name)
+                if key not in self._seen_calls:
+                    self._seen_calls.add(key)
+                    self.all_calls.append(info)
+        elif event == "return":
+            if _is_source(fn) and self._stack and self._stack[-1][0] == id(frame):
+                self._stack.pop()
+        elif event == "exception" and self._stack:
+            frames = [info for _, info in self._stack]
+            has_test = any(info["is_test"] for info in frames)
+            prev_has_test = self.frames is not None and any(info["is_test"] for info in self.frames)
+            if self.frames is None or (has_test and not prev_has_test):
+                self.frames = frames
+        return self
+
+
+results = {}
+tracer = _Tracer()
+
+for test_id in TEST_IDS:
+    # test_id format: "sympy/printing/tests/test_ccode.py::test_ccode_sinc"
+    try:
+        file_part, func_name = test_id.rsplit("::", 1)
+        module_name = file_part[:-3].replace("/", ".")  # strip .py, convert path to dotted module
+        module = importlib.import_module(module_name)
+        test_func = getattr(module, func_name, None)
+        if not callable(test_func):
+            results[test_id] = {"exception_frames": [], "all_calls": []}
+            continue
+
+        tracer.reset()
+        sys.settrace(tracer)
+        try:
+            test_func()
+        except Exception:
+            pass
+        finally:
+            sys.settrace(None)
+
+        results[test_id] = {
+            "exception_frames": tracer.frames or [],
+            "all_calls": tracer.all_calls,
+        }
+    except Exception as e:
+        sys.stderr.write(f"Error running {test_id}: {e}\\n")
+        results[test_id] = {"exception_frames": [], "all_calls": []}
+
+Path("/tmp/settrace_results.json").write_text(json.dumps(results, indent=2))
+"""
+
+
+def _extract_failing_test_ids_pytest(raw_output: str) -> list[str]:
+    """Parse pytest FAILED lines into node IDs (requires '::' separator)."""
+    ids = []
+    for match in re.finditer(r"^FAILED (.+?)(?:\s+-\s+.*)?$", raw_output, re.MULTILINE):
+        node_id = match.group(1).strip()
+        if "::" in node_id:
+            ids.append(node_id)
+    return ids
+
+
+def _extract_failing_test_ids_sympy(raw_output: str) -> list[str]:
+    """Parse sympy bin/test failure headers into file::func IDs.
+
+    The actual format is a line of underscores followed by the test path on the next line:
+        ________________________________________________________________________________
+         sympy/path/to/test.py:func_name
+    """
+    ids = []
+    for match in re.finditer(r"_{5,}\n\s+(\S+\.py):(\w+)\s*\n", raw_output):
+        ids.append(f"{match.group(1)}::{match.group(2)}")
+    return ids
+
+
+def _extract_failing_test_ids_django(raw_output: str) -> list[str]:
+    """Parse Django/unittest FAIL:/ERROR: lines into dotted IDs (module.Class.method)."""
+    ids = []
+    for match in re.finditer(r"^(?:FAIL|ERROR): (\w+) \(([^)]+)\)", raw_output, re.MULTILINE):
+        method, class_path = match.group(1), match.group(2)
+        ids.append(f"{class_path}.{method}")
+    return ids
+
+
+_CONDA_PYTHON = "conda run -n testbed python"
+
+
+def _run_settrace_pytest(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_settrace_django(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _DJANGO_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/dev/null || true"})
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_settrace_sphinx(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SPHINX_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def _run_settrace_sympy(env: Environment, failing_ids: list[str]) -> dict:
+    ids_json = json.dumps(failing_ids)
+    env.execute({"command": "cat > /tmp/settrace_ids.json << 'SETTRACE_IDS_EOF'\n" + ids_json + "\nSETTRACE_IDS_EOF"})
+    env.execute({"command": "cat > /tmp/settrace_runner.py << 'SETTRACE_RUNNER_EOF'\n" + _SYMPY_SETTRACE_RUNNER + "\nSETTRACE_RUNNER_EOF"})
+    env.execute({"command": f"cd /testbed && {_CONDA_PYTHON} /tmp/settrace_runner.py 2>/tmp/settrace_errors.log || true"})
+    err = env.execute({"command": "cat /tmp/settrace_errors.log 2>/dev/null || true"})
+    if err_text := err.get("output", "").strip():
+        logger.warning(f"settrace runner stderr: {err_text[:1000]}")
+    out = env.execute({"command": "cat /tmp/settrace_results.json 2>/dev/null || echo '{}'"})
+    try:
+        return json.loads(out.get("output", "{}"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def run_settrace_on_failing_tests(
+    env: Environment, raw_output: str, repo_id: str, test_files: list[str] | None = None
+) -> dict:
+    """Dispatch settrace to the right runner and return per-test innermost source frames."""
+    if repo_id in _DJANGO_REPOS:
+        failing_ids = _extract_failing_test_ids_django(raw_output)
+        return _run_settrace_django(env, failing_ids) if failing_ids else {}
+    if repo_id in _SYMPY_REPOS:
+        failing_ids = _extract_failing_test_ids_sympy(raw_output)
+        return _run_settrace_sympy(env, failing_ids) if failing_ids else {}
+    if repo_id in _PYTHON_REPOS:
+        return {}  # custom runners not supported
+    if repo_id in _SPHINX_REPOS:
+        # Sphinx tests need conftest.py for the `app` fixture, so use the sphinx-specific
+        # runner that omits --noconftest (unlike the default pytest runner).
+        failing_ids = _extract_failing_test_ids_pytest(raw_output)
+        return _run_settrace_sphinx(env, failing_ids) if failing_ids else {}
+    failing_ids = _extract_failing_test_ids_pytest(raw_output)
+    return _run_settrace_pytest(env, failing_ids) if failing_ids else {}
+
+
+def _django_paths_to_modules(test_files: list[str]) -> list[str]:
+    """Convert file paths like tests/auth/test_basic.py to Django module notation auth.test_basic."""
+    modules = []
+    for f in test_files:
+        # Strip leading tests/ prefix if present
+        mod = re.sub(r"^tests/", "", f)
+        mod = mod.removesuffix(".py").replace("/", ".")
+        modules.append(mod)
+    return modules
+
+
+def get_test_command(repo: str, version: str, test_files: list[str]) -> str | None:
+    """Return the shell command to run the given test files for the repo, or None if unknown."""
+    _pytest = f"{_CONDA_PYTHON} -m pytest"
+
+    if repo in _DJANGO_REPOS:
+        modules = _django_paths_to_modules(test_files)
+        if not modules:
+            return None
+        modules_arg = " ".join(modules)
+        return f"cd /testbed && {_CONDA_PYTHON} ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 {modules_arg} 2>&1 || true"
+
+    if repo in _SYMPY_REPOS:
+        files_arg = " ".join(test_files)
+        return f"cd /testbed && PYTHONWARNINGS='ignore::UserWarning,ignore::SyntaxWarning' {_CONDA_PYTHON} bin/test -C --verbose {files_arg} 2>&1 || true"
+
+    if repo in _SPHINX_REPOS:
+        files_arg = " ".join(f"/testbed/{f}" for f in test_files)
+        return f"cd /testbed && {_pytest} --tb=long -r f --color=no {files_arg} 2>&1 || true"
+
+    if repo in _PYTHON_REPOS:
+        cmds = " && ".join(f"{_CONDA_PYTHON} /testbed/{f}" for f in test_files)
+        return f"{cmds} 2>&1 || true"
+
+    # Default: pytest (covers astropy, matplotlib, scikit-learn, requests, xarray, etc.)
+    # --tb=long: full tracebacks; -r f: force FAILED summary lines even if setup.cfg uses -q;
+    # --color=no: prevent ANSI escape codes from breaking the FAILED-line regex;
+    # no -x so all failures are collected for settrace extraction.
+    files_arg = " ".join(f"/testbed/{f}" for f in test_files)
+    return f"cd /testbed && {_pytest} --tb=long -r f --color=no {files_arg} 2>&1 || true"
+
+
+def run_tests_in_env(env: Environment, test_files: list[str], repo: str = "", version: str = "") -> str:
+    """Run tests with verbose tracebacks on the given test files, return raw output."""
+    cmd = get_test_command(repo, version, test_files)
+    if cmd is None:
+        logger.warning(f"No test command available for repo='{repo}' version='{version}'")
+        return ""
+    out = env.execute({"command": cmd})
+    return out.get("output", "")
+
+
+def extract_stack_traces(raw_output: str) -> list[str]:
+    """Extract pytest failure blocks from raw pytest output.
+
+    Matches sections delimited by '_____ test_name _____' headers. Each block
+    already contains the full traceback, so a separate traceback pass is not needed
+    (and a naive Traceback regex without a correct lookahead produces one giant match).
+    """
+    return re.findall(r"(_{5,} [^\n]+ _{5,}.*?)(?=\n={3,}|\Z)", raw_output, re.DOTALL)
+
 
 # fmt: off
 @app.command(help=_HELP_TEXT)
@@ -557,6 +1196,16 @@ def main(
 
     if instance_ids:
         instances = select_instances(instances, instance_ids=instance_ids)
+
+    # Temporarily: sample 10 random instances from those covered by preds.json.
+    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
+    if _preds_path.exists():
+        _preds_ids = set(json.loads(_preds_path.read_text()).keys())
+        instances = [i for i in instances if i["instance_id"] in _preds_ids]
+        if len(instances) > 150:
+            random.seed(42)
+            instances = random.sample(instances, 150)
+        logger.info(f"Sampled {len(instances)} instances from preds.json")
 
     logger.info(f"Running on {len(instances)} instances...")
 

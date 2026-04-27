@@ -1,0 +1,191 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/admin_views/test_serialize_result.py b/tests/admin_views/test_serialize_result.py\nnew file mode 100644\nindex 0000000000..89029eb6de\n--- /dev/null\n+++ b/tests/admin_views/test_serialize_result.py\n@@ -0,0 +1,81 @@\n+\"\"\"\n+Tests for the AutocompleteJsonView.serialize_result() method.\n+\n+These tests verify that the serialize_result() method can be overridden\n+to add extra fields to the autocomplete response without having to\n+fully override the get() method.\n+\"\"\"\n+from django.contrib.admin.views.autocomplete import AutocompleteJsonView\n+from django.contrib.auth.models import User\n+from django.test import TestCase\n+\n+from .models import Employee\n+\n+\n+class CustomAutocompleteJsonView(AutocompleteJsonView):\n+    \"\"\"\n+    A custom autocomplete view that adds extra fields to the response\n+    by overriding serialize_result().\n+    \"\"\"\n+    def serialize_result(self, obj, to_field_name):\n+        \"\"\"\n+        Serialize the result to a dictionary with extra fields.\n+        \"\"\"\n+        # Call the parent method to get the standard fields\n+        result = super().serialize_result(obj, to_field_name)\n+        # Add extra field - this should work after the fix is applied\n+        result['extra'] = obj.code if hasattr(obj, 'code') else 'no_code'\n+        return result\n+\n+\n+class SerializeResultTestCase(TestCase):\n+    \"\"\"\n+    Test cases for the serialize_result() method in AutocompleteJsonView.\n+    \"\"\"\n+    \n+    @classmethod\n+    def setUpTestData(cls):\n+        cls.superuser = User.objects.create_superuser(\n+            username='super', password='secret', email='super@example.com'\n+        )\n+        # Create some employees for testing (gender is required by Person)\n+        cls.emp1 = Employee.objects.create(\n+            name='Alice', code='EMP001', gender=1\n+        )\n+        cls.emp2 = Employee.objects.create(\n+            name='Bob', code='EMP002', gender=2\n+        )\n+        \n+    def test_serialize_result_method_exists(self):\n+        \"\"\"\n+        Test that the serialize_result() method exists on AutocompleteJsonView.\n+        \"\"\"\n+        view = AutocompleteJsonView()\n+        self.assertTrue(\n+            hasattr(view, 'serialize_result'),\n+            \"AutocompleteJsonView should have a serialize_result() method\"\n+        )\n+        \n+    def test_serialize_result_returns_expected_fields(self):\n+        \"\"\"\n+        Test that serialize_result() returns the expected 'id' and 'text' fields.\n+        \"\"\"\n+        view = AutocompleteJsonView()\n+        result = view.serialize_result(self.emp1, 'pk')\n+        self.assertIn('id', result)\n+        self.assertIn('text', result)\n+        self.assertEqual(result['id'], str(self.emp1.pk))\n+        self.assertEqual(result['text'], str(self.emp1))\n+        \n+    def test_serialize_result_can_be_overridden(self):\n+        \"\"\"\n+        Test that serialize_result() can be overridden to add extra fields.\n+        \"\"\"\n+        view = CustomAutocompleteJsonView()\n+        result = view.serialize_result(self.emp1, 'pk')\n+        # Check that the standard fields are present\n+        self.assertIn('id', result)\n+        self.assertIn('text', result)\n+        # Check that the extra field is present\n+        self.assertIn('extra', result)\n+        self.assertEqual(result['extra'], 'EMP001')\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_serialize_result_can_be_overridden (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that serialize_result() can be overridden to add extra fields. ... ERROR\ntest_serialize_result_method_exists (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that the serialize_result() method exists on AutocompleteJsonView. ... FAIL\ntest_serialize_result_returns_expected_fields (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that serialize_result() returns the expected 'id' and 'text' fields. ... ERROR\n\n======================================================================\nERROR: test_serialize_result_can_be_overridden (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that serialize_result() can be overridden to add extra fields.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/admin_views/test_serialize_result.py\", line 75, in test_serialize_result_can_be_overridden\n    result = view.serialize_result(self.emp1, 'pk')\n  File \"/testbed/tests/admin_views/test_serialize_result.py\", line 25, in serialize_result\n    result = super().serialize_result(obj, to_field_name)\nAttributeError: 'super' object has no attribute 'serialize_result'\n\n======================================================================\nERROR: test_serialize_result_returns_expected_fields (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that serialize_result() returns the expected 'id' and 'text' fields.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/admin_views/test_serialize_result.py\", line 64, in test_serialize_result_returns_expected_fields\n    result = view.serialize_result(self.emp1, 'pk')\nAttributeError: 'AutocompleteJsonView' object has no attribute 'serialize_result'\n\n======================================================================\nFAIL: test_serialize_result_method_exists (admin_views.test_serialize_result.SerializeResultTestCase)\nTest that the serialize_result() method exists on AutocompleteJsonView.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/admin_views/test_serialize_result.py\", line 54, in test_serialize_result_method_exists\n    self.assertTrue(\nAssertionError: False is not true : AutocompleteJsonView should have a serialize_result() method\n\n----------------------------------------------------------------------\nRan 3 tests in 0.004s\n\nFAILED (failures=1, errors=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 admin_views.test_serialize_result` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application admin_views\nFound 3 test(s).\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: admin_views, auth, contenttypes, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table admin_views_section\n    Creating table admin_views_article\n    Creating table admin_views_book\n    Creating table admin_views_promo\n    Creating table admin_views_chapter\n    Creating table admin_views_chapterxtra1\n    Creating table admin_views_chapterxtra2\n    Creating table admin_views_rowlevelchangepermissionmodel\n    Creating table admin_views_customarticle\n    Creating table admin_views_modelwithstringprimarykey\n    Creating table admin_views_color\n    Creating table admin_views_thing\n    Creating table admin_views_actor\n    Creating table admin_views_inquisition\n    Creating table admin_views_sketch\n    Creating table admin_views_character\n    Creating table admin_views_stumpjoke\n    Creating table admin_views_fabric\n    Creating table admin_views_person\n    Creating table admin_views_persona\n    Creating table admin_views_account\n    Creating table admin_views_fooaccount\n    Creating table admin_views_baraccount\n    Creating table admin_views_subscriber\n    Creating table admin_views_externalsubscriber\n    Creating table admin_views_oldsubscriber\n    Creating table admin_views_media\n    Creating table admin_views_podcast\n    Creating table admin_views_vodcast\n    Creating table admin_views_parent\n    Creating table admin_views_child\n    Creating table admin_views_pkchild\n    Creating table admin_views_toy\n    Creating table admin_views_emptymodel\n    Creating table admin_views_gallery\n    Creating table admin_views_picture\n    Creating table admin_views_language\n    Creating table admin_views_title\n    Creating table admin_views_titletranslation\n    Creating table admin_views_recommender\n    Creating table admin_views_recommendation\n    Creating table admin_views_collector\n    Creating table admin_views_widget\n    Creating table admin_views_doohickey\n    Creating table admin_views_grommet\n    Creating table admin_views_whatsit\n    Creating table admin_views_doodad\n    Creating table admin_views_fancydoodad\n    Creating table admin_views_category\n    Creating table admin_views_link\n    Creating table admin_views_prepopulatedpost\n    Creating table admin_views_prepopulatedsubpost\n    Creating table admin_views_post\n    Creating table admin_views_gadget\n    Creating table admin_views_villain\n    Creating table admin_views_supervillain\n    Creating table admin_views_funkytag\n    Creating table admin_views_plot\n    Creating table admin_views_plotdetails\n    Creating table admin_views_secrethideout\n    Creating table admin_views_supersecrethideout\n    Creating table admin_views_bookmark\n    Creating table admin_views_cyclicone\n    Creating table admin_views_cyclictwo\n    Creating table admin_views_topping\n    Creating table admin_views_pizza\n    Creating table admin_views_album\n    Creating table admin_views_song\n    Creating table admin_views_employee\n    Creating table admin_views_workhour\n    Creating table admin_views_manager\n    Creating table admin_views_bonus\n    Creating table admin_views_question\n    Creating table admin_views_answer\n    Creating table admin_views_reservation\n    Creating table admin_views_fooddelivery\n    Creating table admin_views_coverletter\n    Creating table admin_views_paper\n    Creating table admin_views_shortmessage\n    Creating table admin_views_telegram\n    Creating table admin_views_story\n    Creating table admin_views_otherstory\n    Creating table admin_views_complexsortedperson\n    Creating table admin_views_pluggablesearchperson\n    Creating table admin_views_prepopulatedpostlargeslug\n    Creating table admin_views_adminorderedfield\n    Creating table admin_views_adminorderedmodelmethod\n    Creating table admin_views_adminorderedadminmethod\n    Creating table admin_views_adminorderedcallable\n    Creating table admin_views_report\n    Creating table admin_views_mainprepopulated\n    Creating table admin_views_relatedprepopulated\n    Creating table admin_views_unorderedobject\n    Creating table admin_views_undeletableobject\n    Creating table admin_views_unchangeableobject\n    Creating table admin_views_usermessenger\n    Creating table admin_views_simple\n    Creating table admin_views_choice\n    Creating table admin_views_parentwithdependentchildren\n    Creating table admin_views_dependentchild\n    Creating table admin_views_filteredmanager\n    Creating table admin_views_emptymodelvisible\n    Creating table admin_views_emptymodelhidden\n    Creating table admin_views_emptymodelmixin\n    Creating table admin_views_state\n    Creating table admin_views_city\n    Creating table admin_views_restaurant\n    Creating table admin_views_worker\n    Creating table admin_views_referencedbyparent\n    Creating table admin_views_parentwithfk\n    Creating table admin_views_childofreferer\n    Creating table admin_views_inlinereferer\n    Creating table admin_views_referencedbyinline\n    Creating table admin_views_inlinereference\n    Creating table admin_views_recipe\n    Creating table admin_views_ingredient\n    Creating table admin_views_recipeingredient\n    Creating table admin_views_notreferenced\n    Creating table admin_views_explicitlyprovidedpk\n    Creating table admin_views_implicitlygeneratedpk\n    Creating table admin_views_referencedbygenrel\n    Creating table admin_views_genrelreference\n    Creating table admin_views_parentwithuuidpk\n    Creating table admin_views_relatedwithuuidpkmodel\n    Creating table admin_views_author\n    Creating table admin_views_authorship\n    Creating table admin_views_readonlyrelatedfield\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (1 silenced).\n\n",
+    "settrace_traces": {
+      "admin_views.test_serialize_result.SerializeResultTestCase.test_serialize_result_can_be_overridden": {
+        "exception_frames": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 70,
+            "func": "test_serialize_result_can_be_overridden",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1138,
+            "func": "__get__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1130,
+            "func": "get_memo",
+            "is_test": true,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 70,
+            "func": "test_serialize_result_can_be_overridden",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/views/generic/base.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1138,
+            "func": "__get__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/testcases.py",
+            "line": 1130,
+            "func": "get_memo",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 545,
+            "func": "__reduce__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 551,
+            "func": "__getstate__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 2167,
+            "func": "model_unpickle",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 186,
+            "func": "get_model",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 138,
+            "func": "check_models_ready",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 148,
+            "func": "get_app_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 256,
+            "func": "get_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 558,
+            "func": "__setstate__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 20,
+            "func": "serialize_result",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ]
+      },
+      "admin_views.test_serialize_result.SerializeResultTestCase.test_serialize_result_method_exists": {
+        "exception_frames": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 49,
+            "func": "test_serialize_result_method_exists",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 49,
+            "func": "test_serialize_result_method_exists",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/views/generic/base.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "admin_views.test_serialize_result.SerializeResultTestCase.test_serialize_result_returns_expected_fields": {
+        "exception_frames": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 59,
+            "func": "test_serialize_result_returns_expected_fields",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/admin_views/test_serialize_result.py",
+            "line": 59,
+            "func": "test_serialize_result_returns_expected_fields",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/views/generic/base.py",
+            "line": 37,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-14752",
+  "messages": []
+}

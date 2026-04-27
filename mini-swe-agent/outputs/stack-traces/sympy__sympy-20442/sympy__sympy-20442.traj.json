@@ -1,0 +1,4573 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/physics/units/tests/test_orthogonal_units_bug.py b/sympy/physics/units/tests/test_orthogonal_units_bug.py\nnew file mode 100644\nindex 0000000000..b6b398df98\n--- /dev/null\n+++ b/sympy/physics/units/tests/test_orthogonal_units_bug.py\n@@ -0,0 +1,92 @@\n+\"\"\"\n+Test for the bug where convert_to combines orthogonal units incorrectly.\n+\n+See: https://github.com/sympy/sympy/issues/...\n+\n+The issue is that `convert_to(joule*second, joule)` returns a wrong result\n+instead of either:\n+1. Returning the original expression unchanged\n+2. Raising an error\n+\n+joule*second has dimensions of energy*time (action/angular momentum)\n+joule has dimensions of energy\n+\n+These are incompatible dimensions, so conversion should not be allowed.\n+\n+The bug: convert_to allows conversion when target dimensions are a subset\n+of source dimensions, which leads to incorrect fractional exponents.\n+\"\"\"\n+\n+from sympy.physics.units import (\n+    convert_to, hour, joule, kilogram, meter, minute, second\n+)\n+\n+\n+def test_convert_to_incompatible_dimensions_returns_unchanged():\n+    \"\"\"\n+    Test that convert_to returns the original expression when trying to\n+    convert between incompatible dimensions.\n+\n+    joule*second has dimensions of energy*time (action/angular momentum)\n+    joule has dimensions of energy\n+\n+    These are incompatible, so the original expression should be returned.\n+    \"\"\"\n+    # This is the main bug described in the PR\n+    expr = joule * second\n+    result = convert_to(expr, joule)\n+\n+    # The result should be the original expression unchanged,\n+    # NOT some incorrect power of joule\n+    assert result == expr, f\"Expected {expr}, got {result}\"\n+\n+\n+def test_convert_to_joule_second_to_joule_specific_values():\n+    \"\"\"\n+    Specific test case from the PR: joule*second to joule.\n+    The bug was that this returned joule**(7/9) or similar.\n+    \"\"\"\n+    result = convert_to(joule*second, joule)\n+    # It should be the original expression\n+    assert result == joule*second, f\"Expected joule*second, got {result}\"\n+\n+\n+def test_convert_to_same_dimension_still_works():\n+    \"\"\"\n+    Verify that valid conversions still work correctly.\n+    \"\"\"\n+    # Same dimension conversion - should work\n+    result = convert_to(joule*second, joule*second)\n+    assert result == joule*second\n+\n+    # Convert to base units - this is valid (energy*time = kg*m^2/s)\n+    result = convert_to(joule*second, kilogram*meter**2/second)\n+    assert result == kilogram*meter**2/second\n+\n+\n+def test_convert_to_joule_to_joule_works():\n+    \"\"\"\n+    Simple conversion of joule to base units - should work.\n+    \"\"\"\n+    result = convert_to(joule, kilogram*meter**2/second**2)\n+    assert result == kilogram*meter**2/second**2\n+\n+\n+def test_convert_to_second_to_minute_works():\n+    \"\"\"\n+    Simple time conversion - should work.\n+    \"\"\"\n+    result = convert_to(second, minute)\n+    assert result == minute/60\n+\n+\n+def test_convert_to_hour_to_joule_incompatible():\n+    \"\"\"\n+    Converting hour (time) to joule (energy) should not work.\n+\n+    time cannot be converted to energy - dimensions don't match.\n+    \"\"\"\n+    expr = hour\n+    result = convert_to(hour, joule)\n+    # Should return unchanged since dimensions are incompatible\n+    assert result == hour, f\"Expected {hour}, got {result}\"\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/physics/units/tests/test_orthogonal_units_bug.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        62500600\nhash randomization: on (PYTHONHASHSEED=1098886271)\n\nsympy/physics/units/tests/test_orthogonal_units_bug.py[6] \ntest_convert_to_incompatible_dimensions_returns_unchanged F\ntest_convert_to_joule_second_to_joule_specific_values F\ntest_convert_to_same_dimension_still_works ok\ntest_convert_to_joule_to_joule_works ok\ntest_convert_to_second_to_minute_works ok\ntest_convert_to_hour_to_joule_incompatible F                              [FAIL]\n\n\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_incompatible_dimensions_returns_unchanged \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 41, in test_convert_to_incompatible_dimensions_returns_unchanged\n    assert result == expr, f\"Expected {expr}, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_joule_second_to_joule_specific_values \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 51, in test_convert_to_joule_second_to_joule_specific_values\n    assert result == joule*second, f\"Expected joule*second, got {result}\"\nAssertionError: Expected joule*second, got 10**(2/3)*joule**(7/9)\n________________________________________________________________________________\n sympy/physics/units/tests/test_orthogonal_units_bug.py:test_convert_to_hour_to_joule_incompatible \nTraceback (most recent call last):\n  File \"/testbed/sympy/physics/units/tests/test_orthogonal_units_bug.py\", line 92, in test_convert_to_hour_to_joule_incompatible\n    assert result == hour, f\"Expected {hour}, got {result}\"\nAssertionError: Expected hour, got 3600*10**(2/3)/joule**(2/9)\n\n============= tests finished: 3 passed, 3 failed, in 0.24 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_incompatible_dimensions_returns_unchanged": {
+        "exception_frames": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 25,
+            "func": "test_convert_to_incompatible_dimensions_returns_unchanged",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 69,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1163,
+            "func": "has",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1210,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1212,
+            "func": "_has",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1221,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 25,
+            "func": "test_convert_to_incompatible_dimensions_returns_unchanged",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 255,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 130,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 214,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 69,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 117,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 46,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 487,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 92,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 59,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 78,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 111,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1974,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 388,
+            "func": "_gather",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2041,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 399,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2209,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2645,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 30,
+            "func": "_mulsort",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 185,
+            "func": "compare",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 101,
+            "func": "__gt__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 73,
+            "func": "__cmp__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 96,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 126,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 302,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 311,
+            "func": "assumptions0",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/symbol.py",
+            "line": 313,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 94,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 109,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1783,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 708,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1797,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 105,
+            "func": "get_unit_system",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1163,
+            "func": "has",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1212,
+            "func": "_has",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1988,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2039,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 2036,
+            "func": "__next__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1992,
+            "func": "_preorder_traversal",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1236,
+            "func": "replace",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 58,
+            "func": "_is_numpy_instance",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 64,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1461,
+            "func": "walk",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1467,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1483,
+            "func": "rec_replace",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 93,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1451,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 188,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 13,
+            "func": "_get_conversion_matrix_for_expr",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 90,
+            "func": "get_dimension_system",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 141,
+            "func": "get_dimensional_expr",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 93,
+            "func": "get_quantity_dimension",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 169,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 145,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 457,
+            "func": "get_dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 408,
+            "func": "_get_dimensional_dependencies_for_name",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 404,
+            "func": "dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 283,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 267,
+            "func": "keys",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 239,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 461,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/_print_helpers.py",
+            "line": 22,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 366,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 874,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 257,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 249,
+            "func": "_get_initial_settings",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 289,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 293,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 754,
+            "func": "_print_Symbol",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 20,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 22,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 297,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 300,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 881,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 279,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 221,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 967,
+            "func": "do",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 970,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 981,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 964,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2132,
+            "func": "solve_least_squares",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 776,
+            "func": "_solve_least_squares",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2033,
+            "func": "H",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2394,
+            "func": "T",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2359,
+            "func": "transpose",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1941,
+            "func": "_eval_transpose",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1942,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 61,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1787,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 600,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3017,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2296,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2399,
+            "func": "C",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1976,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1917,
+            "func": "_eval_conjugate",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1948,
+            "func": "applyfunc",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1908,
+            "func": "_eval_applyfunc",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1909,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 990,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 450,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 214,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1748,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 570,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 513,
+            "func": "as_dummy",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 72,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 666,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1828,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 322,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/functions/elementary/complexes.py",
+            "line": 814,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 702,
+            "func": "_eval_conjugate",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2578,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2609,
+            "func": "multiply",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 44,
+            "func": "_get_intermediate_simp_bool",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 24,
+            "func": "_get_intermediate_simp",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2992,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 145,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 160,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/add.py",
+            "line": 77,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2168,
+            "func": "__add__",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/core/add.py",
+            "line": 17,
+            "func": "_addsort",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3033,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2129,
+            "func": "solve",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 702,
+            "func": "_solve",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2162,
+            "func": "inv",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 358,
+            "func": "_inv",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2147,
+            "func": "inverse_GE",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 223,
+            "func": "_inv_GE",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1687,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 362,
+            "func": "as_mutable",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1195,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 950,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 772,
+            "func": "_eval_eye",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 774,
+            "func": "entry",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2247,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 404,
+            "func": "hstack",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 499,
+            "func": "row_join",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 165,
+            "func": "_eval_row_join",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2266,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 423,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2189,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 166,
+            "func": "rref",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 248,
+            "func": "_rref",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 124,
+            "func": "_row_reduce",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 764,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 10,
+            "func": "_row_reduce_list",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 47,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 18,
+            "func": "_find_reasonable_pivot",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 41,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 51,
+            "func": "_iszero",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 464,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1702,
+            "func": "_eval_is_zero",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 533,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 89,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1761,
+            "func": "__truediv__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 229,
+            "func": "igcd",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 252,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1602,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/simplify/simplify.py",
+            "line": 2001,
+            "func": "dotprodsimp",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 244,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 316,
+            "func": "extract",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 367,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 138,
+            "func": "_eval_extract",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 143,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2220,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 95,
+            "func": "get_total_scale_factor",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 99,
+            "func": "get_quantity_scale_factor",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 258,
+            "func": "fromiter",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 109,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1776,
+            "func": "__rtruediv__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3447,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 229,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 224,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 269,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 775,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 358,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 135,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1696,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 396,
+            "func": "is_number",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 447,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 639,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1287,
+            "func": "args_cnc",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 949,
+            "func": "_eval_expand_power_base",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 341,
+            "func": "base",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 345,
+            "func": "exp",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 735,
+            "func": "sift",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 983,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 985,
+            "func": "pred",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 436,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 439,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1699,
+            "func": "_eval_is_positive",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/logic.py",
+            "line": 92,
+            "func": "fuzzy_bool",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 847,
+            "func": "_eval_is_negative",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 895,
+            "func": "_eval_is_extended_negative",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 857,
+            "func": "_eval_is_extended_positive_negative",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 892,
+            "func": "_eval_is_extended_positive",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 142,
+            "func": "_eval_is_positive",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 1066,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 682,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 569,
+            "func": "_eval_is_zero",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 873,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1705,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 678,
+            "func": "_eval_evalf",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1846,
+            "func": "_as_mpf_val",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1202,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 149,
+            "func": "mpf_norm",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1384,
+            "func": "evalf",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1282,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1900,
+            "func": "as_real_imag",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1427,
+            "func": "_Frel",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 979,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2304,
+            "func": "_eval_power",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 42,
+            "func": "integer_nthroot",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 85,
+            "func": "_integer_nthroot_python",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 401,
+            "func": "perfect_power",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 482,
+            "func": "_factors",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 642,
+            "func": "primerange",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 21,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "sympy/functions/elementary/integers.py",
+            "line": 260,
+            "func": "_eval_number",
+            "is_test": false,
+            "call_depth": 35
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2128,
+            "func": "ceiling",
+            "is_test": false,
+            "call_depth": 36
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 81,
+            "func": "extend",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "sympy/ntheory/generate.py",
+            "line": 261,
+            "func": "search",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 198,
+            "func": "trailing",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1978,
+            "func": "factors",
+            "is_test": false,
+            "call_depth": 30
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 1424,
+            "func": "factorrat",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 976,
+            "func": "factorint",
+            "is_test": false,
+            "call_depth": 32
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 875,
+            "func": "_factorint_small",
+            "is_test": false,
+            "call_depth": 33
+          },
+          {
+            "file": "sympy/ntheory/factor_.py",
+            "line": 889,
+            "func": "done",
+            "is_test": false,
+            "call_depth": 34
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 219,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 29
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 406,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 146,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1852,
+            "func": "__abs__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 251,
+            "func": "__truediv__",
+            "is_test": false,
+            "call_depth": 27
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 111,
+            "func": "_new_rawargs",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 247,
+            "func": "_print_Mul",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 118,
+            "func": "precedence",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 61,
+            "func": "precedence_Mul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 256,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 282,
+            "func": "order",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1888,
+            "func": "as_ordered_factors",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1902,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1841,
+            "func": "sort_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1837,
+            "func": "class_key",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 789,
+            "func": "_print_Quantity",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 114,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 297,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 31,
+            "func": "parenthesize",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 87,
+            "func": "sort_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 600,
+            "func": "_print_Integer",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 722,
+            "func": "sort_key",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 718,
+            "func": "class_key",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 530,
+            "func": "_print_Pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 67,
+            "func": "precedence_Rational",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 635,
+            "func": "_print_Rational",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 73,
+            "func": "precedence_Integer",
+            "is_test": false,
+            "call_depth": 13
+          }
+        ]
+      },
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_joule_second_to_joule_specific_values": {
+        "exception_frames": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 44,
+            "func": "test_convert_to_joule_second_to_joule_specific_values",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1236,
+            "func": "replace",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 487,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 92,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 44,
+            "func": "test_convert_to_joule_second_to_joule_specific_values",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 255,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 130,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 214,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 69,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 117,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 105,
+            "func": "get_unit_system",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 92,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1236,
+            "func": "replace",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 487,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 58,
+            "func": "_is_numpy_instance",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 64,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1461,
+            "func": "walk",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 708,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1467,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1483,
+            "func": "rec_replace",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 93,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1451,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 188,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 13,
+            "func": "_get_conversion_matrix_for_expr",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 90,
+            "func": "get_dimension_system",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 141,
+            "func": "get_dimensional_expr",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 93,
+            "func": "get_quantity_dimension",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 169,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 145,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 109,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 457,
+            "func": "get_dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 408,
+            "func": "_get_dimensional_dependencies_for_name",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 404,
+            "func": "dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 283,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 267,
+            "func": "keys",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 239,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 461,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/_print_helpers.py",
+            "line": 22,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 366,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 874,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 257,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 249,
+            "func": "_get_initial_settings",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 289,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 293,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 754,
+            "func": "_print_Symbol",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 20,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 22,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 297,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 300,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 881,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 279,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 221,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 967,
+            "func": "do",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 970,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 981,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 964,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2132,
+            "func": "solve_least_squares",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 776,
+            "func": "_solve_least_squares",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2033,
+            "func": "H",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2394,
+            "func": "T",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2359,
+            "func": "transpose",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1941,
+            "func": "_eval_transpose",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1942,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 61,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1787,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 600,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3017,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2296,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2399,
+            "func": "C",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1976,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1917,
+            "func": "_eval_conjugate",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1948,
+            "func": "applyfunc",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1908,
+            "func": "_eval_applyfunc",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1909,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 990,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2578,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2609,
+            "func": "multiply",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 44,
+            "func": "_get_intermediate_simp_bool",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 24,
+            "func": "_get_intermediate_simp",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2992,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 145,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 160,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2209,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3033,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2129,
+            "func": "solve",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 702,
+            "func": "_solve",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2162,
+            "func": "inv",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 358,
+            "func": "_inv",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2147,
+            "func": "inverse_GE",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 223,
+            "func": "_inv_GE",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1687,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 362,
+            "func": "as_mutable",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1195,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 950,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 772,
+            "func": "_eval_eye",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 774,
+            "func": "entry",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2247,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 404,
+            "func": "hstack",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 499,
+            "func": "row_join",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 165,
+            "func": "_eval_row_join",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2266,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 423,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 31
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 322,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2189,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 28
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 166,
+            "func": "rref",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 248,
+            "func": "_rref",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 124,
+            "func": "_row_reduce",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 764,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 10,
+            "func": "_row_reduce_list",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 47,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 18,
+            "func": "_find_reasonable_pivot",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 41,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 51,
+            "func": "_iszero",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 26
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 89,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1761,
+            "func": "__truediv__",
+            "is_test": false,
+            "call_depth": 25
+          },
+          {
+            "file": "sympy/simplify/simplify.py",
+            "line": 2001,
+            "func": "dotprodsimp",
+            "is_test": false,
+            "call_depth": 24
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 244,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 316,
+            "func": "extract",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 367,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 138,
+            "func": "_eval_extract",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 143,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2220,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 95,
+            "func": "get_total_scale_factor",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 99,
+            "func": "get_quantity_scale_factor",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 258,
+            "func": "fromiter",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 109,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1776,
+            "func": "__rtruediv__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 229,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 224,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 358,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 135,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 126,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 682,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 146,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 341,
+            "func": "base",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 345,
+            "func": "exp",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 247,
+            "func": "_print_Mul",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 118,
+            "func": "precedence",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 61,
+            "func": "precedence_Mul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 256,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 775,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 282,
+            "func": "order",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1888,
+            "func": "as_ordered_factors",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1287,
+            "func": "args_cnc",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1902,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 297,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 31,
+            "func": "parenthesize",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 530,
+            "func": "_print_Pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1705,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 67,
+            "func": "precedence_Rational",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 635,
+            "func": "_print_Rational",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 73,
+            "func": "precedence_Integer",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 600,
+            "func": "_print_Integer",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 789,
+            "func": "_print_Quantity",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 114,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 14
+          }
+        ]
+      },
+      "sympy/physics/units/tests/test_orthogonal_units_bug.py::test_convert_to_hour_to_joule_incompatible": {
+        "exception_frames": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 83,
+            "func": "test_convert_to_hour_to_joule_incompatible",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 13,
+            "func": "_get_conversion_matrix_for_expr",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 297,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 300,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 881,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 981,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/physics/units/tests/test_orthogonal_units_bug.py",
+            "line": 83,
+            "func": "test_convert_to_hour_to_joule_incompatible",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 37,
+            "func": "convert_to",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 105,
+            "func": "get_unit_system",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 92,
+            "func": "sympify",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 71,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 13,
+            "func": "_get_conversion_matrix_for_expr",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 90,
+            "func": "get_dimension_system",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 141,
+            "func": "get_dimensional_expr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 93,
+            "func": "get_quantity_dimension",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 117,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 63,
+            "func": "get_quantity_dimension",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 169,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 145,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 109,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 457,
+            "func": "get_dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 408,
+            "func": "_get_dimensional_dependencies_for_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 404,
+            "func": "dimensional_dependencies",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 708,
+            "func": "args",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 283,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 487,
+            "func": "_sympify",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 267,
+            "func": "keys",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/containers.py",
+            "line": 239,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 461,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/_print_helpers.py",
+            "line": 22,
+            "func": "__str__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 366,
+            "func": "__call__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 874,
+            "func": "sstr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 257,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 249,
+            "func": "_get_initial_settings",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 289,
+            "func": "doprint",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 293,
+            "func": "_print",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 754,
+            "func": "_print_Symbol",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 20,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 22,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 297,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 300,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 881,
+            "func": "_handle_creation_inputs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 279,
+            "func": "is_sequence",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 221,
+            "func": "iterable",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 967,
+            "func": "do",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 970,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 981,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 964,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/cache.py",
+            "line": 69,
+            "func": "wrapper",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2132,
+            "func": "solve_least_squares",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 776,
+            "func": "_solve_least_squares",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2033,
+            "func": "H",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2394,
+            "func": "T",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2359,
+            "func": "transpose",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1941,
+            "func": "_eval_transpose",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1942,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 61,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1787,
+            "func": "key2ij",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 600,
+            "func": "shape",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3017,
+            "func": "a2idx",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2296,
+            "func": "__index__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2399,
+            "func": "C",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1976,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1917,
+            "func": "_eval_conjugate",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1948,
+            "func": "applyfunc",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1908,
+            "func": "_eval_applyfunc",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1909,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 990,
+            "func": "conjugate",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2293,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 130,
+            "func": "binary_op_wrapper",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2578,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2609,
+            "func": "multiply",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 44,
+            "func": "_get_intermediate_simp_bool",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 24,
+            "func": "_get_intermediate_simp",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 2992,
+            "func": "_matrixify",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 145,
+            "func": "_eval_matrix_mul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 160,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2209,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 3033,
+            "func": "classof",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2129,
+            "func": "solve",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/matrices/solvers.py",
+            "line": 702,
+            "func": "_solve",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2162,
+            "func": "inv",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 358,
+            "func": "_inv",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 2147,
+            "func": "inverse_GE",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 223,
+            "func": "_inv_GE",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 1687,
+            "func": "is_square",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 362,
+            "func": "as_mutable",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 1195,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 950,
+            "func": "eye",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 772,
+            "func": "_eval_eye",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 774,
+            "func": "entry",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2247,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 404,
+            "func": "hstack",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 499,
+            "func": "row_join",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 165,
+            "func": "_eval_row_join",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2266,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 423,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "sympy/logic/boolalg.py",
+            "line": 322,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2189,
+            "func": "__sub__",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 166,
+            "func": "rref",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 248,
+            "func": "_rref",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 124,
+            "func": "_row_reduce",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/matrices.py",
+            "line": 764,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 10,
+            "func": "_row_reduce_list",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/matrices/reductions.py",
+            "line": 47,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 18,
+            "func": "_find_reasonable_pivot",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/determinant.py",
+            "line": 41,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/matrices/utilities.py",
+            "line": 51,
+            "func": "_iszero",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 452,
+            "func": "getit",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 89,
+            "func": "__sympifyit_wrapper",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1761,
+            "func": "__truediv__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/simplify/simplify.py",
+            "line": 2001,
+            "func": "dotprodsimp",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/matrices/inverse.py",
+            "line": 244,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 316,
+            "func": "extract",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/matrices/common.py",
+            "line": 367,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 138,
+            "func": "_eval_extract",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/matrices/dense.py",
+            "line": 143,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2220,
+            "func": "__rmul__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 95,
+            "func": "get_total_scale_factor",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/physics/units/unitsystem.py",
+            "line": 99,
+            "func": "get_quantity_scale_factor",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/physics/units/dimensions.py",
+            "line": 81,
+            "func": "get_quantity_scale_factor",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 258,
+            "func": "fromiter",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/physics/units/util.py",
+            "line": 109,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1776,
+            "func": "__rtruediv__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sympy/core/decorators.py",
+            "line": 255,
+            "func": "_func",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 214,
+            "func": "__mul__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 229,
+            "func": "__pow__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 224,
+            "func": "_pow",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 46,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 59,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 78,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 111,
+            "func": "flatten",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 436,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 424,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 479,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 439,
+            "func": "generator",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 499,
+            "func": "deduce_all_facts",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 482,
+            "func": "_tell",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/facts.py",
+            "line": 533,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/core/assumptions.py",
+            "line": 464,
+            "func": "_ask",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1702,
+            "func": "_eval_is_zero",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 775,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 873,
+            "func": "as_base_exp",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 388,
+            "func": "_gather",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2041,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 399,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 358,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 135,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 126,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 406,
+            "func": "make_args",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2645,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 30,
+            "func": "_mulsort",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 185,
+            "func": "compare",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 101,
+            "func": "__gt__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 73,
+            "func": "__cmp__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/core.py",
+            "line": 96,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 94,
+            "func": "_from_args",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1783,
+            "func": "_exec_constructor_postprocessors",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1797,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 789,
+            "func": "_print_Quantity",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/physics/units/quantities.py",
+            "line": 114,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 247,
+            "func": "_print_Mul",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 118,
+            "func": "precedence",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 61,
+            "func": "precedence_Mul",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 62,
+            "func": "_coeff_isneg",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 895,
+            "func": "_eval_is_extended_negative",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 857,
+            "func": "_eval_is_extended_positive_negative",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 678,
+            "func": "_eval_evalf",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 2085,
+            "func": "_as_mpf_val",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1202,
+            "func": "_new",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 149,
+            "func": "mpf_norm",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1384,
+            "func": "evalf",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 682,
+            "func": "func",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/evalf.py",
+            "line": 1283,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1900,
+            "func": "as_real_imag",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "sympy/core/sympify.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1226,
+            "func": "_hashable_content",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 450,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "sympy/core/function.py",
+            "line": 214,
+            "func": "nargs",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1748,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 570,
+            "func": "ordered",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 513,
+            "func": "as_dummy",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 72,
+            "func": "_infimum_key",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 666,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "sympy/sets/sets.py",
+            "line": 1828,
+            "func": "_contains",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "sympy/functions/elementary/complexes.py",
+            "line": 66,
+            "func": "eval",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1427,
+            "func": "_Frel",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 256,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/operations.py",
+            "line": 111,
+            "func": "_new_rawargs",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/printer.py",
+            "line": 282,
+            "func": "order",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1888,
+            "func": "as_ordered_factors",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 1287,
+            "func": "args_cnc",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/mul.py",
+            "line": 1902,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 722,
+            "func": "sort_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 718,
+            "func": "class_key",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 87,
+            "func": "sort_key",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 3447,
+            "func": "as_coeff_Mul",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/basic.py",
+            "line": 1837,
+            "func": "class_key",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1602,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 345,
+            "func": "exp",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/expr.py",
+            "line": 847,
+            "func": "_eval_is_negative",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1919,
+            "func": "__ne__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 341,
+            "func": "base",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/numbers.py",
+            "line": 1705,
+            "func": "__neg__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/core/power.py",
+            "line": 269,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 297,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 31,
+            "func": "parenthesize",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 73,
+            "func": "precedence_Integer",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 600,
+            "func": "_print_Integer",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 530,
+            "func": "_print_Pow",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sympy/printing/precedence.py",
+            "line": 67,
+            "func": "precedence_Rational",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sympy/printing/str.py",
+            "line": 635,
+            "func": "_print_Rational",
+            "is_test": false,
+            "call_depth": 13
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sympy__sympy-20442",
+  "messages": []
+}

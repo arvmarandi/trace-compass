@@ -1,0 +1,1102 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/template_tests/test_autoreloader_bug.py b/tests/template_tests/test_autoreloader_bug.py\nnew file mode 100644\nindex 0000000000..21bd260ec3\n--- /dev/null\n+++ b/tests/template_tests/test_autoreloader_bug.py\n@@ -0,0 +1,139 @@\n+\"\"\"\n+Tests for the autoreload bug where adding BASE_DIR to TEMPLATES[0]['DIRS']\n+causes the dev server to fail to restart.\n+\n+Bug description:\n+When BASE_DIR (the project root directory) is added to TEMPLATES[0]['DIRS'],\n+the template_changed() function returns True for ANY file change in the\n+project because template_dir in file_path.parents is True for all files\n+when template_dir is the project root.\n+\n+This prevents the server from restarting because notify_file_changed()\n+only calls trigger_reload() if no handler returns True (signal results\n+all return falsy values).\n+\n+The fix: template_changed should return None for .py files so the server\n+can restart when .py files are changed.\n+\"\"\"\n+from pathlib import Path\n+from unittest import mock\n+\n+from django.template import autoreload\n+from django.test import SimpleTestCase, override_settings\n+\n+\n+# Get the project root directory\n+PROJECT_ROOT = Path(__file__).parent.parent.parent.absolute()\n+\n+\n+class TemplateReloadBugTests(SimpleTestCase):\n+    \"\"\"\n+    Test that the autoreload bug is fixed.\n+\n+    The bug: When BASE_DIR (project root) is added to TEMPLATES[0]['DIRS'],\n+    the template_changed function incorrectly returns True for ALL file\n+    changes, preventing the server from restarting.\n+\n+    The fix: template_changed should return None for .py files so the\n+    server can restart when Python files are changed.\n+    \"\"\"\n+\n+    @override_settings(\n+        TEMPLATES=[\n+            {\n+                'DIRS': [PROJECT_ROOT],  # BASE_DIR added to DIRS\n+                'BACKEND': 'django.template.backends.django.DjangoTemplates',\n+            }\n+        ]\n+    )\n+    @mock.patch('django.template.autoreload.reset_loaders')\n+    def test_py_file_in_project_root_should_return_none(self, mock_reset):\n+        \"\"\"\n+        Test that template_changed returns None for a .py file in the\n+        project root when BASE_DIR is in DIRS.\n+        \n+        This is the core bug: when BASE_DIR is in DIRS, the check\n+        `template_dir in file_path.parents` is True for ALL files in the\n+        project, not just template files.\n+        \n+        After the fix, template_changed should return None for .py files\n+        so the server can restart.\n+        \"\"\"\n+        # A Python file in the project root\n+        py_file = PROJECT_ROOT / 'models.py'\n+        \n+        result = autoreload.template_changed(None, py_file)\n+        \n+        # The expected behavior: template_changed should return None\n+        # (not True) for .py files, so the server can restart\n+        self.assertIsNone(result)\n+        mock_reset.assert_not_called()\n+\n+    @override_settings(\n+        TEMPLATES=[\n+            {\n+                'DIRS': [PROJECT_ROOT],  # BASE_DIR added to DIRS\n+                'BACKEND': 'django.template.backends.django.DjangoTemplates',\n+            }\n+        ]\n+    )\n+    @mock.patch('django.template.autoreload.reset_loaders')\n+    def test_py_file_in_subdirectory_should_return_none(self, mock_reset):\n+        \"\"\"\n+        Test that template_changed returns None for a .py file in a\n+        subdirectory when BASE_DIR is in DIRS.\n+        \"\"\"\n+        # A Python file in a subdirectory\n+        py_file = PROJECT_ROOT / 'app' / 'models.py'\n+        \n+        result = autoreload.template_changed(None, py_file)\n+        \n+        self.assertIsNone(result)\n+        mock_reset.assert_not_called()\n+\n+    @override_settings(\n+        TEMPLATES=[\n+            {\n+                'DIRS': [PROJECT_ROOT],  # BASE_DIR added to DIRS\n+                'BACKEND': 'django.template.backends.django.DjangoTemplates',\n+            }\n+        ]\n+    )\n+    @mock.patch('django.template.autoreload.reset_loaders')\n+    def test_html_file_in_template_subdir_should_return_true(self, mock_reset):\n+        \"\"\"\n+        Test that template_changed returns True for an .html file in a\n+        templates subdirectory.\n+        \"\"\"\n+        template_file = PROJECT_ROOT / 'templates' / 'index.html'\n+        \n+        result = autoreload.template_changed(None, template_file)\n+        \n+        # This should return True because it's a template file\n+        self.assertTrue(result)\n+        mock_reset.assert_called_once()\n+\n+    @override_settings(\n+        TEMPLATES=[\n+            {\n+                'DIRS': [PROJECT_ROOT],  # BASE_DIR added to DIRS\n+                'BACKEND': 'django.template.backends.django.DjangoTemplates',\n+            }\n+        ]\n+    )\n+    @mock.patch('django.template.autoreload.reset_loaders')\n+    def test_html_file_in_project_root_should_return_true(self, mock_reset):\n+        \"\"\"\n+        Test that template_changed returns True for an .html file directly\n+        in the project root when BASE_DIR is in DIRS.\n+        \n+        Note: This is the expected behavior after the fix. The file is in\n+        a template directory (project root), so template reload is triggered.\n+        \"\"\"\n+        html_file = PROJECT_ROOT / 'index.html'\n+        \n+        result = autoreload.template_changed(None, html_file)\n+        \n+        # This should return True because the file is in a template directory\n+        self.assertTrue(result)\n+        mock_reset.assert_called_once()\n",
+    "stack_traces": [],
+    "test_output": "test_html_file_in_project_root_should_return_true (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns True for an .html file directly ... ok\ntest_html_file_in_template_subdir_should_return_true (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns True for an .html file in a ... ok\ntest_py_file_in_project_root_should_return_none (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns None for a .py file in the ... FAIL\ntest_py_file_in_subdirectory_should_return_none (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns None for a .py file in a ... FAIL\n\n======================================================================\nFAIL: test_py_file_in_project_root_should_return_none (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns None for a .py file in the\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 437, in inner\n    return func(*args, **kwargs)\n  File \"/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py\", line 1336, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/testbed/tests/template_tests/test_autoreloader_bug.py\", line 69, in test_py_file_in_project_root_should_return_none\n    self.assertIsNone(result)\nAssertionError: True is not None\n\n======================================================================\nFAIL: test_py_file_in_subdirectory_should_return_none (template_tests.test_autoreloader_bug.TemplateReloadBugTests)\nTest that template_changed returns None for a .py file in a\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/django/test/utils.py\", line 437, in inner\n    return func(*args, **kwargs)\n  File \"/opt/miniconda3/envs/testbed/lib/python3.9/unittest/mock.py\", line 1336, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/testbed/tests/template_tests/test_autoreloader_bug.py\", line 91, in test_py_file_in_subdirectory_should_return_none\n    self.assertIsNone(result)\nAssertionError: True is not None\n\n----------------------------------------------------------------------\nRan 4 tests in 0.004s\n\nFAILED (failures=2)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 template_tests.test_autoreloader_bug` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application template_tests\nFound 4 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "template_tests.test_autoreloader_bug.TemplateReloadBugTests.test_py_file_in_project_root_should_return_none": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 432,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 400,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 461,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 432,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 400,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 461,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 249,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 262,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 280,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 215,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 49,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 35,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 52,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 80,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 106,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 113,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 125,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 131,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 138,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 149,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 157,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 168,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 178,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 187,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 105,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/messages/apps.py",
+            "line": 8,
+            "func": "update_level_tags",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/files/storage.py",
+            "line": 205,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/template_tests/test_autoreloader_bug.py",
+            "line": 41,
+            "func": "test_py_file_in_project_root_should_return_none",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 49,
+            "func": "template_changed",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 12,
+            "func": "get_template_directories",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 89,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 86,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 48,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 25,
+            "func": "templates",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 86,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 55,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 64,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 38,
+            "func": "get_templatetag_libraries",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 110,
+            "func": "get_installed_libraries",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 117,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 87,
+            "func": "get_template_tag_modules",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 143,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 123,
+            "func": "get_package_libraries",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/backends/base.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 110,
+            "func": "get_template_libraries",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/library.py",
+            "line": 311,
+            "func": "import_library",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 107,
+            "func": "get_template_builtins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 108,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 22,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/_os.py",
+            "line": 53,
+            "func": "to_path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 116,
+            "func": "template_loaders",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 120,
+            "func": "get_template_loaders",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 128,
+            "func": "find_template_loader",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 6,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 21,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 18,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/autoreload.py",
+            "line": 54,
+            "func": "is_django_path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 403,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 485,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 175,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      },
+      "template_tests.test_autoreloader_bug.TemplateReloadBugTests.test_py_file_in_subdirectory_should_return_none": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 432,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 400,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 461,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 432,
+            "func": "inner",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 400,
+            "func": "__enter__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 461,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 249,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 262,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 280,
+            "func": "__setattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 224,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 215,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 10,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 170,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/translation/trans_real.py",
+            "line": 49,
+            "func": "reset_cache",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 26,
+            "func": "clear_cache_handlers",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 35,
+            "func": "update_installed_apps",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 52,
+            "func": "update_connections_time_zone",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 80,
+            "func": "clear_routers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 86,
+            "func": "reset_template_engines",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 106,
+            "func": "clear_serializers_cache",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 113,
+            "func": "language_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 125,
+            "func": "localize_settings_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 131,
+            "func": "file_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 138,
+            "func": "complex_setting_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 149,
+            "func": "root_urlconf_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 157,
+            "func": "static_storage_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 168,
+            "func": "static_finders_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 178,
+            "func": "auth_password_validators_changed",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/signals.py",
+            "line": 187,
+            "func": "user_model_swapped",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/auth/hashers.py",
+            "line": 105,
+            "func": "reset_hashers",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/contrib/messages/apps.py",
+            "line": 8,
+            "func": "update_level_tags",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/files/storage.py",
+            "line": 205,
+            "func": "_clear_cached_properties",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/template_tests/test_autoreloader_bug.py",
+            "line": 72,
+            "func": "test_py_file_in_subdirectory_should_return_none",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 49,
+            "func": "template_changed",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 12,
+            "func": "get_template_directories",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 89,
+            "func": "all",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 86,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 48,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 25,
+            "func": "templates",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 86,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 55,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/utils.py",
+            "line": 64,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 19,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 8,
+            "func": "cached_import",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 38,
+            "func": "get_templatetag_libraries",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 110,
+            "func": "get_installed_libraries",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 117,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 87,
+            "func": "get_template_tag_modules",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 143,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 93,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/backends/django.py",
+            "line": 123,
+            "func": "get_package_libraries",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/backends/base.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 110,
+            "func": "get_template_libraries",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/library.py",
+            "line": 311,
+            "func": "import_library",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 107,
+            "func": "get_template_builtins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 108,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/template/autoreload.py",
+            "line": 22,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/_os.py",
+            "line": 53,
+            "func": "to_path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 116,
+            "func": "template_loaders",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 120,
+            "func": "get_template_loaders",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/template/engine.py",
+            "line": 128,
+            "func": "find_template_loader",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 14,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/template/loaders/base.py",
+            "line": 6,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/template/loaders/cached.py",
+            "line": 21,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/template/loaders/filesystem.py",
+            "line": 18,
+            "func": "get_dirs",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/autoreload.py",
+            "line": 54,
+            "func": "is_django_path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 403,
+            "func": "__exit__",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 485,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 2
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 175,
+            "func": "send_robust",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-15388",
+  "messages": []
+}
