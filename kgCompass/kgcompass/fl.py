@@ -74,13 +74,17 @@ def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
         for depth_from_inner, frame in enumerate(reversed(exc_frames)):
             key = (frame.get("file", ""), frame.get("func", ""))
             if key[0] and key[1]:
-                scores[key] = max(scores.get(key, 0.0), 1.0 / (depth_from_inner + 1))
+                # scores[key] = max(scores.get(key, 0.0), 1.0 / (depth_from_inner + 1))
+                scores[key] = max(scores.get(key, 0.0), 0.85**(call_depth))
+
 
         for frame in all_calls:
             key = (frame.get("file", ""), frame.get("func", ""))
             if key[0] and key[1]:
                 call_depth = frame.get("call_depth", 0) or 0
-                scores[key] = max(scores.get(key, 0.0), 1.0 / (call_depth + 1))
+                # scores[key] = max(scores.get(key, 0.0), 1.0 / (call_depth + 1))
+                scores[key] = max(scores.get(key, 0.0), 0.85**(call_depth))
+
 
     print(f"Loaded trace scores for {len(scores)} (file, func) pairs from {traj_path}")
     return scores
