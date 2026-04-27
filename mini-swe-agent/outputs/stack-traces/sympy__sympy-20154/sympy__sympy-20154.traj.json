@@ -1,0 +1,155 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sympy/utilities/tests/test_partitions_bug.py b/sympy/utilities/tests/test_partitions_bug.py\nnew file mode 100644\nindex 0000000000..f2579519b8\n--- /dev/null\n+++ b/sympy/utilities/tests/test_partitions_bug.py\n@@ -0,0 +1,116 @@\n+\"\"\"\n+Test for the bug where partitions() reuses output dictionaries.\n+\n+This test file verifies that partitions() yields distinct dictionary objects\n+with correct values, not the same dictionary object repeated.\n+\n+The bug: partitions() was reusing the same dictionary object and modifying it\n+in place, causing list(partitions(...)) to return a list of the same dictionary.\n+\n+Expected behavior: Each yielded dictionary should be independent (a copy),\n+so list(partitions(...)) returns distinct dictionaries with different values.\n+\n+See: https://github.com/sympy/sympy/pull/... (PR description)\n+\"\"\"\n+\n+from sympy.utilities.iterables import partitions\n+\n+\n+def test_partitions_list_returns_correct_values():\n+    \"\"\"Test that list(partitions(...)) returns the correct partition values.\n+    \n+    This is the primary bug described in the PR: list(partitions()) gives\n+    an apparently wrong result because the same dictionary is reused.\n+    \"\"\"\n+    # Test partitions of 4 using parts 1 and 2\n+    # Expected: {2:2}, {1:2, 2:1}, {1:4}\n+    result = list(partitions(4, k=2))\n+    expected = [{2: 2}, {1: 2, 2: 1}, {1: 4}]\n+    assert result == expected, f\"Expected {expected}, got {result}\"\n+\n+\n+def test_partitions_list_returns_distinct_objects():\n+    \"\"\"Test that list(partitions(...)) returns distinct dictionary objects.\n+    \n+    Each yielded dictionary should be a separate object, not the same\n+    mutable dictionary reused and modified.\n+    \"\"\"\n+    result = list(partitions(6, k=2))\n+    \n+    # Check that we got the expected number of partitions\n+    assert len(result) == 4, f\"Expected 4 partitions, got {len(result)}\"\n+    \n+    # Check that all dictionaries are distinct objects\n+    ids = [id(d) for d in result]\n+    assert len(set(ids)) == len(ids), (\n+        f\"partitions() returned duplicate dictionary objects. \"\n+        f\"All dictionaries should be independent copies. Got ids: {ids}\"\n+    )\n+\n+\n+def test_partitions_list_no_copy_needed():\n+    \"\"\"Test that partitions can be used directly without .copy().\n+    \n+    After the fix, users should be able to do:\n+        list(partitions(6, k=2))\n+    and get the correct result, without needing to manually copy each dict.\n+    \"\"\"\n+    # Test with k=3 parameter\n+    result = list(partitions(8, k=3))\n+    expected = [\n+        {3: 2}, {1: 1, 2: 1, 3: 1}, {1: 3, 3: 1}, {2: 3},\n+        {1: 2, 2: 2}, {1: 4, 2: 1}, {1: 6}\n+    ]\n+    assert result == expected, f\"Expected {expected}, got {result}\"\n+\n+\n+def test_partitions_list_with_size():\n+    \"\"\"Test list(partitions(..., size=True)) returns correct (size, partition).\n+    \n+    When size=True, partitions yields (multiplicity_sum, partition_dict) tuples.\n+    The partition_dicts should be correct, not all the same.\n+    \"\"\"\n+    result = list(partitions(4, k=2, size=True))\n+    \n+    # Expected: (2, {2: 2}), (3, {1: 2, 2: 1}), (4, {1: 4})\n+    expected_partitions = [{2: 2}, {1: 2, 2: 1}, {1: 4}]\n+    expected_sizes = [2, 3, 4]\n+    \n+    result_partitions = [p for _, p in result]\n+    result_sizes = [s for s, _ in result]\n+    \n+    assert result_partitions == expected_partitions, (\n+        f\"Partitions mismatch: expected {expected_partitions}, got {result_partitions}\"\n+    )\n+    assert result_sizes == expected_sizes, (\n+        f\"Sizes mismatch: expected {expected_sizes}, got {result_sizes}\"\n+    )\n+\n+\n+def test_partitions_iteration_independence():\n+    \"\"\"Test that iterating over partitions twice gives the same results.\n+    \n+    When collecting partitions into a list, each element should be\n+    independent, so modifying one doesn't affect the others.\n+    \"\"\"\n+    result = list(partitions(5, k=3))\n+    \n+    # All elements should be distinct objects\n+    for i, d1 in enumerate(result):\n+        for j, d2 in enumerate(result):\n+            if i != j:\n+                # Different positions should have different objects\n+                # (they could be equal by chance, but not the same object)\n+                assert id(d1) != id(d2), (\n+                    f\"Partitions at positions {i} and {j} are the same object\"\n+                )\n+\n+\n+def test_partitions_unpack_to_list():\n+    \"\"\"Test unpacking partitions to a list gives correct results.\n+    \n+    This is a common use case that should work intuitively.\n+    \"\"\"\n+    parts = [*partitions(3, k=2)]\n+    expected = [{2: 1, 1: 1}, {1: 3}]\n+    assert parts == expected, f\"Expected {expected}, got {parts}\"\n",
+    "stack_traces": [],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python bin/test -C --verbose sympy/utilities/tests/test_partitions_bug.py` failed. (See above for error)\n============================= test process starts ==============================\nexecutable:         /opt/miniconda3/envs/testbed/bin/python  (3.9.20-final-0) [CPython]\narchitecture:       64-bit\ncache:              no\nground types:       python \nnumpy:              None\nrandom seed:        57126403\nhash randomization: on (PYTHONHASHSEED=3648213561)\n\nsympy/utilities/tests/test_partitions_bug.py[6] \ntest_partitions_list_returns_correct_values F\ntest_partitions_list_returns_distinct_objects F\ntest_partitions_list_no_copy_needed F\ntest_partitions_list_with_size F\ntest_partitions_iteration_independence F\ntest_partitions_unpack_to_list F                                          [FAIL]\n\n\n________________________________________________________________________________\n sympy/utilities/tests/test_partitions_bug.py:test_partitions_list_returns_correct_values \nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 29, in test_partitions_list_returns_correct_values\n    assert result == expected, f\"Expected {expected}, got {result}\"\nAssertionError: Expected [{2: 2}, {1: 2, 2: 1}, {1: 4}], got [{1: 4}, {1: 4}, {1: 4}]\n________________________________________________________________________________\n sympy/utilities/tests/test_partitions_bug.py:test_partitions_list_returns_distinct_objects \nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 45, in test_partitions_list_returns_distinct_objects\n    assert len(set(ids)) == len(ids), (\nAssertionError: partitions() returned duplicate dictionary objects. All dictionaries should be independent copies. Got ids: [140737438465792, 140737438465792, 140737438465792, 140737438465792]\n________________________________________________________________________________\n sympy/utilities/tests/test_partitions_bug.py:test_partitions_list_no_copy_needed \nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 64, in test_partitions_list_no_copy_needed\n    assert result == expected, f\"Expected {expected}, got {result}\"\nAssertionError: Expected [{3: 2}, {1: 1, 2: 1, 3: 1}, {1: 3, 3: 1}, {2: 3}, {1: 2, 2: 2}, {1: 4, 2: 1}, {1: 6}], got [{1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}, {1: 8}]\n________________________________________________________________________________\n_ sympy/utilities/tests/test_partitions_bug.py:test_partitions_list_with_size __\nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 82, in test_partitions_list_with_size\n    assert result_partitions == expected_partitions, (\nAssertionError: Partitions mismatch: expected [{2: 2}, {1: 2, 2: 1}, {1: 4}], got [{1: 4}, {1: 4}, {1: 4}]\n________________________________________________________________________________\n sympy/utilities/tests/test_partitions_bug.py:test_partitions_iteration_independence \nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 104, in test_partitions_iteration_independence\n    assert id(d1) != id(d2), (\nAssertionError: Partitions at positions 0 and 1 are the same object\n________________________________________________________________________________\n_ sympy/utilities/tests/test_partitions_bug.py:test_partitions_unpack_to_list __\nTraceback (most recent call last):\n  File \"/testbed/sympy/utilities/tests/test_partitions_bug.py\", line 116, in test_partitions_unpack_to_list\n    assert parts == expected, f\"Expected {expected}, got {parts}\"\nAssertionError: Expected [{2: 1, 1: 1}, {1: 3}], got [{1: 3}, {1: 3}]\n\n============= tests finished: 0 passed, 6 failed, in 0.01 seconds ==============\nDO *NOT* COMMIT!\n\n",
+    "settrace_traces": {
+      "sympy/utilities/tests/test_partitions_bug.py::test_partitions_list_returns_correct_values": {
+        "exception_frames": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 19,
+            "func": "test_partitions_list_returns_correct_values",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 19,
+            "func": "test_partitions_list_returns_correct_values",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1696,
+            "func": "partitions",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "sympy/utilities/tests/test_partitions_bug.py::test_partitions_list_returns_distinct_objects": {
+        "exception_frames": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 32,
+            "func": "test_partitions_list_returns_distinct_objects",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 32,
+            "func": "test_partitions_list_returns_distinct_objects",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1696,
+            "func": "partitions",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 44,
+            "func": "<listcomp>",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ]
+      },
+      "sympy/utilities/tests/test_partitions_bug.py::test_partitions_list_no_copy_needed": {
+        "exception_frames": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 51,
+            "func": "test_partitions_list_no_copy_needed",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 51,
+            "func": "test_partitions_list_no_copy_needed",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1696,
+            "func": "partitions",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "sympy/utilities/tests/test_partitions_bug.py::test_partitions_iteration_independence": {
+        "exception_frames": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 90,
+            "func": "test_partitions_iteration_independence",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sympy/utilities/tests/test_partitions_bug.py",
+            "line": 90,
+            "func": "test_partitions_iteration_independence",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sympy/utilities/iterables.py",
+            "line": 1696,
+            "func": "partitions",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sympy/core/compatibility.py",
+            "line": 319,
+            "func": "as_int",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sympy__sympy-20154",
+  "messages": []
+}

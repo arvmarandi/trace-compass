@@ -1,0 +1,930 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/testing/test_skipping_runxfail.py b/testing/test_skipping_runxfail.py\nnew file mode 100644\nindex 000000000..1f91e3ccb\n--- /dev/null\n+++ b/testing/test_skipping_runxfail.py\n@@ -0,0 +1,159 @@\n+\"\"\"Tests for the bug where --runxfail breaks skip location reporting.\"\"\"\n+from _pytest.skipping import skipped_by_mark_key, pytest_runtest_makereport\n+\n+\n+class MockConfig:\n+    \"\"\"Mock config object for testing.\"\"\"\n+    def __init__(self, runxfail=False):\n+        class option:\n+            pass\n+        option.runxfail = runxfail\n+        self.option = option\n+        \n+\n+class MockItem:\n+    \"\"\"Mock item object for testing.\"\"\"\n+    def __init__(self, runxfail=False):\n+        self._store = {skipped_by_mark_key: True}\n+        self.config = MockConfig(runxfail)\n+        self.nodeid = \"test_file.py::test_func\"\n+        \n+    def reportinfo(self):\n+        return (\"test_file.py\", 10, \"test_func\")\n+\n+\n+class MockCallInfo:\n+    \"\"\"Mock CallInfo object for testing.\"\"\"\n+    def __init__(self, when, excinfo, exc):\n+        self.when = when\n+        self.excinfo = excinfo\n+        self._exc = exc\n+\n+\n+class MockOutcome:\n+    \"\"\"Mock outcome object for the yield in pytest_runtest_makereport.\"\"\"\n+    def __init__(self):\n+        self._result = None\n+        \n+    def set_result(self, result):\n+        self._result = result\n+        \n+    def get_result(self):\n+        return self._result\n+\n+\n+class MockReport:\n+    \"\"\"Mock report object.\"\"\"\n+    def __init__(self):\n+        self.outcome = \"skipped\"\n+        self.when = \"call\"\n+        self.skipped = True\n+        # This is the important part - the longrepr should be a tuple\n+        # pointing to the pytest internal code (this is the bug)\n+        self.longrepr = (\"src/_pytest/skipping.py\", 239, \"unconditional skip\")\n+\n+\n+def _run_pytest_runtest_makereport(item, call, report):\n+    \"\"\"Helper to run pytest_runtest_makereport and return the modified report.\"\"\"\n+    outcome = MockOutcome()\n+    outcome.set_result(report)\n+    \n+    # Run the hook manually - the hookwrapper pattern requires:\n+    # 1. First call next(gen) to get to the yield\n+    # 2. Then call gen.send(outcome) to send the result\n+    gen = pytest_runtest_makereport(item, call)\n+    \n+    # Initialize the generator - this advances to the yield point\n+    try:\n+        next(gen)\n+    except StopIteration:\n+        pass\n+    \n+    # Send the outcome to the generator and let it process\n+    try:\n+        gen.send(outcome)\n+    except StopIteration:\n+        pass\n+    \n+    return report\n+\n+\n+def test_skip_location_without_runxfail():\n+    \"\"\"Test that skip location IS fixed when runxfail is False (default).\n+    \n+    This test verifies the expected behavior - the skip location should\n+    point to the test file, not to pytest internals.\n+    \"\"\"\n+    item = MockItem(runxfail=False)\n+    call = MockCallInfo(\"call\", None, None)\n+    report = MockReport()\n+    \n+    # Set skipped_by_mark_key to True to indicate this was skipped by mark\n+    item._store[skipped_by_mark_key] = True\n+    \n+    report = _run_pytest_runtest_makereport(item, call, report)\n+    \n+    # The longrepr should be a tuple\n+    assert isinstance(report.longrepr, tuple), (\n+        f\"longrepr should be a tuple, got {type(report.longrepr)}\"\n+    )\n+    \n+    filename, line, reason = report.longrepr\n+    \n+    # Without runxfail, the location SHOULD be fixed to point to the test file\n+    assert 'skipping.py' not in filename, (\n+        f\"Skip location should be fixed when runxfail is False.\\n\"\n+        f\"Got: {filename}:{line}\"\n+    )\n+    \n+    # The fixed location should point to the test file\n+    assert 'test_file.py' in filename, (\n+        f\"Skip location should point to the test file.\\n\"\n+        f\"Got: {filename}:{line}\"\n+    )\n+\n+\n+def test_skip_location_with_runxfail():\n+    \"\"\"Test that --runxfail does not break skip location reporting.\n+    \n+    When @pytest.mark.skip is used, the skip location should point to the\n+    test itself, not to the pytest internal code. This should work even\n+    when --runxfail is passed.\n+    \n+    This test directly tests the pytest_runtest_makereport function to\n+    verify that the skip location fix is applied even when --runxfail is True.\n+    \n+    BUG: Currently this test FAILS because the elif chain in \n+    pytest_runtest_makereport short-circuits when runxfail is True,\n+    skipping the skip location fix.\n+    \"\"\"\n+    item = MockItem(runxfail=True)\n+    call = MockCallInfo(\"call\", None, None)\n+    report = MockReport()\n+    \n+    # Set skipped_by_mark_key to True to indicate this was skipped by mark\n+    item._store[skipped_by_mark_key] = True\n+    \n+    report = _run_pytest_runtest_makereport(item, call, report)\n+    \n+    # The longrepr should still be a tuple\n+    assert isinstance(report.longrepr, tuple), (\n+        f\"longrepr should be a tuple, got {type(report.longrepr)}\"\n+    )\n+    \n+    filename, line, reason = report.longrepr\n+    \n+    # The filename should NOT contain 'skipping.py'\n+    # This is the bug - when runxfail is True, the location is not fixed\n+    assert 'skipping.py' not in filename, (\n+        f\"BUG: Skip location should not point to skipping.py when runxfail is True!\\n\"\n+        f\"Got: {filename}:{line}\\n\"\n+        f\"This happens because the elif chain in pytest_runtest_makereport \"\n+        f\"short-circuits when runxfail is True, skipping the skip location fix.\"\n+    )\n+    \n+    # The fixed location should point to the test file\n+    assert 'test_file.py' in filename, (\n+        f\"Skip location should point to the test file.\\n\"\n+        f\"Got: {filename}:{line}\"\n+    )\n",
+    "stack_traces": [
+      "_______________________ test_skip_location_with_runxfail _______________________\n\n    def test_skip_location_with_runxfail():\n        \"\"\"Test that --runxfail does not break skip location reporting.\n    \n        When @pytest.mark.skip is used, the skip location should point to the\n        test itself, not to the pytest internal code. This should work even\n        when --runxfail is passed.\n    \n        This test directly tests the pytest_runtest_makereport function to\n        verify that the skip location fix is applied even when --runxfail is True.\n    \n        BUG: Currently this test FAILS because the elif chain in\n        pytest_runtest_makereport short-circuits when runxfail is True,\n        skipping the skip location fix.\n        \"\"\"\n        item = MockItem(runxfail=True)\n        call = MockCallInfo(\"call\", None, None)\n        report = MockReport()\n    \n        # Set skipped_by_mark_key to True to indicate this was skipped by mark\n        item._store[skipped_by_mark_key] = True\n    \n        report = _run_pytest_runtest_makereport(item, call, report)\n    \n        # The longrepr should still be a tuple\n        assert isinstance(report.longrepr, tuple), (\n            f\"longrepr should be a tuple, got {type(report.longrepr)}\"\n        )\n    \n        filename, line, reason = report.longrepr\n    \n        # The filename should NOT contain 'skipping.py'\n        # This is the bug - when runxfail is True, the location is not fixed\n>       assert 'skipping.py' not in filename, (\n            f\"BUG: Skip location should not point to skipping.py when runxfail is True!\\n\"\n            f\"Got: {filename}:{line}\\n\"\n            f\"This happens because the elif chain in pytest_runtest_makereport \"\n            f\"short-circuits when runxfail is True, skipping the skip location fix.\"\n        )\nE       AssertionError: BUG: Skip location should not point to skipping.py when runxfail is True!\nE         Got: src/_pytest/skipping.py:239\nE         This happens because the elif chain in pytest_runtest_makereport short-circuits when runxfail is True, skipping the skip location fix.\nE       assert 'skipping.py' not in 'src/_pytest/skipping.py'\nE         'skipping.py' is contained here:\nE           src/_pytest/skipping.py\n\ntesting/test_skipping_runxfail.py:148: AssertionError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/testing/test_skipping_runxfail.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-5.4.1.dev593+ge6e300e72, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: pyproject.toml\ncollected 2 items\n\ntesting/test_skipping_runxfail.py .F                                     [100%]\n\n=================================== FAILURES ===================================\n_______________________ test_skip_location_with_runxfail _______________________\n\n    def test_skip_location_with_runxfail():\n        \"\"\"Test that --runxfail does not break skip location reporting.\n    \n        When @pytest.mark.skip is used, the skip location should point to the\n        test itself, not to the pytest internal code. This should work even\n        when --runxfail is passed.\n    \n        This test directly tests the pytest_runtest_makereport function to\n        verify that the skip location fix is applied even when --runxfail is True.\n    \n        BUG: Currently this test FAILS because the elif chain in\n        pytest_runtest_makereport short-circuits when runxfail is True,\n        skipping the skip location fix.\n        \"\"\"\n        item = MockItem(runxfail=True)\n        call = MockCallInfo(\"call\", None, None)\n        report = MockReport()\n    \n        # Set skipped_by_mark_key to True to indicate this was skipped by mark\n        item._store[skipped_by_mark_key] = True\n    \n        report = _run_pytest_runtest_makereport(item, call, report)\n    \n        # The longrepr should still be a tuple\n        assert isinstance(report.longrepr, tuple), (\n            f\"longrepr should be a tuple, got {type(report.longrepr)}\"\n        )\n    \n        filename, line, reason = report.longrepr\n    \n        # The filename should NOT contain 'skipping.py'\n        # This is the bug - when runxfail is True, the location is not fixed\n>       assert 'skipping.py' not in filename, (\n            f\"BUG: Skip location should not point to skipping.py when runxfail is True!\\n\"\n            f\"Got: {filename}:{line}\\n\"\n            f\"This happens because the elif chain in pytest_runtest_makereport \"\n            f\"short-circuits when runxfail is True, skipping the skip location fix.\"\n        )\nE       AssertionError: BUG: Skip location should not point to skipping.py when runxfail is True!\nE         Got: src/_pytest/skipping.py:239\nE         This happens because the elif chain in pytest_runtest_makereport short-circuits when runxfail is True, skipping the skip location fix.\nE       assert 'skipping.py' not in 'src/_pytest/skipping.py'\nE         'skipping.py' is contained here:\nE           src/_pytest/skipping.py\n\ntesting/test_skipping_runxfail.py:148: AssertionError\n=========================== short test summary info ============================\nFAILED testing/test_skipping_runxfail.py::test_skip_location_with_runxfail - ...\n========================= 1 failed, 1 passed in 0.02s ==========================\n\n",
+    "settrace_traces": {
+      "testing/test_skipping_runxfail.py::test_skip_location_with_runxfail": {
+        "exception_frames": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 144,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1559,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 170,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 116,
+            "func": "test_skip_location_with_runxfail",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 56,
+            "func": "_run_pytest_runtest_makereport",
+            "is_test": true,
+            "call_depth": 4
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 144,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 170,
+            "func": "_update_current_test_var",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 236,
+            "func": "nodeid",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1559,
+            "func": "runtest",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 197,
+            "func": "ihook",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 496,
+            "func": "gethookproxy",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 546,
+            "func": "_gethookproxy",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1327,
+            "func": "getoption",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 170,
+            "func": "pytest_pyfunc_call",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 284,
+            "func": "obj",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 103,
+            "func": "is_async_function",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 90,
+            "func": "iscoroutinefunction",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 176,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 116,
+            "func": "test_skip_location_with_runxfail",
+            "is_test": true,
+            "call_depth": 3
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 16,
+            "func": "__init__",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 8,
+            "func": "option",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 56,
+            "func": "_run_pytest_runtest_makereport",
+            "is_test": true,
+            "call_depth": 4
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 38,
+            "func": "set_result",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 260,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "testing/test_skipping_runxfail.py",
+            "line": 41,
+            "func": "get_result",
+            "is_test": true,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 468,
+            "func": "_call_reprcompare",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 129,
+            "func": "callbinrepr",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 179,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 131,
+            "func": "assertrepr_compare",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 78,
+            "func": "saferepr",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 43,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 48,
+            "func": "repr",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 30,
+            "func": "_ellipsize",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 103,
+            "func": "istext",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 453,
+            "func": "_notin_text",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 193,
+            "func": "_diff_text",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 82,
+            "func": "find_spec",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/store.py",
+            "line": 92,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 172,
+            "func": "_early_rewrite_bailout",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/pathlib.py",
+            "line": 377,
+            "func": "fnmatch_ex",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 211,
+            "func": "_should_rewrite",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 493,
+            "func": "isinitpath",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 234,
+            "func": "_is_marked_for_rewrite",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 234,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/assertion/truncate.py",
+            "line": 19,
+            "func": "truncate_if_required",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/truncate.py",
+            "line": 30,
+            "func": "_should_truncate_item",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/truncate.py",
+            "line": 38,
+            "func": "_running_on_ci",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/assertion/truncate.py",
+            "line": 41,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/assertion/truncate.py",
+            "line": 44,
+            "func": "_truncate_explanation",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/assertion/__init__.py",
+            "line": 150,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 1351,
+            "func": "getvalue",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 413,
+            "func": "_saferepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/rewrite.py",
+            "line": 427,
+            "func": "_format_assertmsg",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 32,
+            "func": "format_explanation",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 47,
+            "func": "_split_explanation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/assertion/util.py",
+            "line": 64,
+            "func": "_format_lines",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 257,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 744,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 710,
+            "func": "item_capture",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 681,
+            "func": "deactivate_fixture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 641,
+            "func": "suspend_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 528,
+            "func": "suspend_capturing",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 447,
+            "func": "suspend",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 409,
+            "func": "_assert_state",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 654,
+            "func": "read_global_capture",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 560,
+            "func": "readouterr",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/capture.py",
+            "line": 478,
+            "func": "snap",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 635,
+            "func": "add_report_section",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 690,
+            "func": "pytest_runtest_call",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 673,
+            "func": "_runtest_for",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 306,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 459,
+            "func": "from_current",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 432,
+            "func": "from_exc_info",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_io/saferepr.py",
+            "line": 57,
+            "func": "repr_instance",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 558,
+            "func": "errisinstance",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 500,
+            "func": "value",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/unittest.py",
+            "line": 291,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 312,
+            "func": "pytest_runtest_makereport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 291,
+            "func": "from_item_and_call",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 544,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/mark/structures.py",
+            "line": 548,
+            "func": "_seen",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 300,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1591,
+            "func": "repr_failure",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/nodes.py",
+            "line": 356,
+            "func": "_repr_failure_py",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 524,
+            "func": "traceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 508,
+            "func": "tb",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 292,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 301,
+            "func": "f",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 351,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/python.py",
+            "line": 1569,
+            "func": "_prunetraceback",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/compat.py",
+            "line": 281,
+            "func": "get_real_func",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/source.py",
+            "line": 295,
+            "func": "getrawcode",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 75,
+            "func": "path",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 311,
+            "func": "cut",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 197,
+            "func": "frame",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 359,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 360,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 254,
+            "func": "ishidden",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/config/__init__.py",
+            "line": 896,
+            "func": "invocation_dir",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 570,
+            "func": "getrepr",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 866,
+            "func": "repr_excinfo",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 802,
+            "func": "repr_traceback",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 759,
+            "func": "repr_traceback_entry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 718,
+            "func": "get_exconly",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 542,
+            "func": "exconly",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 492,
+            "func": "type",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 564,
+            "func": "_getreprcrash",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 373,
+            "func": "getcrashentry",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "src/_pytest/_code/code.py",
+            "line": 958,
+            "func": "__attrs_post_init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 237,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/store.py",
+            "line": 99,
+            "func": "get",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/store.py",
+            "line": 123,
+            "func": "__contains__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/reports.py",
+            "line": 141,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/main.py",
+            "line": 481,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 662,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/logging.py",
+            "line": 798,
+            "func": "set_when",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 524,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/skipping.py",
+            "line": 308,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/runner.py",
+            "line": 188,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 262,
+            "func": "pytest_report_teststatus",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 476,
+            "func": "_add_stats",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 1172,
+            "func": "_set_main_color",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 1160,
+            "func": "_determine_main_color",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 368,
+            "func": "verbosity",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_io/terminalwriter.py",
+            "line": 141,
+            "func": "write",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_io/terminalwriter.py",
+            "line": 94,
+            "func": "markup",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/terminal.py",
+            "line": 433,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "src/_pytest/_io/terminalwriter.py",
+            "line": 159,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "src/_pytest/stepwise.py",
+            "line": 84,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "src/_pytest/cacheprovider.py",
+            "line": 275,
+            "func": "pytest_runtest_logreport",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "pytest-dev__pytest-7432",
+  "messages": []
+}

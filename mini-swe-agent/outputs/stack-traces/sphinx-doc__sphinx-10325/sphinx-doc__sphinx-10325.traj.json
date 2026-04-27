@@ -1,0 +1,2769 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/roots/test-ext-autodoc/target/inherited_members.py b/tests/roots/test-ext-autodoc/target/inherited_members.py\nnew file mode 100644\nindex 000000000..d994e3d2f\n--- /dev/null\n+++ b/tests/roots/test-ext-autodoc/target/inherited_members.py\n@@ -0,0 +1,54 @@\n+class Base1:\n+    \"\"\"Base class 1.\"\"\"\n+    \n+    def method1(self):\n+        \"\"\"Method from Base1.\"\"\"\n+        pass\n+    \n+    def method2(self):\n+        \"\"\"Another method from Base1.\"\"\"\n+        pass\n+\n+\n+class Base2:\n+    \"\"\"Base class 2.\"\"\"\n+    \n+    def method3(self):\n+        \"\"\"Method from Base2.\"\"\"\n+        pass\n+    \n+    def method4(self):\n+        \"\"\"Another method from Base2.\"\"\"\n+        pass\n+\n+\n+class Base3:\n+    \"\"\"Base class 3.\"\"\"\n+    \n+    def method5(self):\n+        \"\"\"Method from Base3.\"\"\"\n+        pass\n+\n+\n+class Derived(Base1, Base2):\n+    \"\"\"A class that inherits from Base1 and Base2.\"\"\"\n+    \n+    def derived_method(self):\n+        \"\"\"A method defined in Derived.\"\"\"\n+        pass\n+\n+\n+class DerivedMultiple(Base1, Base2, Base3):\n+    \"\"\"A class that inherits from Base1, Base2, and Base3.\"\"\"\n+    \n+    def derived_multiple_method(self):\n+        \"\"\"A method defined in DerivedMultiple.\"\"\"\n+        pass\n+\n+\n+class DerivedList(Base1, list):\n+    \"\"\"A class that inherits from Base1 and list.\"\"\"\n+    \n+    def derived_list_method(self):\n+        \"\"\"A method defined in DerivedList.\"\"\"\n+        pass\ndiff --git a/tests/test_ext_autodoc_inherited_members.py b/tests/test_ext_autodoc_inherited_members.py\nnew file mode 100644\nindex 000000000..ea6c9d972\n--- /dev/null\n+++ b/tests/test_ext_autodoc_inherited_members.py\n@@ -0,0 +1,103 @@\n+\"\"\"Test the inherited-members option with multiple classes.\n+\n+This test file tests the feature request from:\n+https://github.com/sphinx-doc/sphinx/issues/XXXX\n+\n+The inherited-members option should support a list of class names,\n+not just a single class name. This allows users to filter out members\n+from multiple base classes.\n+\n+Current behavior (BUG):\n+- inherited-members: Base1, Base2 (comma-separated string)\n+  - Does NOT filter any members because 'Base1, Base2' != 'Base1' and 'Base1, Base2' != 'Base2'\n+\n+Expected behavior (FIX):\n+- inherited-members: Base1, Base2 should filter members from both Base1 and Base2\n+\"\"\"\n+\n+import pytest\n+\n+from .test_ext_autodoc import do_autodoc\n+\n+\n+@pytest.mark.sphinx('html', testroot='ext-autodoc')\n+def test_inherited_members_multiple_classes_filtering(app):\n+    \"\"\"Test that inherited-members with multiple class names filters correctly.\n+    \n+    This test FAILS with the current implementation because:\n+    - When inherited-members='Base1, Base2' is passed, it treats the whole string\n+      as a single class name\n+    - 'Base1, Base2' doesn't match 'Base1' or 'Base2', so no filtering happens\n+    \n+    After the fix, specifying 'Base1, Base2' should filter members from both classes.\n+    \"\"\"\n+    options = {\n+        'members': None,\n+        'inherited-members': 'Base1, Base2'\n+    }\n+    actual = do_autodoc(app, 'class', 'target.inherited_members.Derived', options)\n+    result = list(actual)\n+    \n+    # Should include derived_method (defined in Derived)\n+    assert '   .. py:method:: Derived.derived_method()' in result\n+    \n+    # Currently (BUG): These methods are NOT filtered because 'Base1, Base2' \n+    # doesn't match 'Base1' or 'Base2'\n+    # After fix: These methods SHOULD be filtered\n+    assert '   .. py:method:: Derived.method1()' not in result\n+    assert '   .. py:method:: Derived.method2()' not in result\n+    assert '   .. py:method:: Derived.method3()' not in result\n+    assert '   .. py:method:: Derived.method4()' not in result\n+\n+\n+@pytest.mark.sphinx('html', testroot='ext-autodoc')\n+def test_inherited_members_three_base_classes(app):\n+    \"\"\"Test that inherited-members can accept three class names.\n+    \n+    This test FAILS with the current implementation.\n+    \"\"\"\n+    options = {\n+        'members': None,\n+        'inherited-members': 'Base1, Base2, Base3'\n+    }\n+    actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedMultiple', options)\n+    result = list(actual)\n+    \n+    # Should include derived_multiple_method (defined in DerivedMultiple)\n+    assert '   .. py:method:: DerivedMultiple.derived_multiple_method()' in result\n+    \n+    # All inherited methods should be filtered\n+    # Currently (BUG): These are NOT filtered because 'Base1, Base2, Base3' \n+    # doesn't match any class name\n+    # After fix: These methods SHOULD be filtered\n+    assert '   .. py:method:: DerivedMultiple.method1()' not in result\n+    assert '   .. py:method:: DerivedMultiple.method2()' not in result\n+    assert '   .. py:method:: DerivedMultiple.method3()' not in result\n+    assert '   .. py:method:: DerivedMultiple.method4()' not in result\n+    assert '   .. py:method:: DerivedMultiple.method5()' not in result\n+\n+\n+@pytest.mark.sphinx('html', testroot='ext-autodoc')\n+def test_inherited_members_with_builtin_types(app):\n+    \"\"\"Test that inherited-members can filter out members from built-in types like list.\n+    \n+    This test FAILS with the current implementation.\n+    \"\"\"\n+    options = {\n+        'members': None,\n+        'inherited-members': 'Base1, list'\n+    }\n+    actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedList', options)\n+    result = list(actual)\n+    \n+    # Should include derived_list_method (defined in DerivedList)\n+    assert '   .. py:method:: DerivedList.derived_list_method()' in result\n+    \n+    # method1 from Base1 should be filtered\n+    # Currently (BUG): This is NOT filtered\n+    assert '   .. py:method:: DerivedList.method1()' not in result\n+    \n+    # List methods should also be filtered\n+    # Currently (BUG): These are NOT filtered\n+    assert '   .. py:method:: DerivedList.append()' not in result\n+    assert '   .. py:method:: DerivedList.clear()' not in result\n",
+    "stack_traces": [
+      "______________ test_inherited_members_multiple_classes_filtering _______________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_multiple_classes_filtering(app):\n        \"\"\"Test that inherited-members with multiple class names filters correctly.\n    \n        This test FAILS with the current implementation because:\n        - When inherited-members='Base1, Base2' is passed, it treats the whole string\n          as a single class name\n        - 'Base1, Base2' doesn't match 'Base1' or 'Base2', so no filtering happens\n    \n        After the fix, specifying 'Base1, Base2' should filter members from both classes.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, Base2'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.Derived', options)\n        result = list(actual)\n    \n        # Should include derived_method (defined in Derived)\n        assert '   .. py:method:: Derived.derived_method()' in result\n    \n        # Currently (BUG): These methods are NOT filtered because 'Base1, Base2'\n        # doesn't match 'Base1' or 'Base2'\n        # After fix: These methods SHOULD be filtered\n>       assert '   .. py:method:: Derived.method1()' not in result\nE       AssertionError: assert '   .. py:method:: Derived.method1()' not in ['', '.. py:class:: Derived()', '   :module: target.inherited_members', '', '   A class that inherits from Base1 and Base2.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:47: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n\n__________________ test_inherited_members_three_base_classes ___________________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_three_base_classes(app):\n        \"\"\"Test that inherited-members can accept three class names.\n    \n        This test FAILS with the current implementation.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, Base2, Base3'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedMultiple', options)\n        result = list(actual)\n    \n        # Should include derived_multiple_method (defined in DerivedMultiple)\n        assert '   .. py:method:: DerivedMultiple.derived_multiple_method()' in result\n    \n        # All inherited methods should be filtered\n        # Currently (BUG): These are NOT filtered because 'Base1, Base2, Base3'\n        # doesn't match any class name\n        # After fix: These methods SHOULD be filtered\n>       assert '   .. py:method:: DerivedMultiple.method1()' not in result\nE       AssertionError: assert '   .. py:method:: DerivedMultiple.method1()' not in ['', '.. py:class:: DerivedMultiple()', '   :module: target.inherited_members', '', '   A class that inherits from Base1, Base2, and Base3.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:73: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n\n__________________ test_inherited_members_with_builtin_types ___________________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_with_builtin_types(app):\n        \"\"\"Test that inherited-members can filter out members from built-in types like list.\n    \n        This test FAILS with the current implementation.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, list'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedList', options)\n        result = list(actual)\n    \n        # Should include derived_list_method (defined in DerivedList)\n        assert '   .. py:method:: DerivedList.derived_list_method()' in result\n    \n        # method1 from Base1 should be filtered\n        # Currently (BUG): This is NOT filtered\n>       assert '   .. py:method:: DerivedList.method1()' not in result\nE       AssertionError: assert '   .. py:method:: DerivedList.method1()' not in ['', '.. py:class:: DerivedList(iterable=(), /)', '   :module: target.inherited_members', '', '   A class that inherits from Base1 and list.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:98: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/tests/roots/test-ext-autodoc/target/inherited_members.py /testbed/tests/test_ext_autodoc_inherited_members.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.9.20, pytest-8.3.3, pluggy-1.5.0\nlibraries: Sphinx-5.0.0+/7bdc11e87, docutils-0.17.1\nbase tempdir: /tmp/pytest-of-root/pytest-0\nrootdir: /testbed\nconfigfile: setup.cfg\nplugins: cov-5.0.0\ncollected 3 items\n\ntests/test_ext_autodoc_inherited_members.py FFF                          [100%]\n\n=================================== FAILURES ===================================\n______________ test_inherited_members_multiple_classes_filtering _______________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_multiple_classes_filtering(app):\n        \"\"\"Test that inherited-members with multiple class names filters correctly.\n    \n        This test FAILS with the current implementation because:\n        - When inherited-members='Base1, Base2' is passed, it treats the whole string\n          as a single class name\n        - 'Base1, Base2' doesn't match 'Base1' or 'Base2', so no filtering happens\n    \n        After the fix, specifying 'Base1, Base2' should filter members from both classes.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, Base2'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.Derived', options)\n        result = list(actual)\n    \n        # Should include derived_method (defined in Derived)\n        assert '   .. py:method:: Derived.derived_method()' in result\n    \n        # Currently (BUG): These methods are NOT filtered because 'Base1, Base2'\n        # doesn't match 'Base1' or 'Base2'\n        # After fix: These methods SHOULD be filtered\n>       assert '   .. py:method:: Derived.method1()' not in result\nE       AssertionError: assert '   .. py:method:: Derived.method1()' not in ['', '.. py:class:: Derived()', '   :module: target.inherited_members', '', '   A class that inherits from Base1 and Base2.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:47: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n\n__________________ test_inherited_members_three_base_classes ___________________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_three_base_classes(app):\n        \"\"\"Test that inherited-members can accept three class names.\n    \n        This test FAILS with the current implementation.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, Base2, Base3'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedMultiple', options)\n        result = list(actual)\n    \n        # Should include derived_multiple_method (defined in DerivedMultiple)\n        assert '   .. py:method:: DerivedMultiple.derived_multiple_method()' in result\n    \n        # All inherited methods should be filtered\n        # Currently (BUG): These are NOT filtered because 'Base1, Base2, Base3'\n        # doesn't match any class name\n        # After fix: These methods SHOULD be filtered\n>       assert '   .. py:method:: DerivedMultiple.method1()' not in result\nE       AssertionError: assert '   .. py:method:: DerivedMultiple.method1()' not in ['', '.. py:class:: DerivedMultiple()', '   :module: target.inherited_members', '', '   A class that inherits from Base1, Base2, and Base3.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:73: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n\n__________________ test_inherited_members_with_builtin_types ___________________\n\napp = <SphinxTestApp buildername='html'>\n\n    @pytest.mark.sphinx('html', testroot='ext-autodoc')\n    def test_inherited_members_with_builtin_types(app):\n        \"\"\"Test that inherited-members can filter out members from built-in types like list.\n    \n        This test FAILS with the current implementation.\n        \"\"\"\n        options = {\n            'members': None,\n            'inherited-members': 'Base1, list'\n        }\n        actual = do_autodoc(app, 'class', 'target.inherited_members.DerivedList', options)\n        result = list(actual)\n    \n        # Should include derived_list_method (defined in DerivedList)\n        assert '   .. py:method:: DerivedList.derived_list_method()' in result\n    \n        # method1 from Base1 should be filtered\n        # Currently (BUG): This is NOT filtered\n>       assert '   .. py:method:: DerivedList.method1()' not in result\nE       AssertionError: assert '   .. py:method:: DerivedList.method1()' not in ['', '.. py:class:: DerivedList(iterable=(), /)', '   :module: target.inherited_members', '', '   A class that inherits from Base1 and list.', '', ...]\n\ntests/test_ext_autodoc_inherited_members.py:98: AssertionError\n--------------------------- Captured stdout teardown ---------------------------\n# testroot: root\n# builder: html\n# srcdir: /tmp/pytest-of-root/pytest-0/ext-autodoc\n# outdir: /tmp/pytest-of-root/pytest-0/ext-autodoc/_build/html\n# status: \n\u001b[01mRunning Sphinx v5.0.0+/7bdc11e87\u001b[39;49;00m\n\n# warning: \n\n=========================== short test summary info ============================\nFAILED tests/test_ext_autodoc_inherited_members.py::test_inherited_members_multiple_classes_filtering\nFAILED tests/test_ext_autodoc_inherited_members.py::test_inherited_members_three_base_classes\nFAILED tests/test_ext_autodoc_inherited_members.py::test_inherited_members_with_builtin_types\n============================== 3 failed in 0.45s ===============================\n\n",
+    "settrace_traces": {
+      "tests/test_ext_autodoc_inherited_members.py::test_inherited_members_multiple_classes_filtering": {
+        "exception_frames": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 23,
+            "func": "test_inherited_members_multiple_classes_filtering",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 23,
+            "func": "test_inherited_members_multiple_classes_filtering",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 74,
+            "func": "process_documenter_options",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/config.py",
+            "line": 257,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 86,
+            "func": "members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 112,
+            "func": "inherited_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/util/docutils.py",
+            "line": 299,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 45,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1455,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 171,
+            "func": "merge_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1808,
+            "func": "generate",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 383,
+            "func": "parse_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 132,
+            "func": "mock",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1134,
+            "func": "resolve_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 126,
+            "func": "invalidate_caches",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1475,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 69,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 120,
+            "func": "log",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 130,
+            "func": "process",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 54,
+            "func": "import_module",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 269,
+            "func": "skip_warningiserror",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 117,
+            "func": "find_spec",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 24,
+            "func": "mangle",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 325,
+            "func": "get_attr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 2835,
+            "func": "autodoc_attrgetter",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 377,
+            "func": "safe_getattr",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 154,
+            "func": "ismock",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 443,
+            "func": "get_real_modname",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 109,
+            "func": "for_module",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 30,
+            "func": "get_module_source",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 78,
+            "func": "for_string",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 129,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 169,
+            "func": "find_attr_docs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 144,
+            "func": "analyze",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 539,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 20,
+            "func": "filter_whitespace",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 549,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 554,
+            "func": "parse_comments",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/ast.py",
+            "line": 39,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 318,
+            "func": "visit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 425,
+            "func": "visit_ClassDef",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 241,
+            "func": "add_entry",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 230,
+            "func": "get_qualname_for",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 271,
+            "func": "is_final",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 397,
+            "func": "visit_Expr",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 438,
+            "func": "visit_FunctionDef",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 287,
+            "func": "is_overload",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 565,
+            "func": "parse_definition",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 131,
+            "func": "fetch_token",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 123,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 99,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 111,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 112,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 144,
+            "func": "fetch_until",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 520,
+            "func": "finalize_block",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 127,
+            "func": "get_line",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 470,
+            "func": "add_definition",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1717,
+            "func": "get_doc",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 801,
+            "func": "getdoc",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 811,
+            "func": "getdoc_internal",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 188,
+            "func": "ispartial",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1767,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 52,
+            "func": "prepare_docstring",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 582,
+            "func": "get_sourcename",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 365,
+            "func": "add_line",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1597,
+            "func": "format_signature",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1583,
+            "func": "_find_signature",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1197,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 482,
+            "func": "_call_format_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1564,
+            "func": "format_args",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1486,
+            "func": "_get_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1487,
+            "func": "get_user_defined_function_or_method",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 439,
+            "func": "is_builtin_class_method",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 107,
+            "func": "getmro",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 450,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 424,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 80,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/ext/autodoc/preserve_defaults.py",
+            "line": 62,
+            "func": "update_defvalue",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 107,
+            "func": "update_annotations_using_type_comments",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 79,
+            "func": "get_type_comment",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 558,
+            "func": "signature",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 547,
+            "func": "_should_unwrap",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 98,
+            "func": "getglobals",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 530,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 671,
+            "func": "stringify_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 106,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/typehints.py",
+            "line": 15,
+            "func": "record_typehints",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1629,
+            "func": "get_overloaded_signatures",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1660,
+            "func": "add_directive_header",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 471,
+            "func": "format_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 258,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1646,
+            "func": "get_canonical_fullname",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1781,
+            "func": "add_content",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 567,
+            "func": "process_doc",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1803,
+            "func": "document_members",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1698,
+            "func": "get_object_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 232,
+            "func": "get_class_members",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 167,
+            "func": "isenumclass",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 131,
+            "func": "getslots",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 35,
+            "func": "unmangle",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 279,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 89,
+            "func": "getannotations",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 667,
+            "func": "filter_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 193,
+            "func": "isclassmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 15,
+            "func": "separate_metadata",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 441,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 682,
+            "func": "is_filtered_inherited_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 360,
+            "func": "documenters",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1008,
+            "func": "can_document_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 154,
+            "func": "isNewType",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 305,
+            "func": "isfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 53,
+            "func": "unwrap_all",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 209,
+            "func": "isstaticmethod",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 315,
+            "func": "isroutine",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 254,
+            "func": "isattributedescriptor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 228,
+            "func": "isdescriptor",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 40,
+            "func": "unwrap",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 352,
+            "func": "isproperty",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 846,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 865,
+            "func": "sort_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 296,
+            "func": "is_singledispatch_method",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 236,
+            "func": "isabstractmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 320,
+            "func": "iscoroutinefunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 322,
+            "func": "iswrappedcoroutine",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 342,
+            "func": "isasyncgenfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "tests/conftest.py",
+            "line": 31,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/testing/comparer.py",
+            "line": 89,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "tests/test_ext_autodoc_inherited_members.py::test_inherited_members_three_base_classes": {
+        "exception_frames": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 53,
+            "func": "test_inherited_members_three_base_classes",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 53,
+            "func": "test_inherited_members_three_base_classes",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 74,
+            "func": "process_documenter_options",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/config.py",
+            "line": 257,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 86,
+            "func": "members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 112,
+            "func": "inherited_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/util/docutils.py",
+            "line": 299,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 45,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1455,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 171,
+            "func": "merge_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1808,
+            "func": "generate",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 383,
+            "func": "parse_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 132,
+            "func": "mock",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1134,
+            "func": "resolve_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 126,
+            "func": "invalidate_caches",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1475,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 69,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 120,
+            "func": "log",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 130,
+            "func": "process",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 54,
+            "func": "import_module",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 269,
+            "func": "skip_warningiserror",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 24,
+            "func": "mangle",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 325,
+            "func": "get_attr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 2835,
+            "func": "autodoc_attrgetter",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 377,
+            "func": "safe_getattr",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 154,
+            "func": "ismock",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 443,
+            "func": "get_real_modname",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 109,
+            "func": "for_module",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 30,
+            "func": "get_module_source",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 78,
+            "func": "for_string",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 129,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 169,
+            "func": "find_attr_docs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 144,
+            "func": "analyze",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 539,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 20,
+            "func": "filter_whitespace",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 549,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 554,
+            "func": "parse_comments",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/ast.py",
+            "line": 39,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 318,
+            "func": "visit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 425,
+            "func": "visit_ClassDef",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 241,
+            "func": "add_entry",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 230,
+            "func": "get_qualname_for",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 271,
+            "func": "is_final",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 397,
+            "func": "visit_Expr",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 438,
+            "func": "visit_FunctionDef",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 287,
+            "func": "is_overload",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 565,
+            "func": "parse_definition",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 131,
+            "func": "fetch_token",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 123,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 99,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 111,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 112,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 144,
+            "func": "fetch_until",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 520,
+            "func": "finalize_block",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 127,
+            "func": "get_line",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 470,
+            "func": "add_definition",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1717,
+            "func": "get_doc",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 801,
+            "func": "getdoc",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 811,
+            "func": "getdoc_internal",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 188,
+            "func": "ispartial",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1767,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 52,
+            "func": "prepare_docstring",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 582,
+            "func": "get_sourcename",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 365,
+            "func": "add_line",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1597,
+            "func": "format_signature",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1583,
+            "func": "_find_signature",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1197,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 482,
+            "func": "_call_format_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1564,
+            "func": "format_args",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1486,
+            "func": "_get_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1487,
+            "func": "get_user_defined_function_or_method",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 439,
+            "func": "is_builtin_class_method",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 107,
+            "func": "getmro",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 450,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 424,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 80,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/ext/autodoc/preserve_defaults.py",
+            "line": 62,
+            "func": "update_defvalue",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 107,
+            "func": "update_annotations_using_type_comments",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 79,
+            "func": "get_type_comment",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 558,
+            "func": "signature",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 547,
+            "func": "_should_unwrap",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 98,
+            "func": "getglobals",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 530,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 671,
+            "func": "stringify_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 106,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/typehints.py",
+            "line": 15,
+            "func": "record_typehints",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1629,
+            "func": "get_overloaded_signatures",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1660,
+            "func": "add_directive_header",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 471,
+            "func": "format_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 258,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1646,
+            "func": "get_canonical_fullname",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1781,
+            "func": "add_content",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 567,
+            "func": "process_doc",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1803,
+            "func": "document_members",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1698,
+            "func": "get_object_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 232,
+            "func": "get_class_members",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 167,
+            "func": "isenumclass",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 131,
+            "func": "getslots",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 35,
+            "func": "unmangle",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 279,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 89,
+            "func": "getannotations",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 667,
+            "func": "filter_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 193,
+            "func": "isclassmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 15,
+            "func": "separate_metadata",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 441,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 682,
+            "func": "is_filtered_inherited_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 360,
+            "func": "documenters",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1008,
+            "func": "can_document_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 154,
+            "func": "isNewType",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 305,
+            "func": "isfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 53,
+            "func": "unwrap_all",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 209,
+            "func": "isstaticmethod",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 315,
+            "func": "isroutine",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 254,
+            "func": "isattributedescriptor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 228,
+            "func": "isdescriptor",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 40,
+            "func": "unwrap",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 352,
+            "func": "isproperty",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 846,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 865,
+            "func": "sort_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 296,
+            "func": "is_singledispatch_method",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 236,
+            "func": "isabstractmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 320,
+            "func": "iscoroutinefunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 322,
+            "func": "iswrappedcoroutine",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 342,
+            "func": "isasyncgenfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "tests/conftest.py",
+            "line": 31,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/testing/comparer.py",
+            "line": 89,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      },
+      "tests/test_ext_autodoc_inherited_members.py::test_inherited_members_with_builtin_types": {
+        "exception_frames": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 80,
+            "func": "test_inherited_members_with_builtin_types",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/test_ext_autodoc_inherited_members.py",
+            "line": 80,
+            "func": "test_inherited_members_with_builtin_types",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/test_ext_autodoc.py",
+            "line": 28,
+            "func": "do_autodoc",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 74,
+            "func": "process_documenter_options",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/config.py",
+            "line": 257,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 86,
+            "func": "members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 112,
+            "func": "inherited_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/util/docutils.py",
+            "line": 299,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/directive.py",
+            "line": 45,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1455,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 171,
+            "func": "merge_members_option",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1808,
+            "func": "generate",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 383,
+            "func": "parse_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 132,
+            "func": "mock",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 111,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1134,
+            "func": "resolve_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 126,
+            "func": "invalidate_caches",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1475,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 69,
+            "func": "import_object",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 120,
+            "func": "log",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 130,
+            "func": "process",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 54,
+            "func": "import_module",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/logging.py",
+            "line": 269,
+            "func": "skip_warningiserror",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 24,
+            "func": "mangle",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 325,
+            "func": "get_attr",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 2835,
+            "func": "autodoc_attrgetter",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 377,
+            "func": "safe_getattr",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/mock.py",
+            "line": 154,
+            "func": "ismock",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 443,
+            "func": "get_real_modname",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 109,
+            "func": "for_module",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 30,
+            "func": "get_module_source",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 78,
+            "func": "for_string",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 129,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 169,
+            "func": "find_attr_docs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/pycode/__init__.py",
+            "line": 144,
+            "func": "analyze",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 539,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 20,
+            "func": "filter_whitespace",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 549,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 554,
+            "func": "parse_comments",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/ast.py",
+            "line": 39,
+            "func": "parse",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 318,
+            "func": "visit",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 425,
+            "func": "visit_ClassDef",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 241,
+            "func": "add_entry",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 230,
+            "func": "get_qualname_for",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 271,
+            "func": "is_final",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 397,
+            "func": "visit_Expr",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 438,
+            "func": "visit_FunctionDef",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 287,
+            "func": "is_overload",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 565,
+            "func": "parse_definition",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 131,
+            "func": "fetch_token",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 123,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 99,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 111,
+            "func": "match",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 112,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 144,
+            "func": "fetch_until",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 520,
+            "func": "finalize_block",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 127,
+            "func": "get_line",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/pycode/parser.py",
+            "line": 470,
+            "func": "add_definition",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1717,
+            "func": "get_doc",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 801,
+            "func": "getdoc",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 811,
+            "func": "getdoc_internal",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 188,
+            "func": "ispartial",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1767,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 52,
+            "func": "prepare_docstring",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 582,
+            "func": "get_sourcename",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 365,
+            "func": "add_line",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1597,
+            "func": "format_signature",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1583,
+            "func": "_find_signature",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1197,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 482,
+            "func": "_call_format_args",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1564,
+            "func": "format_args",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1486,
+            "func": "_get_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1487,
+            "func": "get_user_defined_function_or_method",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 439,
+            "func": "is_builtin_class_method",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 107,
+            "func": "getmro",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 450,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 424,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 80,
+            "func": "emit",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/ext/autodoc/preserve_defaults.py",
+            "line": 62,
+            "func": "update_defvalue",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 107,
+            "func": "update_annotations_using_type_comments",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/ext/autodoc/type_comment.py",
+            "line": 79,
+            "func": "get_type_comment",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 558,
+            "func": "signature",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 547,
+            "func": "_should_unwrap",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 98,
+            "func": "getglobals",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 530,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 671,
+            "func": "stringify_signature",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 399,
+            "func": "object_description",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/events.py",
+            "line": 106,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/typehints.py",
+            "line": 15,
+            "func": "record_typehints",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1629,
+            "func": "get_overloaded_signatures",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1660,
+            "func": "add_directive_header",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 471,
+            "func": "format_name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 258,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1646,
+            "func": "get_canonical_fullname",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1781,
+            "func": "add_content",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 567,
+            "func": "process_doc",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1803,
+            "func": "document_members",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1698,
+            "func": "get_object_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 232,
+            "func": "get_class_members",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 167,
+            "func": "isenumclass",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 131,
+            "func": "getslots",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/importer.py",
+            "line": 35,
+            "func": "unmangle",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 279,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 89,
+            "func": "getannotations",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 667,
+            "func": "filter_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 193,
+            "func": "isclassmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/docstrings.py",
+            "line": 15,
+            "func": "separate_metadata",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/application.py",
+            "line": 441,
+            "func": "emit_firstresult",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 682,
+            "func": "is_filtered_inherited_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 360,
+            "func": "documenters",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 1008,
+            "func": "can_document_member",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 154,
+            "func": "isNewType",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 305,
+            "func": "isfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 53,
+            "func": "unwrap_all",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 209,
+            "func": "isstaticmethod",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 310,
+            "func": "isbuiltin",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 315,
+            "func": "isroutine",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 254,
+            "func": "isattributedescriptor",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 228,
+            "func": "isdescriptor",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 40,
+            "func": "unwrap",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 246,
+            "func": "is_cython_function_or_method",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 352,
+            "func": "isproperty",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 846,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/ext/autodoc/__init__.py",
+            "line": 865,
+            "func": "sort_members",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 296,
+            "func": "is_singledispatch_method",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 236,
+            "func": "isabstractmethod",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 320,
+            "func": "iscoroutinefunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 322,
+            "func": "iswrappedcoroutine",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "sphinx/util/inspect.py",
+            "line": 342,
+            "func": "isasyncgenfunction",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "tests/conftest.py",
+            "line": 31,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sphinx/testing/comparer.py",
+            "line": 89,
+            "func": "pytest_assertrepr_compare",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "sphinx-doc__sphinx-10325",
+  "messages": []
+}

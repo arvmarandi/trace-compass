@@ -1,0 +1,752 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/sklearn/cluster/tests/test_affinity_propagation_non_convergence.py b/sklearn/cluster/tests/test_affinity_propagation_non_convergence.py\nnew file mode 100644\nindex 000000000..7aa6465b2\n--- /dev/null\n+++ b/sklearn/cluster/tests/test_affinity_propagation_non_convergence.py\n@@ -0,0 +1,171 @@\n+\"\"\"\n+Testing for Affinity Propagation non-convergence behavior\n+\n+These tests verify that when the affinity propagation algorithm does not\n+converge, it returns:\n+- An empty array as cluster_centers_indices_ (or empty array for cluster_centers_)\n+- -1 as label for each training sample\n+\n+This addresses the bug described in the PR where non-converged affinity\n+propagation was returning actual cluster centers and labels instead of\n+the expected \"not converged\" values.\n+\n+The bug occurs when max_iter is reached without convergence. In this case:\n+- n_iter_ equals max_iter (algorithm exhausted all iterations)\n+- But cluster_centers_indices_ should be empty\n+- And labels_ should all be -1\n+\n+See: https://github.com/scikit-learn/scikit-learn/issues/XXXXX\n+\"\"\"\n+\n+import numpy as np\n+import pytest\n+import warnings\n+\n+from sklearn.exceptions import ConvergenceWarning\n+from sklearn.utils._testing import assert_array_equal\n+\n+from sklearn.cluster import AffinityPropagation, affinity_propagation\n+from sklearn.metrics import euclidean_distances\n+\n+\n+def test_affinity_propagation_non_convergence_returns_empty_centers():\n+    \"\"\"Test that non-convergence with small data returns proper values.\n+    \n+    This is a regression test for the bug where AffinityPropagation with\n+    max_iter that doesn't allow convergence would still return non-empty\n+    cluster centers and valid labels instead of empty arrays and -1 labels.\n+    \n+    The documentation states:\n+    \"When the algorithm does not converge, it returns an empty array as\n+    cluster_center_indices and -1 as label for each training sample.\"\n+    \n+    The bug: When max_iter is reached without convergence (n_iter_ == max_iter),\n+    the algorithm should return empty cluster_centers_ and labels = -1,\n+    but instead it returns the cluster centers from the last iteration.\n+    \"\"\"\n+    # Small data that requires ~16 iterations to converge\n+    X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n+                 dtype=float)\n+    \n+    # Force non-convergence by setting max_iter less than convergence point\n+    # This data converges at ~16 iterations, so max_iter=15 should not converge\n+    af = AffinityPropagation(affinity='euclidean', max_iter=15, damping=0.5)\n+    af.fit(X)\n+    \n+    # Verify the algorithm did NOT converge (n_iter_ == max_iter)\n+    assert af.n_iter_ == 15, \"This test requires that the algorithm doesn't converge\"\n+    \n+    # Cluster centers should be empty when not converged\n+    # (BUG: currently it returns non-empty cluster centers)\n+    assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\n+    \n+    # All labels should be -1 (noise) when not converged\n+    # (BUG: currently it returns labels like [0, 0, 0])\n+    assert_array_equal(np.array([-1, -1, -1]), af.labels_)\n+    \n+    # cluster_centers_indices_ should be empty when not converged\n+    # (BUG: currently it returns [2])\n+    assert_array_equal(np.array([], dtype=int), af.cluster_centers_indices_)\n+\n+\n+def test_affinity_propagation_non_convergence_verbose_message():\n+    \"\"\"Test that the verbose message correctly indicates non-convergence.\n+    \n+    When the algorithm doesn't converge, it should print \"Did not converge\"\n+    and return empty centers and -1 labels.\n+    \"\"\"\n+    # Small data that requires ~16 iterations to converge\n+    X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n+                 dtype=float)\n+    \n+    # Force non-convergence with verbose=True to capture the message\n+    af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5, verbose=True)\n+    \n+    import io\n+    import sys\n+    \n+    # Capture stdout\n+    old_stdout = sys.stdout\n+    sys.stdout = io.StringIO()\n+    \n+    af.fit(X)\n+    \n+    output = sys.stdout.getvalue()\n+    sys.stdout = old_stdout\n+    \n+    # Check that \"Did not converge\" was printed\n+    assert \"Did not converge\" in output\n+    \n+    # Check that results are empty/-1\n+    assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\n+    assert_array_equal(np.array([-1, -1, -1]), af.labels_)\n+\n+\n+def test_affinity_propagation_convergence_returns_valid_values():\n+    \"\"\"Test that when algorithm converges properly, it returns valid values.\n+    \n+    This is a sanity check to ensure that the fix doesn't break normal\n+    convergence behavior.\n+    \"\"\"\n+    # Create data that will clearly converge\n+    X = np.array([[0, 0], [0, 1], [10, 10], [10, 11]], dtype=float)\n+    \n+    # Use enough iterations for convergence\n+    af = AffinityPropagation(max_iter=200, damping=0.5)\n+    af.fit(X)\n+    \n+    # Should have cluster centers (n_iter_ < max_iter means converged)\n+    assert af.n_iter_ < 200\n+    assert af.cluster_centers_.shape[0] > 0\n+    \n+    # Labels should not all be -1\n+    assert not np.all(af.labels_ == -1)\n+    \n+    # Should have valid cluster_center_indices_\n+    assert len(af.cluster_centers_indices_) > 0\n+\n+\n+def test_affinity_propagation_max_iter_edge_case():\n+    \"\"\"Test the edge case where algorithm stops exactly at max_iter.\n+    \n+    When n_iter_ == max_iter, the algorithm exhausted all iterations\n+    without converging and should return empty centers and -1 labels.\n+    \"\"\"\n+    # Data that requires more iterations to converge\n+    X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n+                 dtype=float)\n+    \n+    # Set max_iter to a value that doesn't allow convergence\n+    # The algorithm converges at ~16 iterations\n+    af = AffinityPropagation(affinity='euclidean', max_iter=12, damping=0.5)\n+    af.fit(X)\n+    \n+    # Verify we hit the iteration limit\n+    assert af.n_iter_ == 12\n+    \n+    # Should return empty results\n+    assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\n+    assert_array_equal(np.array([-1, -1, -1]), af.labels_)\n+    assert_array_equal(np.array([], dtype=int), af.cluster_centers_indices_)\n+\n+\n+def test_affinity_propagation_predict_on_non_converged():\n+    \"\"\"Test that predict returns -1 for all samples when model didn't converge.\n+    \"\"\"\n+    # Use data that converges at ~16 iterations\n+    X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n+                 dtype=float)\n+    \n+    # Force non-convergence by using max_iter < convergence point\n+    af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5)\n+    af.fit(X)\n+    \n+    # Verify we didn't converge\n+    assert af.n_iter_ == 10\n+    \n+    # Predict should return -1 for all samples when there are no cluster centers\n+    # Use same feature dimension as training data\n+    to_predict = np.array([[2, 2, 2, 2, 2, 2], [3, 3, 3, 3, 3, 3], [4, 4, 4, 4, 4, 4]])\n+    y = af.predict(to_predict)\n+    assert_array_equal(np.array([-1, -1, -1]), y)\n",
+    "stack_traces": [
+      "_______ test_affinity_propagation_non_convergence_returns_empty_centers ________\n\n    def test_affinity_propagation_non_convergence_returns_empty_centers():\n        \"\"\"Test that non-convergence with small data returns proper values.\n    \n        This is a regression test for the bug where AffinityPropagation with\n        max_iter that doesn't allow convergence would still return non-empty\n        cluster centers and valid labels instead of empty arrays and -1 labels.\n    \n        The documentation states:\n        \"When the algorithm does not converge, it returns an empty array as\n        cluster_center_indices and -1 as label for each training sample.\"\n    \n        The bug: When max_iter is reached without convergence (n_iter_ == max_iter),\n        the algorithm should return empty cluster_centers_ and labels = -1,\n        but instead it returns the cluster centers from the last iteration.\n        \"\"\"\n        # Small data that requires ~16 iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence by setting max_iter less than convergence point\n        # This data converges at ~16 iterations, so max_iter=15 should not converge\n        af = AffinityPropagation(affinity='euclidean', max_iter=15, damping=0.5)\n        af.fit(X)\n    \n        # Verify the algorithm did NOT converge (n_iter_ == max_iter)\n        assert af.n_iter_ == 15, \"This test requires that the algorithm doesn't converge\"\n    \n        # Cluster centers should be empty when not converged\n        # (BUG: currently it returns non-empty cluster centers)\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:61: AssertionError\n__________ test_affinity_propagation_non_convergence_verbose_message ___________\n\n    def test_affinity_propagation_non_convergence_verbose_message():\n        \"\"\"Test that the verbose message correctly indicates non-convergence.\n    \n        When the algorithm doesn't converge, it should print \"Did not converge\"\n        and return empty centers and -1 labels.\n        \"\"\"\n        # Small data that requires ~16 iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence with verbose=True to capture the message\n        af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5, verbose=True)\n    \n        import io\n        import sys\n    \n        # Capture stdout\n        old_stdout = sys.stdout\n        sys.stdout = io.StringIO()\n    \n        af.fit(X)\n    \n        output = sys.stdout.getvalue()\n        sys.stdout = old_stdout\n    \n        # Check that \"Did not converge\" was printed\n        assert \"Did not converge\" in output\n    \n        # Check that results are empty/-1\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:101: AssertionError\n_________________ test_affinity_propagation_max_iter_edge_case _________________\n\n    def test_affinity_propagation_max_iter_edge_case():\n        \"\"\"Test the edge case where algorithm stops exactly at max_iter.\n    \n        When n_iter_ == max_iter, the algorithm exhausted all iterations\n        without converging and should return empty centers and -1 labels.\n        \"\"\"\n        # Data that requires more iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Set max_iter to a value that doesn't allow convergence\n        # The algorithm converges at ~16 iterations\n        af = AffinityPropagation(affinity='euclidean', max_iter=12, damping=0.5)\n        af.fit(X)\n    \n        # Verify we hit the iteration limit\n        assert af.n_iter_ == 12\n    \n        # Should return empty results\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:148: AssertionError\n______________ test_affinity_propagation_predict_on_non_converged ______________\n\n    def test_affinity_propagation_predict_on_non_converged():\n        \"\"\"Test that predict returns -1 for all samples when model didn't converge.\n        \"\"\"\n        # Use data that converges at ~16 iterations\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence by using max_iter < convergence point\n        af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5)\n        af.fit(X)\n    \n        # Verify we didn't converge\n        assert af.n_iter_ == 10\n    \n        # Predict should return -1 for all samples when there are no cluster centers\n        # Use same feature dimension as training data\n        to_predict = np.array([[2, 2, 2, 2, 2, 2], [3, 3, 3, 3, 3, 3], [4, 4, 4, 4, 4, 4]])\n        y = af.predict(to_predict)\n>       assert_array_equal(np.array([-1, -1, -1]), y)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       Mismatched elements: 3 / 3 (100%)\nE       Max absolute difference: 1\nE       Max relative difference: inf\nE        x: array([-1, -1, -1])\nE        y: array([0, 0, 0])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:171: AssertionError"
+    ],
+    "test_output": "ERROR conda.cli.main_run:execute(124): `conda run python -m pytest --tb=long -r f --color=no /testbed/sklearn/cluster/tests/test_affinity_propagation_non_convergence.py` failed. (See above for error)\n============================= test session starts ==============================\nplatform linux -- Python 3.6.13, pytest-6.2.4, py-1.11.0, pluggy-0.13.1\nrootdir: /testbed, configfile: setup.cfg\ncollected 5 items\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py FF.FF [100%]\n\n=================================== FAILURES ===================================\n_______ test_affinity_propagation_non_convergence_returns_empty_centers ________\n\n    def test_affinity_propagation_non_convergence_returns_empty_centers():\n        \"\"\"Test that non-convergence with small data returns proper values.\n    \n        This is a regression test for the bug where AffinityPropagation with\n        max_iter that doesn't allow convergence would still return non-empty\n        cluster centers and valid labels instead of empty arrays and -1 labels.\n    \n        The documentation states:\n        \"When the algorithm does not converge, it returns an empty array as\n        cluster_center_indices and -1 as label for each training sample.\"\n    \n        The bug: When max_iter is reached without convergence (n_iter_ == max_iter),\n        the algorithm should return empty cluster_centers_ and labels = -1,\n        but instead it returns the cluster centers from the last iteration.\n        \"\"\"\n        # Small data that requires ~16 iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence by setting max_iter less than convergence point\n        # This data converges at ~16 iterations, so max_iter=15 should not converge\n        af = AffinityPropagation(affinity='euclidean', max_iter=15, damping=0.5)\n        af.fit(X)\n    \n        # Verify the algorithm did NOT converge (n_iter_ == max_iter)\n        assert af.n_iter_ == 15, \"This test requires that the algorithm doesn't converge\"\n    \n        # Cluster centers should be empty when not converged\n        # (BUG: currently it returns non-empty cluster centers)\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:61: AssertionError\n__________ test_affinity_propagation_non_convergence_verbose_message ___________\n\n    def test_affinity_propagation_non_convergence_verbose_message():\n        \"\"\"Test that the verbose message correctly indicates non-convergence.\n    \n        When the algorithm doesn't converge, it should print \"Did not converge\"\n        and return empty centers and -1 labels.\n        \"\"\"\n        # Small data that requires ~16 iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence with verbose=True to capture the message\n        af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5, verbose=True)\n    \n        import io\n        import sys\n    \n        # Capture stdout\n        old_stdout = sys.stdout\n        sys.stdout = io.StringIO()\n    \n        af.fit(X)\n    \n        output = sys.stdout.getvalue()\n        sys.stdout = old_stdout\n    \n        # Check that \"Did not converge\" was printed\n        assert \"Did not converge\" in output\n    \n        # Check that results are empty/-1\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:101: AssertionError\n_________________ test_affinity_propagation_max_iter_edge_case _________________\n\n    def test_affinity_propagation_max_iter_edge_case():\n        \"\"\"Test the edge case where algorithm stops exactly at max_iter.\n    \n        When n_iter_ == max_iter, the algorithm exhausted all iterations\n        without converging and should return empty centers and -1 labels.\n        \"\"\"\n        # Data that requires more iterations to converge\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Set max_iter to a value that doesn't allow convergence\n        # The algorithm converges at ~16 iterations\n        af = AffinityPropagation(affinity='euclidean', max_iter=12, damping=0.5)\n        af.fit(X)\n    \n        # Verify we hit the iteration limit\n        assert af.n_iter_ == 12\n    \n        # Should return empty results\n>       assert_array_equal(np.empty((0, X.shape[1])), af.cluster_centers_)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       (shapes (0, 6), (1, 6) mismatch)\nE        x: array([], shape=(0, 6), dtype=float64)\nE        y: array([[0., 0., 1., 0., 0., 1.]])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:148: AssertionError\n______________ test_affinity_propagation_predict_on_non_converged ______________\n\n    def test_affinity_propagation_predict_on_non_converged():\n        \"\"\"Test that predict returns -1 for all samples when model didn't converge.\n        \"\"\"\n        # Use data that converges at ~16 iterations\n        X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]],\n                     dtype=float)\n    \n        # Force non-convergence by using max_iter < convergence point\n        af = AffinityPropagation(affinity='euclidean', max_iter=10, damping=0.5)\n        af.fit(X)\n    \n        # Verify we didn't converge\n        assert af.n_iter_ == 10\n    \n        # Predict should return -1 for all samples when there are no cluster centers\n        # Use same feature dimension as training data\n        to_predict = np.array([[2, 2, 2, 2, 2, 2], [3, 3, 3, 3, 3, 3], [4, 4, 4, 4, 4, 4]])\n        y = af.predict(to_predict)\n>       assert_array_equal(np.array([-1, -1, -1]), y)\nE       AssertionError: \nE       Arrays are not equal\nE       \nE       Mismatched elements: 3 / 3 (100%)\nE       Max absolute difference: 1\nE       Max relative difference: inf\nE        x: array([-1, -1, -1])\nE        y: array([0, 0, 0])\n\nsklearn/cluster/tests/test_affinity_propagation_non_convergence.py:171: AssertionError\n=========================== short test summary info ============================\nFAILED sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_non_convergence_returns_empty_centers\nFAILED sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_non_convergence_verbose_message\nFAILED sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_max_iter_edge_case\nFAILED sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_predict_on_non_converged\n========================= 4 failed, 1 passed in 0.23s ==========================\n\n",
+    "settrace_traces": {
+      "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_non_convergence_returns_empty_centers": {
+        "exception_frames": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 32,
+            "func": "test_affinity_propagation_non_convergence_returns_empty_centers",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 32,
+            "func": "test_affinity_propagation_non_convergence_returns_empty_centers",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 336,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 195,
+            "func": "euclidean_distances",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 61,
+            "func": "check_pairwise_arrays",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 37,
+            "func": "_return_float_dtype",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 49,
+            "func": "row_norms",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 118,
+            "func": "safe_sparse_dot",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 33,
+            "func": "affinity_propagation",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 79,
+            "func": "as_float_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 19,
+            "func": "_equal_similarities_and_preferences",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 20,
+            "func": "all_equal_preferences",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 23,
+            "func": "all_equal_similarities",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_non_convergence_verbose_message": {
+        "exception_frames": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 72,
+            "func": "test_affinity_propagation_non_convergence_verbose_message",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 72,
+            "func": "test_affinity_propagation_non_convergence_verbose_message",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 336,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 195,
+            "func": "euclidean_distances",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 61,
+            "func": "check_pairwise_arrays",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 37,
+            "func": "_return_float_dtype",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 49,
+            "func": "row_norms",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 118,
+            "func": "safe_sparse_dot",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 33,
+            "func": "affinity_propagation",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 79,
+            "func": "as_float_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 19,
+            "func": "_equal_similarities_and_preferences",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 20,
+            "func": "all_equal_preferences",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 23,
+            "func": "all_equal_similarities",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_max_iter_edge_case": {
+        "exception_frames": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 129,
+            "func": "test_affinity_propagation_max_iter_edge_case",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 129,
+            "func": "test_affinity_propagation_max_iter_edge_case",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 336,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 195,
+            "func": "euclidean_distances",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 61,
+            "func": "check_pairwise_arrays",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 37,
+            "func": "_return_float_dtype",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 49,
+            "func": "row_norms",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 118,
+            "func": "safe_sparse_dot",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 33,
+            "func": "affinity_propagation",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 79,
+            "func": "as_float_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 19,
+            "func": "_equal_similarities_and_preferences",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 20,
+            "func": "all_equal_preferences",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 23,
+            "func": "all_equal_similarities",
+            "is_test": false,
+            "call_depth": 4
+          }
+        ]
+      },
+      "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py::test_affinity_propagation_predict_on_non_converged": {
+        "exception_frames": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 153,
+            "func": "test_affinity_propagation_predict_on_non_converged",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "sklearn/cluster/tests/test_affinity_propagation_non_convergence.py",
+            "line": 153,
+            "func": "test_affinity_propagation_predict_on_non_converged",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 336,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 352,
+            "func": "fit",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 338,
+            "func": "check_array",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 331,
+            "func": "_ensure_no_complex_data",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 36,
+            "func": "_assert_all_finite",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/_config.py",
+            "line": 13,
+            "func": "get_config",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 681,
+            "func": "_safe_accumulator_op",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 135,
+            "func": "_num_samples",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 195,
+            "func": "euclidean_distances",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 61,
+            "func": "check_pairwise_arrays",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 37,
+            "func": "_return_float_dtype",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 49,
+            "func": "row_norms",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/utils/extmath.py",
+            "line": 118,
+            "func": "safe_sparse_dot",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 33,
+            "func": "affinity_propagation",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 79,
+            "func": "as_float_array",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 19,
+            "func": "_equal_similarities_and_preferences",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 20,
+            "func": "all_equal_preferences",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 23,
+            "func": "all_equal_similarities",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/cluster/_affinity_propagation.py",
+            "line": 396,
+            "func": "predict",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 887,
+            "func": "check_is_fitted",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/utils/validation.py",
+            "line": 946,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 587,
+            "func": "pairwise_distances_argmin",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 501,
+            "func": "pairwise_distances_argmin_min",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1440,
+            "func": "pairwise_distances_chunked",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 930,
+            "func": "get_chunk_n_rows",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1422,
+            "func": "_precompute_metric_params",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/utils/__init__.py",
+            "line": 741,
+            "func": "gen_batches",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1601,
+            "func": "pairwise_distances",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1334,
+            "func": "_parallel_pairwise",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 495,
+            "func": "_argmin_min_reduce",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1403,
+            "func": "_check_chunk_size",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "sklearn/metrics/pairwise.py",
+            "line": 1409,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "scikit-learn__scikit-learn-15512",
+  "messages": []
+}

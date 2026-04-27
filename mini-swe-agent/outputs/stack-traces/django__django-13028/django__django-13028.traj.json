@@ -1,0 +1,998 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/queries/test_filterable_field.py b/tests/queries/test_filterable_field.py\nnew file mode 100644\nindex 0000000000..783126a08d\n--- /dev/null\n+++ b/tests/queries/test_filterable_field.py\n@@ -0,0 +1,92 @@\n+\"\"\"\n+Tests for using model instances with a 'filterable' field as filter values.\n+Regression test for #31674.\n+\"\"\"\n+from django.db import models\n+from django.test import TestCase\n+\n+from .models import Tag\n+\n+\n+class ProductMetaDataType(models.Model):\n+    \"\"\"Model with a field named 'filterable'.\"\"\"\n+    label = models.CharField(max_length=255, unique=True, blank=False, null=False)\n+    filterable = models.BooleanField(default=False, verbose_name=\"filterable\")\n+    \n+    class Meta:\n+        app_label = \"queries\"\n+\n+\n+class ProductMetaData(models.Model):\n+    \"\"\"Model that has a ForeignKey to a model with a 'filterable' field.\"\"\"\n+    value = models.TextField(null=False, blank=False)\n+    metadata_type = models.ForeignKey(\n+        ProductMetaDataType, null=False, blank=False, on_delete=models.CASCADE\n+    )\n+    \n+    class Meta:\n+        app_label = \"queries\"\n+\n+\n+class FilterableAttributeTests(TestCase):\n+    \"\"\"\n+    Test that filtering with model instances that have a field named 'filterable'\n+    works correctly.\n+    \"\"\"\n+\n+    def test_filter_with_filterable_field_set_to_false(self):\n+        \"\"\"\n+        A model instance with a 'filterable' field set to False should still\n+        be usable as a filter value.\n+        \n+        Regression test for #31674 where using a model with a 'filterable' field\n+        as a filter value would raise NotSupportedError.\n+        \"\"\"\n+        # Create the metadata type with filterable=False\n+        metadata_type = ProductMetaDataType.objects.create(\n+            label=\"brand\",\n+            filterable=False\n+        )\n+        \n+        # Create some metadata\n+        ProductMetaData.objects.create(\n+            value=\"Dark Vador\",\n+            metadata_type=metadata_type\n+        )\n+        \n+        # This should NOT raise NotSupportedError\n+        # The bug was that check_filterable() was checking the 'filterable'\n+        # attribute on the model instance instead of checking if the instance\n+        # is a filterable expression object.\n+        result = ProductMetaData.objects.filter(\n+            value=\"Dark Vador\",\n+            metadata_type=metadata_type\n+        )\n+        \n+        self.assertEqual(result.count(), 1)\n+        self.assertEqual(result.first().value, \"Dark Vador\")\n+    \n+    def test_filter_with_filterable_field_set_to_true(self):\n+        \"\"\"\n+        A model instance with a 'filterable' field set to True should also work.\n+        \"\"\"\n+        # Create the metadata type with filterable=True\n+        metadata_type = ProductMetaDataType.objects.create(\n+            label=\"category\",\n+            filterable=True\n+        )\n+        \n+        # Create some metadata\n+        ProductMetaData.objects.create(\n+            value=\"Electronics\",\n+            metadata_type=metadata_type\n+        )\n+        \n+        # This should also work\n+        result = ProductMetaData.objects.filter(\n+            value=\"Electronics\",\n+            metadata_type=metadata_type\n+        )\n+        \n+        self.assertEqual(result.count(), 1)\n+        self.assertEqual(result.first().value, \"Electronics\")\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_filter_with_filterable_field_set_to_false (queries.test_filterable_field.FilterableAttributeTests) ... ERROR\ntest_filter_with_filterable_field_set_to_true (queries.test_filterable_field.FilterableAttributeTests) ... ok\n\n======================================================================\nERROR: test_filter_with_filterable_field_set_to_false (queries.test_filterable_field.FilterableAttributeTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/queries/test_filterable_field.py\", line 63, in test_filter_with_filterable_field_set_to_false\n    metadata_type=metadata_type\n  File \"/testbed/django/db/models/manager.py\", line 85, in manager_method\n    return getattr(self.get_queryset(), name)(*args, **kwargs)\n  File \"/testbed/django/db/models/query.py\", line 942, in filter\n    return self._filter_or_exclude(False, *args, **kwargs)\n  File \"/testbed/django/db/models/query.py\", line 962, in _filter_or_exclude\n    clone._filter_or_exclude_inplace(negate, *args, **kwargs)\n  File \"/testbed/django/db/models/query.py\", line 969, in _filter_or_exclude_inplace\n    self._query.add_q(Q(*args, **kwargs))\n  File \"/testbed/django/db/models/sql/query.py\", line 1356, in add_q\n    clause, _ = self._add_q(q_object, self.used_aliases)\n  File \"/testbed/django/db/models/sql/query.py\", line 1378, in _add_q\n    split_subq=split_subq, check_filterable=check_filterable,\n  File \"/testbed/django/db/models/sql/query.py\", line 1269, in build_filter\n    self.check_filterable(value)\n  File \"/testbed/django/db/models/sql/query.py\", line 1129, in check_filterable\n    expression.__class__.__name__ + ' is disallowed in the filter '\ndjango.db.utils.NotSupportedError: ProductMetaDataType is disallowed in the filter clause.\n\n----------------------------------------------------------------------\nRan 2 tests in 0.005s\n\nFAILED (errors=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 queries.test_filterable_field` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application queries\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, queries, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table queries_dumbcategory\n    Creating table queries_namedcategory\n    Creating table queries_tag\n    Creating table queries_note\n    Creating table queries_annotation\n    Creating table queries_datetimepk\n    Creating table queries_extrainfo\n    Creating table queries_author\n    Creating table queries_item\n    Creating table queries_report\n    Creating table queries_reportcomment\n    Creating table queries_ranking\n    Creating table queries_cover\n    Creating table queries_number\n    Creating table queries_valid\n    Creating table queries_x\n    Creating table queries_y\n    Creating table queries_loopx\n    Creating table queries_loopy\n    Creating table queries_loopz\n    Creating table queries_managedmodel\n    Creating table queries_detail\n    Creating table queries_member\n    Creating table queries_child\n    Creating table queries_custompk\n    Creating table queries_related\n    Creating table queries_custompktag\n    Creating table queries_celebrity\n    Creating table queries_tvchef\n    Creating table queries_fan\n    Creating table queries_leafa\n    Creating table queries_leafb\n    Creating table queries_join\n    Creating table queries_reservedname\n    Creating table queries_sharedconnection\n    Creating table queries_pointera\n    Creating table queries_pointerb\n    Creating table queries_singleobject\n    Creating table queries_relatedobject\n    Creating table queries_plaything\n    Creating table queries_article\n    Creating table queries_food\n    Creating table queries_eaten\n    Creating table queries_node\n    Creating table queries_objecta\n    Creating table queries_childobjecta\n    Creating table queries_objectb\n    Creating table queries_objectc\n    Creating table queries_simplecategory\n    Creating table queries_specialcategory\n    Creating table queries_categoryitem\n    Creating table queries_mixedcasefieldcategoryitem\n    Creating table queries_mixedcasedbcolumncategoryitem\n    Creating table queries_onetoonecategory\n    Creating table queries_categoryrelationship\n    Creating table queries_commonmixedcaseforeignkeys\n    Creating table queries_nullablename\n    Creating table queries_modeld\n    Creating table queries_modelc\n    Creating table queries_modelb\n    Creating table queries_modela\n    Creating table queries_job\n    Creating table queries_jobresponsibilities\n    Creating table queries_responsibility\n    Creating table queries_fk1\n    Creating table queries_fk2\n    Creating table queries_fk3\n    Creating table queries_basea\n    Creating table queries_identifier\n    Creating table queries_program\n    Creating table queries_channel\n    Creating table queries_book\n    Creating table queries_chapter\n    Creating table queries_paragraph\n    Creating table queries_page\n    Creating table queries_myobject\n    Creating table queries_order\n    Creating table queries_orderitem\n    Creating table queries_baseuser\n    Creating table queries_task\n    Creating table queries_staff\n    Creating table queries_staffuser\n    Creating table queries_ticket21203parent\n    Creating table queries_ticket21203child\n    Creating table queries_person\n    Creating table queries_company\n    Creating table queries_employment\n    Creating table queries_school\n    Creating table queries_student\n    Creating table queries_classroom\n    Creating table queries_teacher\n    Creating table queries_ticket23605aparent\n    Creating table queries_ticket23605a\n    Creating table queries_ticket23605b\n    Creating table queries_ticket23605c\n    Creating table Individual\n    Creating table RelatedIndividual\n    Creating table queries_customdbcolumn\n    Creating table queries_returningmodel\n    Creating table queries_nonintegerpkreturningmodel\n    Creating table queries_jsonfieldnullable\n    Creating table queries_productmetadatatype\n    Creating table queries_productmetadata\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (1 silenced).\n\n",
+    "settrace_traces": {
+      "queries.test_filterable_field.FilterableAttributeTests.test_filter_with_filterable_field_set_to_false": {
+        "exception_frames": [
+          {
+            "file": "tests/queries/test_filterable_field.py",
+            "line": 37,
+            "func": "test_filter_with_filterable_field_set_to_false",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 440,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 406,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/queries/test_filterable_field.py",
+            "line": 37,
+            "func": "test_filter_with_filterable_field_set_to_false",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 177,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 332,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 377,
+            "func": "managers_map",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 379,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 142,
+            "func": "get_queryset",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 187,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 14,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 144,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 440,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 406,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 156,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 467,
+            "func": "concrete_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 59,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 228,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 477,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 829,
+            "func": "get_default",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 833,
+            "func": "_get_default",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 825,
+            "func": "has_default",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 80,
+            "func": "return_None",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1230,
+            "func": "db",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 261,
+            "func": "_route_db",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 667,
+            "func": "save",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 580,
+            "func": "get_deferred_fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 584,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 754,
+            "func": "save_base",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 225,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 216,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 9,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 178,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 95,
+            "func": "mark_for_rollback_on_error",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 805,
+            "func": "_save_parents",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 833,
+            "func": "_save_table",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 480,
+            "func": "local_concrete_fields",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 840,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 568,
+            "func": "_get_pk_val",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 570,
+            "func": "get_pk_value_on_save",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 853,
+            "func": "db_returning_fields",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 747,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 860,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 740,
+            "func": "db_returning",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 376,
+            "func": "_base_manager",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 925,
+            "func": "_do_insert",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1241,
+            "func": "_insert",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/subqueries.py",
+            "line": 140,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/subqueries.py",
+            "line": 146,
+            "func": "insert_values",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 273,
+            "func": "get_compiler",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 333,
+            "func": "compiler",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 29,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1389,
+            "func": "execute_sql",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/utils/asyncio.py",
+            "line": 14,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 256,
+            "func": "cursor",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 234,
+            "func": "_cursor",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 214,
+            "func": "ensure_connection",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 66,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 270,
+            "func": "create_cursor",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 223,
+            "func": "_prepare_cursor",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 544,
+            "func": "validate_thread_sharing",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 529,
+            "func": "allow_thread_sharing",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 152,
+            "func": "queries_logged",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 588,
+            "func": "make_cursor",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 15,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 69,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 32,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1328,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 280,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 359,
+            "func": "insert_statement",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 700,
+            "func": "insert_statement",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 166,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1336,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1340,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1284,
+            "func": "pre_save_val",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 801,
+            "func": "pre_save",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1255,
+            "func": "prepare_value",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 821,
+            "func": "get_db_prep_save",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 811,
+            "func": "get_db_prep_value",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1029,
+            "func": "get_prep_value",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1024,
+            "func": "to_python",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1293,
+            "func": "assemble_as_sql",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1223,
+            "func": "field_as_sql",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 623,
+            "func": "modify_insert_params",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 703,
+            "func": "ignore_conflicts_suffix_sql",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 65,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 71,
+            "func": "_execute_with_wrappers",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 77,
+            "func": "_execute",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/backends/base/base.py",
+            "line": 445,
+            "func": "validate_no_broken_transaction",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 411,
+            "func": "execute",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/sqlite3/base.py",
+            "line": 421,
+            "func": "convert_query",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 238,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 259,
+            "func": "last_insert_id",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 21,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 35,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 433,
+            "func": "fields",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 450,
+            "func": "is_not_an_m2m_field",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 453,
+            "func": "is_not_a_generic_relation",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 456,
+            "func": "is_not_a_generic_foreign_key",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related_descriptors.py",
+            "line": 203,
+            "func": "__set__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 282,
+            "func": "allow_relation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/mixins.py",
+            "line": 21,
+            "func": "is_cached",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 440,
+            "func": "get_cache_name",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 386,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/mixins.py",
+            "line": 24,
+            "func": "set_cached_value",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/related_descriptors.py",
+            "line": 156,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/mixins.py",
+            "line": 12,
+            "func": "get_cached_value",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 135,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 891,
+            "func": "target_field",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 961,
+            "func": "get_db_prep_save",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 470,
+            "func": "validate_autopk_value",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 936,
+            "func": "filter",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1377,
+            "func": "_not_support_combined_queries",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 203,
+            "func": "query",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 952,
+            "func": "_filter_or_exclude",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1801,
+            "func": "is_sliced",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1277,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1289,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 338,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 288,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 142,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 29,
+            "func": "_new_instance",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 965,
+            "func": "_filter_or_exclude_inplace",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 68,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1344,
+            "func": "add_q",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1355,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1364,
+            "func": "_add_q",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1201,
+            "func": "build_filter",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1076,
+            "func": "solve_lookup_type",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1421,
+            "func": "names_to_path",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 524,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 706,
+            "func": "get_path_info",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1125,
+            "func": "check_filterable",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1062,
+            "func": "resolve_lookup_value",
+            "is_test": false,
+            "call_depth": 8
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13028",
+  "messages": []
+}

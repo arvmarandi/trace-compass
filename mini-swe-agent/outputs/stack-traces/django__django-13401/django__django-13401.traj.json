@@ -1,0 +1,258 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/model_meta/test_field_comparison.py b/tests/model_meta/test_field_comparison.py\nnew file mode 100644\nindex 0000000000..5e93a8a15b\n--- /dev/null\n+++ b/tests/model_meta/test_field_comparison.py\n@@ -0,0 +1,211 @@\n+\"\"\"\n+Tests for field comparison behavior, particularly for fields inherited from abstract models.\n+\n+These tests ensure that fields from different models (including fields inherited from\n+abstract models) compare correctly, which is important for proper set deduplication\n+and ordering.\n+\"\"\"\n+from django.db import models\n+from django.test import SimpleTestCase\n+\n+from .models import AbstractPerson, BasePerson, Person\n+\n+\n+class AbstractModel(models.Model):\n+    \"\"\"An abstract model to test field inheritance.\"\"\"\n+    abstract_field = models.IntegerField()\n+\n+    class Meta:\n+        abstract = True\n+\n+\n+class ConcreteModel1(AbstractModel):\n+    \"\"\"First concrete model inheriting from AbstractModel.\"\"\"\n+    class Meta:\n+        app_label = 'model_meta'\n+\n+\n+class ConcreteModel2(AbstractModel):\n+    \"\"\"Second concrete model inheriting from AbstractModel.\"\"\"\n+    class Meta:\n+        app_label = 'model_meta'\n+\n+\n+class FieldComparisonTests(SimpleTestCase):\n+    \"\"\"\n+    Tests for Field.__eq__, Field.__hash__, and Field.__lt__ behavior,\n+    particularly when dealing with fields inherited from abstract models.\n+    \"\"\"\n+\n+    def test_inherited_fields_from_different_models_not_equal(self):\n+        \"\"\"\n+        Fields inherited from an abstract model should not be equal when\n+        they belong to different concrete models.\n+        \n+        Regression test for https://code.djangoproject.com/ticket/XXXXX\n+        \"\"\"\n+        field1 = ConcreteModel1._meta.get_field('abstract_field')\n+        field2 = ConcreteModel2._meta.get_field('abstract_field')\n+        \n+        self.assertIsNot(field1, field2)\n+        self.assertNotEqual(field1, field2)\n+\n+    def test_inherited_fields_set_deduplication(self):\n+        \"\"\"\n+        Fields inherited from an abstract model should not be deduplicated\n+        in a set when they belong to different concrete models.\n+        \n+        This is the core issue: len({B._meta.get_field('myfield'), \n+        C._meta.get_field('myfield')}) should equal 2, not 1.\n+        \"\"\"\n+        field1 = ConcreteModel1._meta.get_field('abstract_field')\n+        field2 = ConcreteModel2._meta.get_field('abstract_field')\n+        \n+        field_set = {field1, field2}\n+        self.assertEqual(len(field_set), 2)\n+\n+    def test_inherited_fields_hash_differs(self):\n+        \"\"\"\n+        Fields from different models should generally have different hashes\n+        (though Python allows unequal objects to have the same hash).\n+        \"\"\"\n+        field1 = ConcreteModel1._meta.get_field('abstract_field')\n+        field2 = ConcreteModel2._meta.get_field('abstract_field')\n+        \n+        # If fields are unequal, the set behavior should be correct\n+        # (they should both be in the set)\n+        field_set = {field1, field2}\n+        self.assertIn(field1, field_set)\n+        self.assertIn(field2, field_set)\n+\n+    def test_inherited_fields_are_orderable(self):\n+        \"\"\"\n+        Fields from different models should be comparable using __lt__.\n+        \n+        If creation_counters are equal, the model should be used as a tiebreaker.\n+        \"\"\"\n+        field1 = ConcreteModel1._meta.get_field('abstract_field')\n+        field2 = ConcreteModel2._meta.get_field('abstract_field')\n+        \n+        # One should be less than the other - they shouldn't compare equal\n+        # (since they're on different models)\n+        self.assertTrue(\n+            (field1 < field2) != (field2 < field1),\n+            \"One field should be less than the other\"\n+        )\n+\n+    def test_same_field_from_same_model_equal(self):\n+        \"\"\"\n+        Getting the same field from the same model multiple times should\n+        return equal field instances (or at least fields that compare equal).\n+        \"\"\"\n+        field1 = Person._meta.get_field('data_abstract')\n+        field2 = Person._meta.get_field('data_abstract')\n+        \n+        self.assertEqual(field1, field2)\n+        self.assertEqual(hash(field1), hash(field2))\n+\n+    def test_inherited_field_vs_own_field_same_model(self):\n+        \"\"\"\n+        A field inherited from an abstract model and a field defined directly\n+        on a model should be different fields.\n+        \"\"\"\n+        # data_abstract is inherited from AbstractPerson\n+        # data_base is defined on BasePerson\n+        # data_inherited is defined on Person\n+        \n+        # Fields on the same model should be different\n+        field_abstract = Person._meta.get_field('data_abstract')\n+        field_base = Person._meta.get_field('data_base')\n+        field_inherited = Person._meta.get_field('data_inherited')\n+        \n+        self.assertNotEqual(field_abstract, field_base)\n+        self.assertNotEqual(field_abstract, field_inherited)\n+        self.assertNotEqual(field_base, field_inherited)\n+\n+    def test_field_comparison_consistency(self):\n+        \"\"\"\n+        Test that field comparison is consistent with its hash.\n+        \n+        If a == b, then hash(a) == hash(b).\n+        \"\"\"\n+        field1 = Person._meta.get_field('data_abstract')\n+        field2 = Person._meta.get_field('data_abstract')\n+        \n+        if field1 == field2:\n+            self.assertEqual(hash(field1), hash(field2))\n+\n+    def test_inherited_fields_from_different_models_hash(self):\n+        \"\"\"\n+        Fields from different models should have different hashes for\n+        proper set behavior (though not strictly required by Python).\n+        \"\"\"\n+        field1 = ConcreteModel1._meta.get_field('abstract_field')\n+        field2 = ConcreteModel2._meta.get_field('abstract_field')\n+        \n+        # This test verifies the expected behavior after the fix\n+        # Fields from different models should have different hashes\n+        self.assertNotEqual(hash(field1), hash(field2),\n+            \"Fields from different models should have different hashes\")\n+\n+    def test_field_lt_ordering_preserved_for_same_model(self):\n+        \"\"\"\n+        Fields from the same model should be ordered by creation_counter.\n+        \n+        This ensures that the fix doesn't break existing ordering behavior\n+        for fields on the same model.\n+        \"\"\"\n+        # Get fields from Person in the order they were defined\n+        fields = [Person._meta.get_field('data_abstract'),\n+                  Person._meta.get_field('data_base'),\n+                  Person._meta.get_field('data_inherited')]\n+        \n+        # They should be orderable and the order should be consistent\n+        # with creation_counter\n+        sorted_fields = sorted(fields)\n+        self.assertEqual(len(sorted_fields), 3)\n+\n+\n+class AbstractFieldEqualityTests(SimpleTestCase):\n+    \"\"\"\n+    Tests that directly reproduce the issue from the PR description.\n+    \n+    The PR describes that:\n+    len({B._meta.get_field('myfield'), C._meta.get_field('myfield')}) == 1\n+    B._meta.get_field('myfield') == C._meta.get_field('myfield')\n+    \n+    Both of these should NOT be true after the fix.\n+    \"\"\"\n+\n+    def test_abstract_field_not_equal_across_models(self):\n+        \"\"\"\n+        Directly from the PR description: fields from different models\n+        that inherit from the same abstract model should not compare equal.\n+        \"\"\"\n+        # This is the exact scenario from the PR description\n+        # Using the model_meta test models\n+        field_b = BasePerson._meta.get_field('data_abstract')\n+        field_person = Person._meta.get_field('data_abstract')\n+        \n+        # The PR specifically states these should NOT be equal\n+        self.assertNotEqual(\n+            field_b, field_person,\n+            \"Inherited fields from different models should not be equal. \"\n+            \"B._meta.get_field('myfield') == C._meta.get_field('myfield') should be False.\"\n+        )\n+\n+    def test_abstract_field_set_not_deduplicated(self):\n+        \"\"\"\n+        Directly from the PR description: set should contain both fields.\n+        \n+        len({B._meta.get_field('myfield'), C._meta.get_field('myfield')}) should equal 2.\n+        \"\"\"\n+        field_b = BasePerson._meta.get_field('data_abstract')\n+        field_person = Person._meta.get_field('data_abstract')\n+        \n+        field_set = {field_b, field_person}\n+        self.assertEqual(\n+            len(field_set), 2,\n+            \"Fields from different models should not be deduplicated in a set. \"\n+            \"Expected 2 fields in set, got %d.\" % len(field_set)\n+        )\n",
+    "stack_traces": [],
+    "test_output": "test_abstract_field_not_equal_across_models (model_meta.test_field_comparison.AbstractFieldEqualityTests) ... FAIL\ntest_abstract_field_set_not_deduplicated (model_meta.test_field_comparison.AbstractFieldEqualityTests) ... FAIL\ntest_field_comparison_consistency (model_meta.test_field_comparison.FieldComparisonTests) ... ok\ntest_field_lt_ordering_preserved_for_same_model (model_meta.test_field_comparison.FieldComparisonTests) ... ok\ntest_inherited_field_vs_own_field_same_model (model_meta.test_field_comparison.FieldComparisonTests) ... ok\ntest_inherited_fields_are_orderable (model_meta.test_field_comparison.FieldComparisonTests) ... FAIL\ntest_inherited_fields_from_different_models_hash (model_meta.test_field_comparison.FieldComparisonTests) ... FAIL\ntest_inherited_fields_from_different_models_not_equal (model_meta.test_field_comparison.FieldComparisonTests) ... FAIL\ntest_inherited_fields_hash_differs (model_meta.test_field_comparison.FieldComparisonTests) ... ok\ntest_inherited_fields_set_deduplication (model_meta.test_field_comparison.FieldComparisonTests) ... FAIL\ntest_same_field_from_same_model_equal (model_meta.test_field_comparison.FieldComparisonTests) ... ok\n\n======================================================================\nFAIL: test_abstract_field_not_equal_across_models (model_meta.test_field_comparison.AbstractFieldEqualityTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 193, in test_abstract_field_not_equal_across_models\n    \"Inherited fields from different models should not be equal. \"\nAssertionError: <django.db.models.fields.CharField: data_abstract> == <django.db.models.fields.CharField: data_abstract> : Inherited fields from different models should not be equal. B._meta.get_field('myfield') == C._meta.get_field('myfield') should be False.\n\n======================================================================\nFAIL: test_abstract_field_set_not_deduplicated (model_meta.test_field_comparison.AbstractFieldEqualityTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 210, in test_abstract_field_set_not_deduplicated\n    \"Expected 2 fields in set, got %d.\" % len(field_set)\nAssertionError: 1 != 2 : Fields from different models should not be deduplicated in a set. Expected 2 fields in set, got 1.\n\n======================================================================\nFAIL: test_inherited_fields_are_orderable (model_meta.test_field_comparison.FieldComparisonTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 94, in test_inherited_fields_are_orderable\n    \"One field should be less than the other\"\nAssertionError: False is not true : One field should be less than the other\n\n======================================================================\nFAIL: test_inherited_fields_from_different_models_hash (model_meta.test_field_comparison.FieldComparisonTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 149, in test_inherited_fields_from_different_models_hash\n    \"Fields from different models should have different hashes\")\nAssertionError: 123 == 123 : Fields from different models should have different hashes\n\n======================================================================\nFAIL: test_inherited_fields_from_different_models_not_equal (model_meta.test_field_comparison.FieldComparisonTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 51, in test_inherited_fields_from_different_models_not_equal\n    self.assertNotEqual(field1, field2)\nAssertionError: <django.db.models.fields.IntegerField: abstract_field> == <django.db.models.fields.IntegerField: abstract_field>\n\n======================================================================\nFAIL: test_inherited_fields_set_deduplication (model_meta.test_field_comparison.FieldComparisonTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/model_meta/test_field_comparison.py\", line 65, in test_inherited_fields_set_deduplication\n    self.assertEqual(len(field_set), 2)\nAssertionError: 1 != 2\n\n----------------------------------------------------------------------\nRan 11 tests in 0.001s\n\nFAILED (failures=6)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 model_meta.test_field_comparison` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application model_meta\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "model_meta.test_field_comparison.AbstractFieldEqualityTests.test_abstract_field_not_equal_across_models": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 180,
+            "func": "test_abstract_field_not_equal_across_models",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 180,
+            "func": "test_abstract_field_not_equal_across_models",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 516,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 189,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "model_meta.test_field_comparison.AbstractFieldEqualityTests.test_abstract_field_set_not_deduplicated": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 197,
+            "func": "test_abstract_field_set_not_deduplicated",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 197,
+            "func": "test_abstract_field_set_not_deduplicated",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 528,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "model_meta.test_field_comparison.FieldComparisonTests.test_inherited_fields_are_orderable": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 81,
+            "func": "test_inherited_fields_are_orderable",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 81,
+            "func": "test_inherited_fields_are_orderable",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 524,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 747,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 522,
+            "func": "__lt__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "model_meta.test_field_comparison.FieldComparisonTests.test_inherited_fields_from_different_models_hash": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 138,
+            "func": "test_inherited_fields_from_different_models_hash",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 138,
+            "func": "test_inherited_fields_from_different_models_hash",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 528,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "model_meta.test_field_comparison.FieldComparisonTests.test_inherited_fields_from_different_models_not_equal": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 40,
+            "func": "test_inherited_fields_from_different_models_not_equal",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 40,
+            "func": "test_inherited_fields_from_different_models_not_equal",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 516,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 189,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      },
+      "model_meta.test_field_comparison.FieldComparisonTests.test_inherited_fields_set_deduplication": {
+        "exception_frames": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 53,
+            "func": "test_inherited_fields_set_deduplication",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/model_meta/test_field_comparison.py",
+            "line": 53,
+            "func": "test_inherited_fields_set_deduplication",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 528,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 516,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13401",
+  "messages": []
+}

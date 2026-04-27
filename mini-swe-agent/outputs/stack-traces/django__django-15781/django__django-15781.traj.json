@@ -1,0 +1,325 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/user_commands/tests.py b/tests/user_commands/tests.py\nindex 222a1c5835..f6d78c3f74 100644\n--- a/tests/user_commands/tests.py\n+++ b/tests/user_commands/tests.py\n@@ -503,3 +503,135 @@ class UtilsTests(SimpleTestCase):\n     def test_normalize_path_patterns_truncates_wildcard_base(self):\n         expected = [os.path.normcase(p) for p in [\"foo/bar\", \"bar/*/\"]]\n         self.assertEqual(normalize_path_patterns([\"foo/bar/*\", \"bar/*/\"]), expected)\n+\n+\n+class HelpFormatterTests(SimpleTestCase):\n+    \"\"\"\n+    Tests for management command help formatter behavior.\n+    \"\"\"\n+\n+    def test_multiline_help_text_preserved(self):\n+        \"\"\"\n+        Multi-line help text with indentation should be preserved in output.\n+        \n+        This tests the behavior described in the PR where help text like:\n+            help = \\'\\'\\'\n+            Import a contract from tzkt.\n+            Example usage:\n+                ./manage.py tzkt_import 'Tezos Mainnet' KT1HTDtMBRCKoNHjfWEEvXneGQpCfPAt6BRe\n+            \\'\\'\\'\n+        \n+        Should output as separate lines, not collapsed together.\n+        \"\"\"\n+        multiline_help = \"\"\"Import a contract from tzkt.\n+Example usage:\n+    ./manage.py tzkt_import 'Tezos Mainnet' KT1HTDtMBRCKoNHjfWEEvXneGQpCfPAt6BRe\"\"\"\n+\n+        class TestCommand(BaseCommand):\n+            help = multiline_help\n+\n+            def handle(self, *args, **options):\n+                pass\n+\n+        cmd = TestCommand()\n+        parser = cmd.create_parser(\"manage.py\", \"test_command\")\n+\n+        # Get the formatted help output\n+        out = StringIO()\n+        parser.print_help(out)\n+        help_output = out.getvalue()\n+\n+        # The help text should preserve newlines and indentation\n+        # The description in the help output should contain both lines\n+        # with their original structure (possibly wrapped, but not collapsed)\n+        self.assertIn(\"Import a contract from tzkt.\", help_output)\n+        self.assertIn(\"Example usage:\", help_output)\n+        # The example command should be on a separate line from \"Example usage:\"\n+        # If the formatter preserves newlines, \"Example usage:\" and\n+        # \"./manage.py tzkt_import\" should be on different lines\n+        lines = help_output.split(\"\\n\")\n+        example_usage_line = None\n+        command_line = None\n+        for i, line in enumerate(lines):\n+            if \"Example usage:\" in line:\n+                example_usage_line = i\n+            if \"./manage.py tzkt_import\" in line:\n+                command_line = i\n+        self.assertIsNotNone(\n+            example_usage_line, \"Example usage: should be in help output\"\n+        )\n+        self.assertIsNotNone(\n+            command_line, \"Command example should be in help output\"\n+        )\n+        # These should be on different lines (not collapsed together)\n+        self.assertNotEqual(\n+            example_usage_line,\n+            command_line,\n+            msg=(\n+                \"The 'Example usage:' and the command example should be on \"\n+                \"separate lines, not collapsed together.\"\n+            ),\n+        )\n+\n+    def test_custom_formatter_class_can_be_specified(self):\n+        \"\"\"\n+        A command should be able to specify a custom formatter_class\n+        that preserves multi-line help text formatting.\n+        \n+        The fix for this issue should allow commands to specify a custom\n+        formatter_class attribute that will be used instead of the default\n+        DjangoHelpFormatter.\n+        \"\"\"\n+        import argparse\n+\n+        class TestCommand(BaseCommand):\n+            help = \"\"\"Import a contract from tzkt.\n+Example usage:\n+    ./manage.py tzkt_import 'Tezos Mainnet'\"\"\"\n+\n+            # Allow customizing the formatter class\n+            formatter_class = argparse.RawDescriptionHelpFormatter\n+\n+            def handle(self, *args, **options):\n+                pass\n+\n+        cmd = TestCommand()\n+        # The command should be able to specify a custom formatter_class\n+        # that is used when creating the parser\n+        parser = cmd.create_parser(\"manage.py\", \"test_command\")\n+\n+        # Verify the formatter_class attribute was respected\n+        self.assertEqual(\n+            parser.formatter_class, argparse.RawDescriptionHelpFormatter\n+        )\n+\n+        # Get the formatted help output\n+        out = StringIO()\n+        parser.print_help(out)\n+        help_output = out.getvalue()\n+\n+        # With RawDescriptionHelpFormatter, the example command should be\n+        # on a separate line from \"Example usage:\"\n+        lines = help_output.split(\"\\n\")\n+        example_usage_line = None\n+        command_line = None\n+        for i, line in enumerate(lines):\n+            if \"Example usage:\" in line:\n+                example_usage_line = i\n+            if \"./manage.py tzkt_import\" in line:\n+                command_line = i\n+        self.assertIsNotNone(\n+            example_usage_line, \"Example usage: should be in help output\"\n+        )\n+        self.assertIsNotNone(\n+            command_line, \"Command example should be in help output\"\n+        )\n+        # With RawDescriptionHelpFormatter, these should be on different lines\n+        self.assertNotEqual(\n+            example_usage_line,\n+            command_line,\n+            msg=(\n+                \"The 'Example usage:' and the command example should be on \"\n+                \"separate lines when using RawDescriptionHelpFormatter.\"\n+            ),\n+        )\n",
+    "stack_traces": [],
+    "test_output": "test_disallowed_abbreviated_options (user_commands.tests.CommandRunTests)\nTo avoid conflicts with custom options, commands don't allow ... ok\ntest_script_prefix_set_in_commands (user_commands.tests.CommandRunTests) ... ok\ntest_skip_checks (user_commands.tests.CommandRunTests) ... ok\ntest_call_command_no_checks (user_commands.tests.CommandTests)\nBy default, call_command should not trigger the check framework, unless ... ok\ntest_call_command_option_parsing (user_commands.tests.CommandTests)\nWhen passing the long option name to call_command, the available option ... ok\ntest_call_command_option_parsing_non_string_arg (user_commands.tests.CommandTests)\nIt should be possible to pass non-string arguments to call_command. ... ok\ntest_call_command_unrecognized_option (user_commands.tests.CommandTests) ... ok\ntest_call_command_with_required_parameters_in_mixed_options (user_commands.tests.CommandTests) ... ok\ntest_call_command_with_required_parameters_in_options (user_commands.tests.CommandTests) ... ok\ntest_calling_a_command_with_no_app_labels_and_parameters_raise_command_error (user_commands.tests.CommandTests) ... ok\ntest_calling_a_command_with_only_empty_parameter_should_ends_gracefully (user_commands.tests.CommandTests) ... ok\ntest_calling_command_with_app_labels_and_parameters_should_be_ok (user_commands.tests.CommandTests) ... ok\ntest_calling_command_with_parameters_and_app_labels_at_the_end_should_be_ok (user_commands.tests.CommandTests) ... ok\ntest_check_migrations (user_commands.tests.CommandTests) ... ok\ntest_command (user_commands.tests.CommandTests) ... ok\ntest_command_add_arguments_after_common_arguments (user_commands.tests.CommandTests) ... ok\ntest_command_style (user_commands.tests.CommandTests) ... ok\ntest_create_parser_kwargs (user_commands.tests.CommandTests)\nBaseCommand.create_parser() passes kwargs to CommandParser. ... ok\ntest_discover_commands_in_eggs (user_commands.tests.CommandTests)\nManagement commands can also be loaded from Python eggs. ... ok\ntest_explode (user_commands.tests.CommandTests)\nAn unknown command raises CommandError ... ok\ntest_find_command_without_PATH (user_commands.tests.CommandTests)\nfind_command should still work when the PATH environment variable ... ok\ntest_language_preserved (user_commands.tests.CommandTests) ... ok\ntest_mutually_exclusive_group_required_const_options (user_commands.tests.CommandTests) ... ok\ntest_mutually_exclusive_group_required_options (user_commands.tests.CommandTests) ... ok\ntest_mutually_exclusive_group_required_with_same_dest_args (user_commands.tests.CommandTests) ... ok\ntest_mutually_exclusive_group_required_with_same_dest_options (user_commands.tests.CommandTests) ... ok\ntest_no_translations_deactivate_translations (user_commands.tests.CommandTests)\nWhen the Command handle method is decorated with @no_translations, ... ok\ntest_output_transaction (user_commands.tests.CommandTests) ... ok\ntest_outputwrapper_flush (user_commands.tests.CommandTests) ... ok\ntest_required_const_options (user_commands.tests.CommandTests) ... ok\ntest_required_list_option (user_commands.tests.CommandTests) ... ok\ntest_requires_system_checks_empty (user_commands.tests.CommandTests) ... ok\ntest_requires_system_checks_invalid (user_commands.tests.CommandTests) ... ok\ntest_requires_system_checks_specific (user_commands.tests.CommandTests) ... ok\ntest_subparser (user_commands.tests.CommandTests) ... ok\ntest_subparser_dest_args (user_commands.tests.CommandTests) ... ok\ntest_subparser_dest_required_args (user_commands.tests.CommandTests) ... ok\ntest_subparser_invalid_option (user_commands.tests.CommandTests) ... ok\ntest_system_exit (user_commands.tests.CommandTests)\nException raised in a command should raise CommandError with ... ok\ntest_custom_formatter_class_can_be_specified (user_commands.tests.HelpFormatterTests)\nA command should be able to specify a custom formatter_class ... FAIL\ntest_multiline_help_text_preserved (user_commands.tests.HelpFormatterTests)\nMulti-line help text with indentation should be preserved in output. ... FAIL\ntest_get_random_secret_key (user_commands.tests.UtilsTests) ... ok\ntest_is_ignored_path_false (user_commands.tests.UtilsTests) ... ok\ntest_is_ignored_path_true (user_commands.tests.UtilsTests) ... ok\ntest_no_existent_external_program (user_commands.tests.UtilsTests) ... ok\ntest_normalize_path_patterns_truncates_wildcard_base (user_commands.tests.UtilsTests) ... ok\n\n======================================================================\nFAIL: test_custom_formatter_class_can_be_specified (user_commands.tests.HelpFormatterTests)\nA command should be able to specify a custom formatter_class\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/user_commands/tests.py\", line 604, in test_custom_formatter_class_can_be_specified\n    self.assertEqual(\nAssertionError: <class 'django.core.management.base.DjangoHelpFormatter'> != <class 'argparse.RawDescriptionHelpFormatter'>\n\n======================================================================\nFAIL: test_multiline_help_text_preserved (user_commands.tests.HelpFormatterTests)\nMulti-line help text with indentation should be preserved in output.\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/user_commands/tests.py\", line 567, in test_multiline_help_text_preserved\n    self.assertNotEqual(\nAssertionError: 5 == 5 : The 'Example usage:' and the command example should be on separate lines, not collapsed together.\n\n----------------------------------------------------------------------\nRan 46 tests in 0.737s\n\nFAILED (failures=2)\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 user_commands.tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application user_commands\nFound 46 test(s).\nSkipping setup of unused database(s): default, other.\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "user_commands.tests.HelpFormatterTests.test_custom_formatter_class_can_be_specified": {
+        "exception_frames": [
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 576,
+            "func": "test_custom_formatter_class_can_be_specified",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 53,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 576,
+            "func": "test_custom_formatter_class_can_be_specified",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 587,
+            "func": "TestCommand",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 143,
+            "func": "style_func",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 107,
+            "func": "color_style",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 21,
+            "func": "supports_color",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 162,
+            "func": "isatty",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 276,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 21,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 52,
+            "func": "get_complete_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 45,
+            "func": "get_main_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 49,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 366,
+            "func": "add_base_argument",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 360,
+            "func": "add_arguments",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 155,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 158,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      },
+      "user_commands.tests.HelpFormatterTests.test_multiline_help_text_preserved": {
+        "exception_frames": [
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 513,
+            "func": "test_multiline_help_text_preserved",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 53,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 513,
+            "func": "test_multiline_help_text_preserved",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/user_commands/tests.py",
+            "line": 530,
+            "func": "TestCommand",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 260,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 143,
+            "func": "style_func",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 107,
+            "func": "color_style",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/color.py",
+            "line": 21,
+            "func": "supports_color",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 162,
+            "func": "isatty",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 284,
+            "func": "create_parser",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 276,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 21,
+            "func": "get_version",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 52,
+            "func": "get_complete_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 45,
+            "func": "get_main_version",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/version.py",
+            "line": 49,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 366,
+            "func": "add_base_argument",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 360,
+            "func": "add_arguments",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 127,
+            "func": "add_usage",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 122,
+            "func": "_reordered_actions",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 124,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 155,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/core/management/base.py",
+            "line": 158,
+            "func": "flush",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-15781",
+  "messages": []
+}

@@ -1,0 +1,2082 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/delete/test_empty_delete.py b/tests/delete/test_empty_delete.py\nnew file mode 100644\nindex 0000000000..b6ebedc674\n--- /dev/null\n+++ b/tests/delete/test_empty_delete.py\n@@ -0,0 +1,84 @@\n+\"\"\"\n+Tests for QuerySet.delete() return value consistency with empty querysets.\n+\n+This tests the bug where QuerySet.delete() returns inconsistent results when\n+deleting an empty queryset:\n+- For models that can fast delete (only DO_NOTHING FKs pointing to them): \n+  returns (0, {'model_label': 0})\n+- For models that cannot fast delete (have CASCADE FKs pointing to them): \n+  returns (0, {})\n+\n+The expected behavior is that the result format should be consistent - the \n+model label should be included in the dictionary with value 0 for both cases,\n+since in both cases the model was processed but no objects were deleted.\n+\"\"\"\n+from django.test import TestCase\n+\n+from .models import Base, Origin, Referrer\n+\n+\n+class EmptyQuerysetDeleteTest(TestCase):\n+    \"\"\"\n+    Test that delete() return format is consistent for empty querysets.\n+    \n+    The bug: when deleting an empty queryset, models that can fast delete\n+    (Base - only DO_NOTHING FKs pointing to it) include the model label in \n+    the result dictionary, while models that cannot fast delete (Origin, \n+    Referrer - have CASCADE FKs pointing to them) do not include the model \n+    label.\n+    \"\"\"\n+\n+    def test_model_with_do_nothing_fk_includes_label(self):\n+        \"\"\"\n+        Model that can fast delete (only DO_NOTHING FKs pointing to it)\n+        should include the model label in the result.\n+        \"\"\"\n+        # Base has only DO_NOTHING FKs pointing to it (RelToBase.base),\n+        # so it can fast delete\n+        deleted, deleted_objs = Base.objects.none().delete()\n+        self.assertEqual(deleted, 0)\n+        # The model label is included with value 0\n+        self.assertIn(Base._meta.label, deleted_objs)\n+        self.assertEqual(deleted_objs[Base._meta.label], 0)\n+\n+    def test_model_with_cascade_fk_includes_label(self):\n+        \"\"\"\n+        Model that cannot fast delete (has CASCADE FKs pointing to it)\n+        should also include the model label in the result for consistency.\n+        \n+        This test currently FAILS due to the bug - the model label is NOT\n+        included in the result dictionary when it should be.\n+        \"\"\"\n+        # Origin has CASCADE FK pointing to it (Referrer.origin),\n+        # so it cannot fast delete\n+        deleted, deleted_objs = Origin.objects.none().delete()\n+        self.assertEqual(deleted, 0)\n+        # BUG: The model label should be included with value 0 for consistency\n+        # with the behavior of models that can fast delete\n+        self.assertIn(Origin._meta.label, deleted_objs)\n+        self.assertEqual(deleted_objs[Origin._meta.label], 0)\n+\n+    def test_empty_queryset_delete_format_consistency(self):\n+        \"\"\"\n+        The delete() result format should be consistent regardless of whether\n+        the model can fast delete or not.\n+        \n+        Both models should include their labels in the result dictionary with\n+        value 0 when deleting an empty queryset.\n+        \"\"\"\n+        # Model that CAN fast delete\n+        deleted_base, deleted_objs_base = Base.objects.none().delete()\n+        self.assertEqual(deleted_base, 0)\n+        self.assertIn(Base._meta.label, deleted_objs_base)\n+        self.assertEqual(deleted_objs_base[Base._meta.label], 0)\n+        \n+        # Model that CANNOT fast delete (should be consistent)\n+        deleted_origin, deleted_objs_origin = Origin.objects.none().delete()\n+        self.assertEqual(deleted_origin, 0)\n+        # Both should have the same format - model label included\n+        self.assertIn(Origin._meta.label, deleted_objs_origin)\n+        self.assertEqual(deleted_objs_origin[Origin._meta.label], 0)\n+        \n+        # Verify both return the same format\n+        self.assertIn(Base._meta.label, deleted_objs_base)\n+        self.assertIn(Origin._meta.label, deleted_objs_origin)\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_empty_queryset_delete_format_consistency (delete.test_empty_delete.EmptyQuerysetDeleteTest) ... FAIL\ntest_model_with_cascade_fk_includes_label (delete.test_empty_delete.EmptyQuerysetDeleteTest) ... FAIL\ntest_model_with_do_nothing_fk_includes_label (delete.test_empty_delete.EmptyQuerysetDeleteTest) ... ok\n\n======================================================================\nFAIL: test_empty_queryset_delete_format_consistency (delete.test_empty_delete.EmptyQuerysetDeleteTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/delete/test_empty_delete.py\", line 79, in test_empty_queryset_delete_format_consistency\n    self.assertIn(Origin._meta.label, deleted_objs_origin)\nAssertionError: 'delete.Origin' not found in {}\n\n======================================================================\nFAIL: test_model_with_cascade_fk_includes_label (delete.test_empty_delete.EmptyQuerysetDeleteTest)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/delete/test_empty_delete.py\", line 58, in test_model_with_cascade_fk_includes_label\n    self.assertIn(Origin._meta.label, deleted_objs)\nAssertionError: 'delete.Origin' not found in {}\n\n----------------------------------------------------------------------\nRan 3 tests in 0.003s\n\nFAILED (failures=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 delete.test_empty_delete` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application delete\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, delete, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table delete_p\n    Creating table delete_r\n    Creating table delete_s\n    Creating table delete_t\n    Creating table delete_u\n    Creating table delete_rchild\n    Creating table delete_rchildchild\n    Creating table delete_a\n    Creating table delete_b\n    Creating table delete_m\n    Creating table delete_mr\n    Creating table delete_mrnull\n    Creating table delete_avatar\n    Creating table delete_user\n    Creating table delete_hiddenuser\n    Creating table delete_hiddenuserprofile\n    Creating table delete_m2mto\n    Creating table delete_m2mfrom\n    Creating table delete_parent\n    Creating table delete_child\n    Creating table delete_base\n    Creating table delete_reltobase\n    Creating table delete_origin\n    Creating table delete_referrer\n    Creating table delete_secondreferrer\n    Creating table delete_deletetop\n    Creating table delete_b1\n    Creating table delete_b2\n    Creating table delete_b3\n    Creating table delete_deletebottom\n    Creating table delete_genericb1\n    Creating table delete_genericb2\n    Creating table delete_genericdeletebottom\n    Creating table delete_genericdeletebottomparent\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "delete.test_empty_delete.EmptyQuerysetDeleteTest.test_empty_queryset_delete_format_consistency": {
+        "exception_frames": [
+          {
+            "file": "tests/delete/test_empty_delete.py",
+            "line": 61,
+            "func": "test_empty_queryset_delete_format_consistency",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 908,
+            "func": "none",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1264,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1276,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 337,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 287,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/delete/test_empty_delete.py",
+            "line": 61,
+            "func": "test_empty_queryset_delete_format_consistency",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 177,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 332,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 377,
+            "func": "managers_map",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 379,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 142,
+            "func": "get_queryset",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 187,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 14,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 144,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 908,
+            "func": "none",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1264,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1276,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 203,
+            "func": "query",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 337,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 287,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 142,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 29,
+            "func": "_new_instance",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1767,
+            "func": "set_empty",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 78,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 713,
+            "func": "delete",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1364,
+            "func": "_not_support_combined_queries",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1800,
+            "func": "is_sliced",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1931,
+            "func": "clear_ordering",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1217,
+            "func": "db",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 261,
+            "func": "_route_db",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 80,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 214,
+            "func": "collect",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 165,
+            "func": "can_fast_delete",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 159,
+            "func": "_has_signal_listeners",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 153,
+            "func": "has_listeners",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 225,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 216,
+            "func": "_clear_dead_receivers",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 9,
+            "func": "_make_id",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 190,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 70,
+            "func": "get_candidate_relations_to_delete",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 733,
+            "func": "get_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 747,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 59,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 228,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 96,
+            "func": "one_to_one",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 92,
+            "func": "one_to_many",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 379,
+            "func": "delete",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 361,
+            "func": "sort",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 377,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 285,
+            "func": "atomic",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 164,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 168,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 13,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 356,
+            "func": "instances_with_model",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 745,
+            "func": "_raw_delete",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 272,
+            "func": "get_compiler",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 325,
+            "func": "compiler",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 22,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1112,
+            "func": "execute_sql",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1408,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1395,
+            "func": "single_alias",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1397,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1815,
+            "func": "clear_select_clause",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2113,
+            "func": "set_extra_mask",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2101,
+            "func": "set_annotation_mask",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 915,
+            "func": "get_initial_alias",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 279,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 151,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 935,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 958,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 732,
+            "func": "table_alias",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 395,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 514,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 404,
+            "func": "cached_col",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 768,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 68,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1343,
+            "func": "add_q",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1354,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1363,
+            "func": "_add_q",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1200,
+            "func": "build_filter",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1075,
+            "func": "solve_lookup_type",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1420,
+            "func": "names_to_path",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 554,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1124,
+            "func": "check_filterable",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1061,
+            "func": "resolve_lookup_value",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1023,
+            "func": "resolve_expression",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 866,
+            "func": "bump_prefix",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 873,
+            "func": "prefix_gen",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 910,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 827,
+            "func": "change_aliases",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 130,
+            "func": "relabel_aliases",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 785,
+            "func": "relabeled_clone",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 202,
+            "func": "resolve_expression",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 192,
+            "func": "_resolve_node",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 179,
+            "func": "get_source_expressions",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1516,
+            "func": "setup_joins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1104,
+            "func": "check_related_objects",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1618,
+            "func": "trim_joins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 357,
+            "func": "_get_col",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1135,
+            "func": "build_lookup",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 333,
+            "func": "get_lookup",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 179,
+            "func": "get_lookup",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 169,
+            "func": "_get_lookup",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 22,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 215,
+            "func": "get_prep_lookup",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2343,
+            "func": "add_votes",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 60,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2350,
+            "func": "update_join_types",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 765,
+            "func": "promote_joins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 799,
+            "func": "demote_joins",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1399,
+            "func": "_as_sql",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 243,
+            "func": "base_table",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 399,
+            "func": "quote_name_unless_alias",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2181,
+            "func": "extra_select",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 166,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 416,
+            "func": "compile",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 65,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 391,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 268,
+            "func": "max_in_list_size",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 100,
+            "func": "rhs_is_direct_value",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 168,
+            "func": "process_lhs",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 232,
+            "func": "resolve_expression",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 347,
+            "func": "copy",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 167,
+            "func": "__getstate__",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 250,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 182,
+            "func": "set_source_expressions",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 779,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2424,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 668,
+            "func": "db_type",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 653,
+            "func": "db_type_parameters",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 264,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 187,
+            "func": "field_cast_sql",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 260,
+            "func": "lookup_cast",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/lookups.py",
+            "line": 360,
+            "func": "process_rhs",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 239,
+            "func": "has_select_fields",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1055,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 16
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 44,
+            "func": "pre_sql_setup",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 38,
+            "func": "setup_query",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 193,
+            "func": "get_select",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2162,
+            "func": "annotation_select",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 381,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 409,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 265,
+            "func": "get_order_by",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 32,
+            "func": "split_having",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 168,
+            "func": "contains_aggregate",
+            "is_test": false,
+            "call_depth": 21
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 162,
+            "func": "_contains_aggregate",
+            "is_test": false,
+            "call_depth": 22
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 165,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 23
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 389,
+            "func": "get_extra_select",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 58,
+            "func": "get_group_by",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 675,
+            "func": "get_distinct",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 748,
+            "func": "get_from_clause",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 155,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 20
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 818,
+            "func": "reset_refcounts",
+            "is_test": false,
+            "call_depth": 18
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 761,
+            "func": "unref_alias",
+            "is_test": false,
+            "call_depth": 19
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 130,
+            "func": "label",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 196,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 99,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 289,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1290,
+            "func": "_fetch_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 47,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 631,
+            "func": "get_default_columns",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1057,
+            "func": "deferred_to_columns",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 646,
+            "func": "deferred_to_data",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 757,
+            "func": "ref_alias",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 467,
+            "func": "concrete_fields",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 477,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 983,
+            "func": "join_parent_model",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 59,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1960,
+            "func": "get_related_populators",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1088,
+            "func": "results_iter",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1093,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1067,
+            "func": "get_converters",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 243,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 564,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 793,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 725,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 10
+          }
+        ]
+      },
+      "delete.test_empty_delete.EmptyQuerysetDeleteTest.test_model_with_cascade_fk_includes_label": {
+        "exception_frames": [
+          {
+            "file": "tests/delete/test_empty_delete.py",
+            "line": 44,
+            "func": "test_model_with_cascade_fk_includes_label",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 908,
+            "func": "none",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1264,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1276,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 337,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 287,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 6
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/delete/test_empty_delete.py",
+            "line": 44,
+            "func": "test_model_with_cascade_fk_includes_label",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 177,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 332,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 84,
+            "func": "manager_method",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 142,
+            "func": "get_queryset",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 187,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/deconstruct.py",
+            "line": 14,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 144,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 21,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 908,
+            "func": "none",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1264,
+            "func": "_chain",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1276,
+            "func": "_clone",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 203,
+            "func": "query",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 337,
+            "func": "chain",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 287,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 142,
+            "func": "clone",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 29,
+            "func": "_new_instance",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1767,
+            "func": "set_empty",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/tree.py",
+            "line": 78,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 713,
+            "func": "delete",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1364,
+            "func": "_not_support_combined_queries",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1800,
+            "func": "is_sliced",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 1931,
+            "func": "clear_ordering",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1217,
+            "func": "db",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 261,
+            "func": "_route_db",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 80,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 214,
+            "func": "collect",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 165,
+            "func": "can_fast_delete",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 159,
+            "func": "_has_signal_listeners",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 153,
+            "func": "has_listeners",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 225,
+            "func": "_live_receivers",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 190,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 70,
+            "func": "get_candidate_relations_to_delete",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 733,
+            "func": "get_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 747,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 99,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 289,
+            "func": "__bool__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1290,
+            "func": "_fetch_all",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 47,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 272,
+            "func": "get_compiler",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 325,
+            "func": "compiler",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 22,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1112,
+            "func": "execute_sql",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 479,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 44,
+            "func": "pre_sql_setup",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 38,
+            "func": "setup_query",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 39,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 915,
+            "func": "get_initial_alias",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 279,
+            "func": "get_meta",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 151,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 935,
+            "func": "join",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 958,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 732,
+            "func": "table_alias",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 193,
+            "func": "get_select",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2181,
+            "func": "extra_select",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 631,
+            "func": "get_default_columns",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1057,
+            "func": "deferred_to_columns",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 646,
+            "func": "deferred_to_data",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 243,
+            "func": "base_table",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 757,
+            "func": "ref_alias",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 983,
+            "func": "join_parent_model",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 395,
+            "func": "get_col",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 514,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 2162,
+            "func": "annotation_select",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 416,
+            "func": "compile",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 779,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 399,
+            "func": "quote_name_unless_alias",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 166,
+            "func": "quote_name",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 381,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 409,
+            "func": "select_format",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 265,
+            "func": "get_order_by",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 32,
+            "func": "split_having",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 168,
+            "func": "contains_aggregate",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 162,
+            "func": "_contains_aggregate",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 165,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 389,
+            "func": "get_extra_select",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 58,
+            "func": "get_group_by",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 675,
+            "func": "get_distinct",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 748,
+            "func": "get_from_clause",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/datastructures.py",
+            "line": 155,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/sql/where.py",
+            "line": 65,
+            "func": "as_sql",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 818,
+            "func": "reset_refcounts",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/sql/query.py",
+            "line": 761,
+            "func": "unref_alias",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 59,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/query.py",
+            "line": 1960,
+            "func": "get_related_populators",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1088,
+            "func": "results_iter",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1093,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/sql/compiler.py",
+            "line": 1067,
+            "func": "get_converters",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 243,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 564,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2424,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/expressions.py",
+            "line": 793,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 725,
+            "func": "get_db_converters",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 379,
+            "func": "delete",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 361,
+            "func": "sort",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 377,
+            "func": "<dictcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 285,
+            "func": "atomic",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 164,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 168,
+            "func": "__enter__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 13,
+            "func": "get_connection",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/deletion.py",
+            "line": 356,
+            "func": "instances_with_model",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/transaction.py",
+            "line": 196,
+            "func": "__exit__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 130,
+            "func": "label",
+            "is_test": false,
+            "call_depth": 1
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-12747",
+  "messages": []
+}

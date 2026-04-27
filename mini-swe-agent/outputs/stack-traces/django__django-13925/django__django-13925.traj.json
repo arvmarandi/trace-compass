@@ -1,0 +1,2663 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/check_framework/test_model_checks.py b/tests/check_framework/test_model_checks.py\nindex d4342ada07..de3ef13f15 100644\n--- a/tests/check_framework/test_model_checks.py\n+++ b/tests/check_framework/test_model_checks.py\n@@ -415,3 +415,79 @@ class ModelDefaultAutoFieldTests(SimpleTestCase):\n                 app_label = 'check_framework.apps.CheckPKConfig'\n \n         self.assertEqual(checks.run_checks(app_configs=apps.get_app_configs()), [])\n+\n+    def test_inherited_pk(self):\n+        \"\"\"\n+        Test that W042 is not raised for models inheriting a manually\n+        specified primary key from their parent.\n+        \"\"\"\n+        class Parent(models.Model):\n+            id = models.BigAutoField(primary_key=True)\n+\n+        class Child(Parent):\n+            pass\n+\n+        # Child model should not raise W042 because it inherits the primary\n+        # key from Parent which was manually specified.\n+        errors = checks.run_checks(app_configs=self.apps.get_app_configs())\n+        self.assertEqual(errors, [])\n+\n+    def test_inherited_pk_from_parent_with_auto_created_pk(self):\n+        \"\"\"\n+        Test that W042 is raised for a child model inheriting from a parent\n+        with an auto-created primary key.\n+        \"\"\"\n+        class Parent(models.Model):\n+            pass  # Auto-created pk\n+\n+        class Child(Parent):\n+            pass\n+\n+        # Parent model should raise W042 because it has auto-created pk.\n+        # Child model should also raise W042 because it inherits the auto-created pk.\n+        errors = checks.run_checks(app_configs=self.apps.get_app_configs())\n+        self.assertEqual(errors, [\n+            Warning(\n+                \"Auto-created primary key used when not defining a primary \"\n+                \"key type, by default 'django.db.models.AutoField'.\",\n+                hint=(\n+                    \"Configure the DEFAULT_AUTO_FIELD setting or the \"\n+                    \"CheckDefaultPKConfig.default_auto_field attribute to \"\n+                    \"point to a subclass of AutoField, e.g. \"\n+                    \"'django.db.models.BigAutoField'.\"\n+                ),\n+                obj=Parent,\n+                id='models.W042',\n+            ),\n+            Warning(\n+                \"Auto-created primary key used when not defining a primary \"\n+                \"key type, by default 'django.db.models.AutoField'.\",\n+                hint=(\n+                    \"Configure the DEFAULT_AUTO_FIELD setting or the \"\n+                    \"CheckDefaultPKConfig.default_auto_field attribute to \"\n+                    \"point to a subclass of AutoField, e.g. \"\n+                    \"'django.db.models.BigAutoField'.\"\n+                ),\n+                obj=Child,\n+                id='models.W042',\n+            ),\n+        ])\n+\n+    def test_multilevel_inheritance_of_manual_pk(self):\n+        \"\"\"\n+        Test that W042 is not raised for models with multi-level inheritance\n+        when the root ancestor has a manually specified primary key.\n+        \"\"\"\n+        class GrandParent(models.Model):\n+            id = models.BigAutoField(primary_key=True)\n+\n+        class Parent(GrandParent):\n+            pass\n+\n+        class Child(Parent):\n+            pass\n+\n+        # Neither Parent nor Child should raise W042 because they inherit\n+        # the manually specified primary key from GrandParent.\n+        errors = checks.run_checks(app_configs=self.apps.get_app_configs())\n+        self.assertEqual(errors, [])\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_collision_abstract_model (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_collision_across_apps (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_collision_in_different_models (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_collision_in_same_model (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_no_collision_abstract_model_interpolation (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_no_collision_across_apps_interpolation (check_framework.test_model_checks.ConstraintNameTests) ... ok\ntest_collision_across_apps (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_collision_across_apps_database_routers_installed (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_collision_in_same_app (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_collision_in_same_app_database_routers_installed (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_no_collision_for_proxy_models (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_no_collision_for_unmanaged_models (check_framework.test_model_checks.DuplicateDBTableTests) ... ok\ntest_collision_abstract_model (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_collision_across_apps (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_collision_in_different_models (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_collision_in_same_model (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_no_collision_abstract_model_interpolation (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_no_collision_across_apps_interpolation (check_framework.test_model_checks.IndexNameTests) ... ok\ntest_app_default_auto_field (check_framework.test_model_checks.ModelDefaultAutoFieldTests) ... ok\ntest_auto_created_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests) ... ok\ntest_default_auto_field_setting (check_framework.test_model_checks.ModelDefaultAutoFieldTests) ... ok\ntest_explicit_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests) ... ok\ntest_inherited_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests)\nTest that W042 is not raised for models inheriting a manually ... FAIL\ntest_inherited_pk_from_parent_with_auto_created_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests)\nTest that W042 is raised for a child model inheriting from a parent ... ok\ntest_multilevel_inheritance_of_manual_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests)\nTest that W042 is not raised for models with multi-level inheritance ... FAIL\n\n======================================================================\nFAIL: test_inherited_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests)\nTest that W042 is not raised for models inheriting a manually\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/opt/miniconda3/envs/testbed/lib/python3.8/unittest/mock.py\", line 1325, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/testbed/tests/check_framework/test_model_checks.py\", line 433, in test_inherited_pk\n    self.assertEqual(errors, [])\nAssertionError: Lists differ: [<Warning: level=30, msg=\"Auto-created pri[398 chars]42'>] != []\n\nFirst list contains 1 additional elements.\nFirst extra element 0:\n<Warning: level=30, msg=\"Auto-created primary key used when not defining a primary key type, by default 'django.db.models.AutoField'.\", hint=\"Configure the DEFAULT_AUTO_FIELD setting or the CheckDefaultPKConfig.default_auto_field attribute to point to a subclass of AutoField, e.g. 'django.db.models.BigAutoField'.\", obj=<class 'check_framework.test_model_checks.ModelDefaultAutoFieldTests.test_inherited_pk.<locals>.Child'>, id='models.W042'>\n\n- [<Warning: level=30, msg=\"Auto-created primary key used when not defining a primary key type, by default 'django.db.models.AutoField'.\", hint=\"Configure the DEFAULT_AUTO_FIELD setting or the CheckDefaultPKConfig.default_auto_field attribute to point to a subclass of AutoField, e.g. 'django.db.models.BigAutoField'.\", obj=<class 'check_framework.test_model_checks.ModelDefaultAutoFieldTests.test_inherited_pk.<locals>.Child'>, id='models.W042'>]\n+ []\n\n======================================================================\nFAIL: test_multilevel_inheritance_of_manual_pk (check_framework.test_model_checks.ModelDefaultAutoFieldTests)\nTest that W042 is not raised for models with multi-level inheritance\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/opt/miniconda3/envs/testbed/lib/python3.8/unittest/mock.py\", line 1325, in patched\n    return func(*newargs, **newkeywargs)\n  File \"/testbed/tests/check_framework/test_model_checks.py\", line 493, in test_multilevel_inheritance_of_manual_pk\n    self.assertEqual(errors, [])\nAssertionError: Lists differ: [<Warning: level=30, msg=\"Auto-created pri[890 chars]42'>] != []\n\nFirst list contains 2 additional elements.\nFirst extra element 0:\n<Warning: level=30, msg=\"Auto-created primary key used when not defining a primary key type, by default 'django.db.models.AutoField'.\", hint=\"Configure the DEFAULT_AUTO_FIELD setting or the CheckDefaultPKConfig.default_auto_field attribute to point to a subclass of AutoField, e.g. 'django.db.models.BigAutoField'.\", obj=<class 'check_framework.test_model_checks.ModelDefaultAutoFieldTests.test_multilevel_inheritance_of_manual_pk.<locals>.Parent'>, id='models.W042'>\n\nDiff is 948 characters long. Set self.maxDiff to None to see it.\n\n----------------------------------------------------------------------\nRan 25 tests in 0.037s\n\nFAILED (failures=2)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 check_framework.test_model_checks` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nImporting application check_framework\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, check_framework, contenttypes, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Creating table check_framework_simplemodel\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "check_framework.test_model_checks.ModelDefaultAutoFieldTests.test_inherited_pk": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 355,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 835,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 355,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 835,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 61,
+            "func": "populate",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 99,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 7,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 72,
+            "func": "_path_from_module",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 101,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 103,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 294,
+            "func": "import_models",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 63,
+            "func": "module_has_submodule",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 363,
+            "func": "clear_cache",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 143,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 303,
+            "func": "ready",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 32,
+            "func": "register",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 48,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 42,
+            "func": "func_accepts_kwargs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 44,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 419,
+            "func": "test_inherited_pk",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 424,
+            "func": "Parent",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2453,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 74,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 79,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 67,
+            "func": "_has_contribute_to_class",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 244,
+            "func": "get_containing_app_config",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 261,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 74,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 324,
+            "func": "add_to_class",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 148,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 398,
+            "func": "camel_case_to_spaces",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 244,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 192,
+            "func": "__wrapper__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 93,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 276,
+            "func": "max_name_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 196,
+            "func": "truncate_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 182,
+            "func": "split_identifier",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 128,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 53,
+            "func": "subclass_exception",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2490,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 767,
+            "func": "set_attributes_from_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 812,
+            "func": "get_attname_column",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 809,
+            "func": "get_attname",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 293,
+            "func": "add_field",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 323,
+            "func": "setup_pk",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 753,
+            "func": "_expire_cache",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 104,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 169,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 330,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 252,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 466,
+            "func": "fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 780,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 60,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 227,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 496,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 483,
+            "func": "is_not_an_m2m_field",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 486,
+            "func": "is_not_a_generic_relation",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 489,
+            "func": "is_not_a_generic_foreign_key",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 135,
+            "func": "label_lower",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 390,
+            "func": "managers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 20,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 26,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 120,
+            "func": "_set_creation_counter",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 112,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 289,
+            "func": "add_manager",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 213,
+            "func": "register_model",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 418,
+            "func": "do_pending_operations",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 273,
+            "func": "get_models",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 138,
+            "func": "check_models_ready",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 365,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 427,
+            "func": "Child",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/utils.py",
+            "line": 5,
+            "func": "make_model_tuple",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 1047,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 266,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 746,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 953,
+            "func": "get_attname_column",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 950,
+            "func": "get_attname",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 62,
+            "func": "lazy_related_operation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 77,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 37,
+            "func": "resolve_relation",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 78,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 379,
+            "func": "lazy_model_operation",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 263,
+            "func": "get_registered_model",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related_descriptors.py",
+            "line": 95,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 279,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 402,
+            "func": "apply_next_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 315,
+            "func": "resolve_related_class",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 386,
+            "func": "do_related_class",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 377,
+            "func": "set_attributes_from_rel",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 254,
+            "func": "set_field_name",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 979,
+            "func": "contribute_to_related_class",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 160,
+            "func": "is_hidden",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 79,
+            "func": "related_model",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 180,
+            "func": "get_accessor_name",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 65,
+            "func": "run_checks",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 91,
+            "func": "get_checks",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/model_checks.py",
+            "line": 11,
+            "func": "check_all_models",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/model_checks.py",
+            "line": 20,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 131,
+            "func": "label",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1265,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1322,
+            "func": "_check_swappable",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1349,
+            "func": "_check_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1362,
+            "func": "_check_managers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 78,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1370,
+            "func": "_check_fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2457,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 207,
+            "func": "_check_field_name",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 243,
+            "func": "_check_choices",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 307,
+            "func": "_check_db_index",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 319,
+            "func": "_check_null_allowed_for_primary_keys",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 337,
+            "func": "_check_backend_specific_checks",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 347,
+            "func": "_check_validators",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1789,
+            "func": "validators",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2541,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 351,
+            "func": "integer_field_range",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 366,
+            "func": "_check_deprecation_details",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1777,
+            "func": "_check_max_length_warning",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2463,
+            "func": "_check_primary_key",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1380,
+            "func": "_check_m2m_through_same_relationship",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1864,
+            "func": "_check_long_column_names",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1412,
+            "func": "_check_id_field",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 515,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1429,
+            "func": "_check_field_name_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 629,
+            "func": "get_parent_list",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 10,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 34,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 25,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1511,
+            "func": "_check_model_name_db_lookup_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1535,
+            "func": "_check_property_name_related_field_accessor_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 876,
+            "func": "_property_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1555,
+            "func": "_check_single_primary_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1486,
+            "func": "_check_column_name_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1569,
+            "func": "_check_index_together",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1596,
+            "func": "_check_unique_together",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1623,
+            "func": "_check_indexes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1712,
+            "func": "_check_local_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1762,
+            "func": "_check_ordering",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1955,
+            "func": "_check_constraints",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1298,
+            "func": "_check_default_pk",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 834,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 108,
+            "func": "_check_related_name_is_valid",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 127,
+            "func": "_check_related_query_name_is_valid",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 421,
+            "func": "related_query_name",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 156,
+            "func": "_check_relation_model_exists",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 166,
+            "func": "get_models",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 171,
+            "func": "_check_referencing_to_swapped_model",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 186,
+            "func": "_check_clashes",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 526,
+            "func": "many_to_many",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 540,
+            "func": "related_objects",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 749,
+            "func": "_relation_tree",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 712,
+            "func": "_populate_directed_relation_graph",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 92,
+            "func": "related_model",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 56,
+            "func": "hidden",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 487,
+            "func": "_check_to_fields_exist",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 587,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 557,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 509,
+            "func": "_check_unique_target",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 642,
+            "func": "foreign_related_fields",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 630,
+            "func": "related_fields",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 935,
+            "func": "resolve_related_fields",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 766,
+            "func": "get_fields",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 522,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 751,
+            "func": "unique",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 864,
+            "func": "total_unique_constraints",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 841,
+            "func": "_check_on_delete",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 1072,
+            "func": "_check_unique",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 138,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 241,
+            "func": "identity",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 4,
+            "func": "make_hashable",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 11,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 543,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 60,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/conf/__init__.py",
+            "line": 64,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 365,
+            "func": "mocked_is_overridden",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 139,
+            "func": "app_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 68,
+            "func": "_is_default_auto_field_overridden",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/checks/messages.py",
+            "line": 64,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/itercompat.py",
+            "line": 1,
+            "func": "is_iterable",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/messages.py",
+            "line": 41,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 543,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ]
+      },
+      "check_framework.test_model_checks.ModelDefaultAutoFieldTests.test_multilevel_inheritance_of_manual_pk": {
+        "exception_frames": [
+          {
+            "file": "django/test/utils.py",
+            "line": 355,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 835,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "django/test/utils.py",
+            "line": 355,
+            "func": "setUp",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 835,
+            "func": "enable",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 20,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 61,
+            "func": "populate",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 99,
+            "func": "create",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 7,
+            "func": "import_string",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 18,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 72,
+            "func": "_path_from_module",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 101,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 103,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 294,
+            "func": "import_models",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/module_loading.py",
+            "line": 63,
+            "func": "module_has_submodule",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 363,
+            "func": "clear_cache",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 143,
+            "func": "get_app_configs",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 127,
+            "func": "check_apps_ready",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 303,
+            "func": "ready",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 32,
+            "func": "register",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 48,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 42,
+            "func": "func_accepts_kwargs",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/inspect.py",
+            "line": 44,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 476,
+            "func": "test_multilevel_inheritance_of_manual_pk",
+            "is_test": true,
+            "call_depth": 0
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 481,
+            "func": "GrandParent",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2453,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 74,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 79,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 67,
+            "func": "_has_contribute_to_class",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 244,
+            "func": "get_containing_app_config",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 261,
+            "func": "<lambda>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 74,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 324,
+            "func": "add_to_class",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 148,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/text.py",
+            "line": 398,
+            "func": "camel_case_to_spaces",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 244,
+            "func": "inner",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 192,
+            "func": "__wrapper__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 93,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 14,
+            "func": "__getattr__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/utils/connection.py",
+            "line": 56,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/backends/base/operations.py",
+            "line": 276,
+            "func": "max_name_length",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 196,
+            "func": "truncate_name",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/backends/utils.py",
+            "line": 182,
+            "func": "split_identifier",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 128,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 53,
+            "func": "subclass_exception",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2490,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 767,
+            "func": "set_attributes_from_name",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 812,
+            "func": "get_attname_column",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 809,
+            "func": "get_attname",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 293,
+            "func": "add_field",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 323,
+            "func": "setup_pk",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 753,
+            "func": "_expire_cache",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/query_utils.py",
+            "line": 104,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 169,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 330,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 252,
+            "func": "_prepare",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/utils/functional.py",
+            "line": 40,
+            "func": "__get__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 466,
+            "func": "fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 780,
+            "func": "_get_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 60,
+            "func": "make_immutable_fields_list",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 227,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 496,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 483,
+            "func": "is_not_an_m2m_field",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 486,
+            "func": "is_not_a_generic_relation",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 489,
+            "func": "is_not_a_generic_foreign_key",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 135,
+            "func": "label_lower",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 390,
+            "func": "managers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 20,
+            "func": "__new__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 26,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 120,
+            "func": "_set_creation_counter",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 112,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 289,
+            "func": "add_manager",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/dispatch/dispatcher.py",
+            "line": 149,
+            "func": "send",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 213,
+            "func": "register_model",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 418,
+            "func": "do_pending_operations",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 273,
+            "func": "get_models",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 138,
+            "func": "check_models_ready",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 365,
+            "func": "swapped",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 484,
+            "func": "Parent",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/models/utils.py",
+            "line": 5,
+            "func": "make_model_tuple",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 1047,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 266,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 746,
+            "func": "contribute_to_class",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 953,
+            "func": "get_attname_column",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 950,
+            "func": "get_attname",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 62,
+            "func": "lazy_related_operation",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 77,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 37,
+            "func": "resolve_relation",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 78,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 379,
+            "func": "lazy_model_operation",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 263,
+            "func": "get_registered_model",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related_descriptors.py",
+            "line": 95,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 279,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 402,
+            "func": "apply_next_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 315,
+            "func": "resolve_related_class",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 386,
+            "func": "do_related_class",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 377,
+            "func": "set_attributes_from_rel",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 254,
+            "func": "set_field_name",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 979,
+            "func": "contribute_to_related_class",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 160,
+            "func": "is_hidden",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 79,
+            "func": "related_model",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 180,
+            "func": "get_accessor_name",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 487,
+            "func": "Child",
+            "is_test": true,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 65,
+            "func": "run_checks",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/core/checks/registry.py",
+            "line": 91,
+            "func": "get_checks",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/model_checks.py",
+            "line": 11,
+            "func": "check_all_models",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/model_checks.py",
+            "line": 20,
+            "func": "<genexpr>",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 131,
+            "func": "label",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1265,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 3
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1322,
+            "func": "_check_swappable",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1349,
+            "func": "_check_model",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1362,
+            "func": "_check_managers",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/manager.py",
+            "line": 78,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1370,
+            "func": "_check_fields",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2457,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 207,
+            "func": "_check_field_name",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 243,
+            "func": "_check_choices",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 307,
+            "func": "_check_db_index",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 319,
+            "func": "_check_null_allowed_for_primary_keys",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 337,
+            "func": "_check_backend_specific_checks",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 347,
+            "func": "_check_validators",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1789,
+            "func": "validators",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2541,
+            "func": "get_internal_type",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/backends/sqlite3/operations.py",
+            "line": 351,
+            "func": "integer_field_range",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 366,
+            "func": "_check_deprecation_details",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 1777,
+            "func": "_check_max_length_warning",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 2463,
+            "func": "_check_primary_key",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1380,
+            "func": "_check_m2m_through_same_relationship",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1864,
+            "func": "_check_long_column_names",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1412,
+            "func": "_check_id_field",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 515,
+            "func": "__eq__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1429,
+            "func": "_check_field_name_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 629,
+            "func": "get_parent_list",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 10,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 34,
+            "func": "__len__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 25,
+            "func": "__iter__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1511,
+            "func": "_check_model_name_db_lookup_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1535,
+            "func": "_check_property_name_related_field_accessor_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 876,
+            "func": "_property_names",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1555,
+            "func": "_check_single_primary_key",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1486,
+            "func": "_check_column_name_clashes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1569,
+            "func": "_check_index_together",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1596,
+            "func": "_check_unique_together",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1623,
+            "func": "_check_indexes",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1712,
+            "func": "_check_local_fields",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1762,
+            "func": "_check_ordering",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1955,
+            "func": "_check_constraints",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/base.py",
+            "line": 1298,
+            "func": "_check_default_pk",
+            "is_test": false,
+            "call_depth": 4
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 834,
+            "func": "check",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 108,
+            "func": "_check_related_name_is_valid",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 127,
+            "func": "_check_related_query_name_is_valid",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 421,
+            "func": "related_query_name",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 156,
+            "func": "_check_relation_model_exists",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/apps/registry.py",
+            "line": 166,
+            "func": "get_models",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 171,
+            "func": "_check_referencing_to_swapped_model",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 186,
+            "func": "_check_clashes",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 526,
+            "func": "many_to_many",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 540,
+            "func": "related_objects",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 749,
+            "func": "_relation_tree",
+            "is_test": false,
+            "call_depth": 13
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 712,
+            "func": "_populate_directed_relation_graph",
+            "is_test": false,
+            "call_depth": 14
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 92,
+            "func": "related_model",
+            "is_test": false,
+            "call_depth": 17
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 56,
+            "func": "hidden",
+            "is_test": false,
+            "call_depth": 15
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 487,
+            "func": "_check_to_fields_exist",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 587,
+            "func": "get_field",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 557,
+            "func": "_forward_fields_map",
+            "is_test": false,
+            "call_depth": 10
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 509,
+            "func": "_check_unique_target",
+            "is_test": false,
+            "call_depth": 7
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 642,
+            "func": "foreign_related_fields",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 630,
+            "func": "related_fields",
+            "is_test": false,
+            "call_depth": 11
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 935,
+            "func": "resolve_related_fields",
+            "is_test": false,
+            "call_depth": 12
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 766,
+            "func": "get_fields",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 522,
+            "func": "<setcomp>",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 751,
+            "func": "unique",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 864,
+            "func": "total_unique_constraints",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 841,
+            "func": "_check_on_delete",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/related.py",
+            "line": 1072,
+            "func": "_check_unique",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 138,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 241,
+            "func": "identity",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 4,
+            "func": "make_hashable",
+            "is_test": false,
+            "call_depth": 8
+          },
+          {
+            "file": "django/utils/hashable.py",
+            "line": 11,
+            "func": "<listcomp>",
+            "is_test": false,
+            "call_depth": 9
+          },
+          {
+            "file": "django/db/models/fields/__init__.py",
+            "line": 543,
+            "func": "__hash__",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/db/models/fields/reverse_related.py",
+            "line": 60,
+            "func": "name",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "tests/check_framework/test_model_checks.py",
+            "line": 365,
+            "func": "mocked_is_overridden",
+            "is_test": true,
+            "call_depth": 5
+          },
+          {
+            "file": "django/db/models/options.py",
+            "line": 139,
+            "func": "app_config",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/apps/config.py",
+            "line": 68,
+            "func": "_is_default_auto_field_overridden",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/core/checks/messages.py",
+            "line": 64,
+            "func": "__init__",
+            "is_test": false,
+            "call_depth": 5
+          },
+          {
+            "file": "django/utils/datastructures.py",
+            "line": 13,
+            "func": "add",
+            "is_test": false,
+            "call_depth": 6
+          },
+          {
+            "file": "django/utils/itercompat.py",
+            "line": 1,
+            "func": "is_iterable",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/core/checks/messages.py",
+            "line": 41,
+            "func": "__repr__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/test/utils.py",
+            "line": 543,
+            "func": "disable",
+            "is_test": true,
+            "call_depth": 0
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-13925",
+  "messages": []
+}

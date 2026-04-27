@@ -1,0 +1,60 @@
+{
+  "info": {
+    "exit_status": "Submitted",
+    "submission": "diff --git a/tests/multidb_sqlite_signature_tests.py b/tests/multidb_sqlite_signature_tests.py\nnew file mode 100644\nindex 0000000000..1bdffe9109\n--- /dev/null\n+++ b/tests/multidb_sqlite_signature_tests.py\n@@ -0,0 +1,76 @@\n+\"\"\"\n+Tests for multiple SQLite database setup with persistent test databases.\n+\n+This tests the issue where admin_views.test_multidb fails with persistent \n+test SQLite database when using --keepdb.\n+\n+The root cause is that SQLite's test_db_signature() method uses the \n+original NAME setting instead of the TEST NAME setting, causing different\n+databases with different TEST['NAME'] values to be treated as the same\n+physical database.\n+\"\"\"\n+import os\n+import tempfile\n+import shutil\n+\n+from django.db import connections\n+from django.test import TestCase\n+\n+\n+class SQLiteTestDatabaseSignatureTests(TestCase):\n+    \"\"\"\n+    Test that SQLite databases with different TEST['NAME'] settings\n+    are correctly identified as separate databases.\n+    \"\"\"\n+    \n+    @classmethod\n+    def setUpClass(cls):\n+        # Create a temporary directory for test databases\n+        cls.tmpdir = tempfile.mkdtemp()\n+        cls.db1 = os.path.join(cls.tmpdir, 'test_default.sqlite3')\n+        cls.db2 = os.path.join(cls.tmpdir, 'test_other.sqlite3')\n+        \n+        # Save original DATABASES settings\n+        cls._original_databases = {}\n+        for alias in ['default', 'other']:\n+            cls._original_databases[alias] = connections[alias].settings_dict.copy()\n+        \n+        # Override settings with different TEST NAME but same original NAME\n+        for alias in ['default', 'other']:\n+            conn = connections[alias]\n+            # Use same original NAME but different TEST NAME\n+            conn.settings_dict['NAME'] = os.path.join(cls.tmpdir, 'db.sqlite3')\n+            conn.settings_dict.setdefault('TEST', {})['NAME'] = (\n+                cls.db1 if alias == 'default' else cls.db2\n+            )\n+        \n+        super().setUpClass()\n+    \n+    @classmethod\n+    def tearDownClass(cls):\n+        super().tearDownClass()\n+        # Restore original settings\n+        for alias in ['default', 'other']:\n+            connections[alias].settings_dict = cls._original_databases[alias]\n+        \n+        # Cleanup temp directory\n+        shutil.rmtree(cls.tmpdir)\n+    \n+    def test_separate_database_signatures(self):\n+        \"\"\"\n+        Test that two SQLite databases with different TEST['NAME'] settings\n+        but the same original NAME have different test_db_signature values.\n+        \n+        This is essential for proper database setup when using --keepdb with\n+        multiple SQLite database aliases.\n+        \"\"\"\n+        sig_default = connections['default'].creation.test_db_signature()\n+        sig_other = connections['other'].creation.test_db_signature()\n+        \n+        # These should be different because they use different TEST NAME files\n+        self.assertNotEqual(\n+            sig_default,\n+            sig_other,\n+            \"Database signatures should be different when TEST['NAME'] is different. \"\n+            f\"Got default={sig_default}, other={sig_other}\"\n+        )\n",
+    "stack_traces": [],
+    "test_output": "Creating test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\ntest_separate_database_signatures (multidb_sqlite_signature_tests.SQLiteTestDatabaseSignatureTests) ... FAIL\n\n======================================================================\nFAIL: test_separate_database_signatures (multidb_sqlite_signature_tests.SQLiteTestDatabaseSignatureTests)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/testbed/tests/multidb_sqlite_signature_tests.py\", line 74, in test_separate_database_signatures\n    \"Database signatures should be different when TEST['NAME'] is different. \"\nAssertionError: ('/tmp/django_4mbyzwxc/tmp9gc2cx9g/db.sqlite3',) == ('/tmp/django_4mbyzwxc/tmp9gc2cx9g/db.sqlite3',) : Database signatures should be different when TEST['NAME'] is different. Got default=('/tmp/django_4mbyzwxc/tmp9gc2cx9g/db.sqlite3',), other=('/tmp/django_4mbyzwxc/tmp9gc2cx9g/db.sqlite3',)\n\n----------------------------------------------------------------------\nRan 1 test in 0.002s\n\nFAILED (failures=1)\nDestroying test database for alias 'default' ('file:memorydb_default?mode=memory&cache=shared')...\n\nERROR conda.cli.main_run:execute(124): `conda run python ./tests/runtests.py --verbosity 2 --settings=test_sqlite --parallel 1 multidb_sqlite_signature_tests` failed. (See above for error)\nTesting against Django installed in '/testbed/django'\nSkipping setup of unused database(s): other.\nOperations to perform:\n  Synchronize unmigrated apps: auth, contenttypes, messages, sessions, staticfiles\n  Apply all migrations: admin, sites\nSynchronizing apps without migrations:\n  Creating tables...\n    Creating table django_content_type\n    Creating table auth_permission\n    Creating table auth_group\n    Creating table auth_user\n    Creating table django_session\n    Running deferred SQL...\nRunning migrations:\n  Applying admin.0001_initial... OK\n  Applying admin.0002_logentry_remove_auto_add... OK\n  Applying admin.0003_logentry_add_action_flag_choices... OK\n  Applying sites.0001_initial... OK\n  Applying sites.0002_alter_domain_unique... OK\nSystem check identified no issues (0 silenced).\n\n",
+    "settrace_traces": {
+      "multidb_sqlite_signature_tests.SQLiteTestDatabaseSignatureTests.test_separate_database_signatures": {
+        "exception_frames": [
+          {
+            "file": "tests/multidb_sqlite_signature_tests.py",
+            "line": 59,
+            "func": "test_separate_database_signatures",
+            "is_test": false,
+            "call_depth": 0
+          }
+        ],
+        "all_calls": [
+          {
+            "file": "tests/multidb_sqlite_signature_tests.py",
+            "line": 59,
+            "func": "test_separate_database_signatures",
+            "is_test": false,
+            "call_depth": 0
+          },
+          {
+            "file": "django/db/utils.py",
+            "line": 207,
+            "func": "__getitem__",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/sqlite3/creation.py",
+            "line": 89,
+            "func": "test_db_signature",
+            "is_test": false,
+            "call_depth": 1
+          },
+          {
+            "file": "django/db/backends/sqlite3/creation.py",
+            "line": 17,
+            "func": "_get_test_db_name",
+            "is_test": false,
+            "call_depth": 2
+          },
+          {
+            "file": "django/db/backends/sqlite3/creation.py",
+            "line": 11,
+            "func": "is_in_memory_db",
+            "is_test": false,
+            "call_depth": 2
+          }
+        ]
+      }
+    }
+  },
+  "instance_id": "django__django-12113",
+  "messages": []
+}
