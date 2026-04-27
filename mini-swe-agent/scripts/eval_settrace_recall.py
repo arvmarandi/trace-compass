@@ -21,6 +21,9 @@ import json
 import re
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 def extract_buggy_functions_from_patch(patch: str) -> set[str]:
     """Return function/class names whose bodies were modified in the golden patch.
@@ -269,6 +272,46 @@ def main():
                 for f in calls:
                     frame_funcs.add(f.get("func"))
             print(f"    in trace: {sorted(frame_funcs)[:10]}")
+
+    # ---- Frequency table and cumulative coverage by call depth ----
+    if buggy_call_depths:
+        freq = {}
+        for d in buggy_call_depths:
+            freq[d] = freq.get(d, 0) + 1
+        total_buggy = len(buggy_call_depths)
+        print("Call depth frequency (buggy functions):")
+        print(f"  {'depth':>6}  {'count':>6}  {'cumulative':>10}  {'cum %':>7}")
+        cumulative = 0
+        for depth in sorted(freq):
+            cumulative += freq[depth]
+            print(f"  {depth:>6}  {freq[depth]:>6}  {cumulative:>10}  {cumulative/total_buggy:>7.1%}")
+        print()
+        for k in [1, 3, 5, 10, 15, 20]:
+            covered = sum(v for d, v in freq.items() if d < k)
+            print(f"  top-{k:<3} (depth < {k:<3}): {covered}/{total_buggy}  ({covered/total_buggy:.1%})")
+        print()
+
+    # ---- Plot: buggy function call depth frequency ----
+    if buggy_call_depths:
+        cap = 30
+        capped = [min(d, cap) for d in buggy_call_depths]
+        bins = range(0, cap + 2)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.hist(capped, bins=bins, color="tomato", edgecolor="white", linewidth=0.5)
+        ax.axvline(np.mean(buggy_call_depths), color="darkred", linestyle="--", linewidth=1.5,
+                   label=f"Mean ({np.mean(buggy_call_depths):.1f})")
+        ax.axvline(np.median(buggy_call_depths), color="firebrick", linestyle=":", linewidth=1.5,
+                   label=f"Median ({np.median(buggy_call_depths):.0f})")
+        ax.set_xlabel("Call depth at first invocation (capped at 30)")
+        ax.set_ylabel("Frequency")
+        ax.set_title("Buggy Function Call Depth Distribution")
+        ax.legend(fontsize=9)
+        plt.tight_layout()
+        plot_path = traces_dir / "buggy_call_depth_freq.png"
+        plt.savefig(plot_path, dpi=150)
+        print(f"Plot saved to {plot_path}")
+        plt.show()
 
     # ---- Save detailed results ----
     out_path = traces_dir / "settrace_recall.json"

@@ -2,6 +2,441 @@
     "related_entities": {
         "methods": [
             {
+                "start_line": 139,
+                "file_path": "sklearn/preprocessing/_target.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the model according to the given training data.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vector, where n_samples is the number of samples and\n            n_features is the number of features.\n\n        y : array-like, shape (n_samples,)\n            Target values.\n\n        sample_weight : array-like, shape (n_samples,) optional\n            Array of weights that are assigned to individual samples.\n            If not provided, then each sample is given unit weight.\n\n        Returns\n        -------\n        self : object\n        \"\"\"\n        y = check_array(y, accept_sparse=False, force_all_finite=True,\n                        ensure_2d=False, dtype='numeric')\n\n        # store the number of dimension of the target to predict an array of\n        # similar shape at predict\n        self._training_dim = y.ndim\n\n        # transformers are designed to modify X which is 2d dimensional, we\n        # need to modify y accordingly.\n        if y.ndim == 1:\n            y_2d = y.reshape(-1, 1)\n        else:\n            y_2d = y\n        self._fit_transformer(y_2d)\n\n        if self.regressor is None:\n            from ..linear_model import LinearRegression\n            self.regressor_ = LinearRegression()\n        else:\n            self.regressor_ = clone(self.regressor)\n\n        # transform y and convert back to 1d array if needed\n        y_trans = self.transformer_.fit_transform(y_2d)\n        # FIXME: a FunctionTransformer can return a 1D array even when validate\n        # is set to True. Therefore, we need to check the number of dimension\n        # first.\n        if y_trans.ndim == 2 and y_trans.shape[1] == 1:\n            y_trans = y_trans.squeeze(axis=1)\n        if sample_weight is None:\n            self.regressor_.fit(X, y_trans)\n        else:\n            self.regressor_.fit(X, y_trans, sample_weight=sample_weight)\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing._target.TransformedTargetRegressor.fit",
+                "documentation": "Fit the model according to the given training data.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape (n_samples, n_features)\n    Training vector, where n_samples is the number of samples and\n    n_features is the number of features.\n\ny : array-like, shape (n_samples,)\n    Target values.\n\nsample_weight : array-like, shape (n_samples,) optional\n    Array of weights that are assigned to individual samples.\n    If not provided, then each sample is given unit weight.\n\nReturns\n-------\nself : object",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_target.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_target.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor.fit"
+                    }
+                ],
+                "similarity": 0.1907383963739589,
+                "end_line": 192,
+                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor.fit(self, X, y, sample_weight)"
+            },
+            {
+                "start_line": 173,
+                "file_path": "sklearn/preprocessing/imputation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _sparse_fit(self, X, strategy, missing_values, axis):\n        \"\"\"Fit the transformer on sparse data.\"\"\"\n        # Imputation is done \"by column\", so if we want to do it\n        # by row we only need to convert the matrix to csr format.\n        if axis == 1:\n            X = X.tocsr()\n        else:\n            X = X.tocsc()\n\n        # Count the zeros\n        if missing_values == 0:\n            n_zeros_axis = np.zeros(X.shape[not axis], dtype=int)\n        else:\n            n_zeros_axis = X.shape[axis] - np.diff(X.indptr)\n\n        # Mean\n        if strategy == \"mean\":\n            if missing_values != 0:\n                n_non_missing = n_zeros_axis\n\n                # Mask the missing elements\n                mask_missing_values = _get_mask(X.data, missing_values)\n                mask_valids = np.logical_not(mask_missing_values)\n\n                # Sum only the valid elements\n                new_data = X.data.copy()\n                new_data[mask_missing_values] = 0\n                X = sparse.csc_matrix((new_data, X.indices, X.indptr),\n                                      copy=False)\n                sums = X.sum(axis=0)\n\n                # Count the elements != 0\n                mask_non_zeros = sparse.csc_matrix(\n                    (mask_valids.astype(np.float64),\n                     X.indices,\n                     X.indptr), copy=False)\n                s = mask_non_zeros.sum(axis=0)\n                n_non_missing = np.add(n_non_missing, s)\n\n            else:\n                sums = X.sum(axis=axis)\n                n_non_missing = np.diff(X.indptr)\n\n            # Ignore the error, columns with a np.nan statistics_\n            # are not an error at this point. These columns will\n            # be removed in transform\n            with np.errstate(all=\"ignore\"):\n                return np.ravel(sums) / np.ravel(n_non_missing)\n\n        # Median + Most frequent\n        else:\n            # Remove the missing values, for each column\n            columns_all = np.hsplit(X.data, X.indptr[1:-1])\n            mask_missing_values = _get_mask(X.data, missing_values)\n            mask_valids = np.hsplit(np.logical_not(mask_missing_values),\n                                    X.indptr[1:-1])\n\n            # astype necessary for bug in numpy.hsplit before v1.9\n            columns = [col[mask.astype(bool, copy=False)]\n                       for col, mask in zip(columns_all, mask_valids)]\n\n            # Median\n            if strategy == \"median\":\n                median = np.empty(len(columns))\n                for i, column in enumerate(columns):\n                    median[i] = _get_median(column, n_zeros_axis[i])\n\n                return median\n\n            # Most frequent\n            elif strategy == \"most_frequent\":\n                most_frequent = np.empty(len(columns))\n\n                for i, column in enumerate(columns):\n                    most_frequent[i] = _most_frequent(column,\n                                                      0,\n                                                      n_zeros_axis[i])\n\n                return most_frequent",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing.imputation.Imputer._sparse_fit",
+                "documentation": "Fit the transformer on sparse data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/imputation.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/imputation.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing.imputation.Imputer._sparse_fit"
+                    }
+                ],
+                "similarity": 0.18811630309784505,
+                "end_line": 251,
+                "signature": "sklearn.preprocessing.imputation.Imputer._sparse_fit(self, X, strategy, missing_values, axis)"
+            },
+            {
+                "start_line": 109,
+                "file_path": "sklearn/preprocessing/_target.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _fit_transformer(self, y):\n        if (self.transformer is not None and\n                (self.func is not None or self.inverse_func is not None)):\n            raise ValueError(\"'transformer' and functions 'func'/\"\n                             \"'inverse_func' cannot both be set.\")\n        elif self.transformer is not None:\n            self.transformer_ = clone(self.transformer)\n        else:\n            if self.func is not None and self.inverse_func is None:\n                raise ValueError(\"When 'func' is provided, 'inverse_func' must\"\n                                 \" also be provided\")\n            self.transformer_ = FunctionTransformer(\n                func=self.func, inverse_func=self.inverse_func, validate=True,\n                check_inverse=self.check_inverse)\n        # XXX: sample_weight is not currently passed to the\n        # transformer. However, if transformer starts using sample_weight, the\n        # code should be modified accordingly. At the time to consider the\n        # sample_prop feature, it is also a good use case to be considered.\n        self.transformer_.fit(y)\n        if self.check_inverse:\n            idx_selected = slice(None, None, max(1, y.shape[0] // 10))\n            y_sel = safe_indexing(y, idx_selected)\n            y_sel_t = self.transformer_.transform(y_sel)\n            if not np.allclose(y_sel,\n                               self.transformer_.inverse_transform(y_sel_t)):\n                warnings.warn(\"The provided functions or transformer are\"\n                              \" not strictly inverse of each other. If\"\n                              \" you are sure you want to proceed regardless\"\n                              \", set 'check_inverse=False'\", UserWarning)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_target.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_target.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer"
+                    }
+                ],
+                "similarity": 0.18745496358896926,
+                "end_line": 137,
+                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer(self, y)"
+            },
+            {
+                "start_line": 281,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Apply approximate feature map to X.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape = (n_samples, n_features)\n\n        Returns\n        -------\n        X_new : {array, sparse matrix}, \\\n               shape = (n_samples, n_features * (2*sample_steps + 1))\n            Whether the return value is an array of sparse matrix depends on\n            the type of the input X.\n        \"\"\"\n        msg = (\"%(name)s is not fitted. Call fit to set the parameters before\"\n               \" calling transform\")\n        check_is_fitted(self, \"sample_interval_\", msg=msg)\n\n        X = check_array(X, accept_sparse='csr')\n        sparse = sp.issparse(X)\n\n        # check if X has negative values. Doesn't play well with np.log.\n        if ((X.data if sparse else X) < 0).any():\n            raise ValueError(\"Entries of X must be non-negative.\")\n        # zeroth component\n        # 1/cosh = sech\n        # cosh(0) = 1.0\n\n        transf = self._transform_sparse if sparse else self._transform_dense\n        return transf(X)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform",
+                "documentation": "Apply approximate feature map to X.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape = (n_samples, n_features)\n\nReturns\n-------\nX_new : {array, sparse matrix},                shape = (n_samples, n_features * (2*sample_steps + 1))\n    Whether the return value is an array of sparse matrix depends on\n    the type of the input X.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform"
+                    }
+                ],
+                "similarity": 0.18682998952972069,
+                "end_line": 310,
+                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform(self, X)"
+            },
+            {
+                "start_line": 338,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _transform_sparse(self, X):\n        indices = X.indices.copy()\n        indptr = X.indptr.copy()\n\n        data_step = np.sqrt(X.data * self.sample_interval_)\n        X_step = sp.csr_matrix((data_step, indices, indptr),\n                               shape=X.shape, dtype=X.dtype, copy=False)\n        X_new = [X_step]\n\n        log_step_nz = self.sample_interval_ * np.log(X.data)\n        step_nz = 2 * X.data * self.sample_interval_\n\n        for j in range(1, self.sample_steps):\n            factor_nz = np.sqrt(step_nz /\n                                np.cosh(np.pi * j * self.sample_interval_))\n\n            data_step = factor_nz * np.cos(j * log_step_nz)\n            X_step = sp.csr_matrix((data_step, indices, indptr),\n                                   shape=X.shape, dtype=X.dtype, copy=False)\n            X_new.append(X_step)\n\n            data_step = factor_nz * np.sin(j * log_step_nz)\n            X_step = sp.csr_matrix((data_step, indices, indptr),\n                                   shape=X.shape, dtype=X.dtype, copy=False)\n            X_new.append(X_step)\n\n        return sp.hstack(X_new)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse"
+                    }
+                ],
+                "similarity": 0.1859205841237055,
+                "end_line": 364,
+                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse(self, X)"
+            },
+            {
+                "start_line": 298,
+                "file_path": "sklearn/preprocessing/imputation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Impute all missing values in X.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape = [n_samples, n_features]\n            The input data to complete.\n        \"\"\"\n        if self.axis == 0:\n            check_is_fitted(self, 'statistics_')\n            X = check_array(X, accept_sparse='csc', dtype=FLOAT_DTYPES,\n                            force_all_finite=False, copy=self.copy)\n            statistics = self.statistics_\n            if X.shape[1] != statistics.shape[0]:\n                raise ValueError(\"X has %d features per sample, expected %d\"\n                                 % (X.shape[1], self.statistics_.shape[0]))\n\n        # Since two different arrays can be provided in fit(X) and\n        # transform(X), the imputation data need to be recomputed\n        # when the imputation is done per sample\n        else:\n            X = check_array(X, accept_sparse='csr', dtype=FLOAT_DTYPES,\n                            force_all_finite=False, copy=self.copy)\n\n            if sparse.issparse(X):\n                statistics = self._sparse_fit(X,\n                                              self.strategy,\n                                              self.missing_values,\n                                              self.axis)\n\n            else:\n                statistics = self._dense_fit(X,\n                                             self.strategy,\n                                             self.missing_values,\n                                             self.axis)\n\n        # Delete the invalid rows/columns\n        invalid_mask = np.isnan(statistics)\n        valid_mask = np.logical_not(invalid_mask)\n        valid_statistics = statistics[valid_mask]\n        valid_statistics_indexes = np.where(valid_mask)[0]\n        missing = np.arange(X.shape[not self.axis])[invalid_mask]\n\n        if self.axis == 0 and invalid_mask.any():\n            if self.verbose:\n                warnings.warn(\"Deleting features without \"\n                              \"observed values: %s\" % missing)\n            X = X[:, valid_statistics_indexes]\n        elif self.axis == 1 and invalid_mask.any():\n            raise ValueError(\"Some rows only contain \"\n                             \"missing values: %s\" % missing)\n\n        # Do actual imputation\n        if sparse.issparse(X) and self.missing_values != 0:\n            mask = _get_mask(X.data, self.missing_values)\n            indexes = np.repeat(np.arange(len(X.indptr) - 1, dtype=np.int),\n                                np.diff(X.indptr))[mask]\n\n            X.data[mask] = valid_statistics[indexes].astype(X.dtype,\n                                                            copy=False)\n        else:\n            if sparse.issparse(X):\n                X = X.toarray()\n\n            mask = _get_mask(X, self.missing_values)\n            n_missing = np.sum(mask, axis=self.axis)\n            values = np.repeat(valid_statistics, n_missing)\n\n            if self.axis == 0:\n                coordinates = np.where(mask.transpose())[::-1]\n            else:\n                coordinates = mask\n\n            X[coordinates] = values\n\n        return X",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing.imputation.Imputer.transform",
+                "documentation": "Impute all missing values in X.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape = [n_samples, n_features]\n    The input data to complete.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/imputation.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/imputation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing.imputation.Imputer.transform"
+                    }
+                ],
+                "similarity": 0.1803523702533737,
+                "end_line": 373,
+                "signature": "sklearn.preprocessing.imputation.Imputer.transform(self, X)"
+            },
+            {
+                "start_line": 312,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _transform_dense(self, X):\n        non_zero = (X != 0.0)\n        X_nz = X[non_zero]\n\n        X_step = np.zeros_like(X)\n        X_step[non_zero] = np.sqrt(X_nz * self.sample_interval_)\n\n        X_new = [X_step]\n\n        log_step_nz = self.sample_interval_ * np.log(X_nz)\n        step_nz = 2 * X_nz * self.sample_interval_\n\n        for j in range(1, self.sample_steps):\n            factor_nz = np.sqrt(step_nz /\n                                np.cosh(np.pi * j * self.sample_interval_))\n\n            X_step = np.zeros_like(X)\n            X_step[non_zero] = factor_nz * np.cos(j * log_step_nz)\n            X_new.append(X_step)\n\n            X_step = np.zeros_like(X)\n            X_step[non_zero] = factor_nz * np.sin(j * log_step_nz)\n            X_new.append(X_step)\n\n        return np.hstack(X_new)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_dense",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_dense"
+                    }
+                ],
+                "similarity": 0.1770794622928752,
+                "end_line": 336,
+                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_dense(self, X)"
+            },
+            {
+                "start_line": 478,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y):\n        \"\"\"Fit underlying estimators.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        y : array-like, shape = [n_samples]\n            Multi-class targets.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        X, y = check_X_y(X, y, accept_sparse=['csr', 'csc'])\n        check_classification_targets(y)\n\n        self.classes_ = np.unique(y)\n        if len(self.classes_) == 1:\n            raise ValueError(\"OneVsOneClassifier can not be fit when only one\"\n                             \" class is present.\")\n        n_classes = self.classes_.shape[0]\n        estimators_indices = list(zip(*(Parallel(n_jobs=self.n_jobs)(\n            delayed(_fit_ovo_binary)\n            (self.estimator, X, y, self.classes_[i], self.classes_[j])\n            for i in range(n_classes) for j in range(i + 1, n_classes)))))\n\n        self.estimators_ = estimators_indices[0]\n        try:\n            self.pairwise_indices_ = (\n                estimators_indices[1] if self._pairwise else None)\n        except AttributeError:\n            self.pairwise_indices_ = None\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsOneClassifier.fit",
+                "documentation": "Fit underlying estimators.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\ny : array-like, shape = [n_samples]\n    Multi-class targets.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsOneClassifier.fit"
+                    }
+                ],
+                "similarity": 0.17486476471509313,
+                "end_line": 513,
+                "signature": "sklearn.multiclass.OneVsOneClassifier.fit(self, X, y)"
+            },
+            {
+                "start_line": 91,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Apply the approximate feature map to X.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            New data, where n_samples in the number of samples\n            and n_features is the number of features.\n\n        Returns\n        -------\n        X_new : array-like, shape (n_samples, n_components)\n        \"\"\"\n        check_is_fitted(self, 'random_weights_')\n\n        X = check_array(X, accept_sparse='csr')\n        projection = safe_sparse_dot(X, self.random_weights_)\n        projection += self.random_offset_\n        np.cos(projection, projection)\n        projection *= np.sqrt(2.) / np.sqrt(self.n_components)\n        return projection",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.RBFSampler.transform",
+                "documentation": "Apply the approximate feature map to X.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape (n_samples, n_features)\n    New data, where n_samples in the number of samples\n    and n_features is the number of features.\n\nReturns\n-------\nX_new : array-like, shape (n_samples, n_components)",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.RBFSampler.transform"
+                    }
+                ],
+                "similarity": 0.17444247667847104,
+                "end_line": 111,
+                "signature": "sklearn.kernel_approximation.RBFSampler.transform(self, X)"
+            },
+            {
+                "start_line": 493,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Apply feature map to X.\n\n        Computes an approximate feature map using the kernel\n        between some training points and X.\n\n        Parameters\n        ----------\n        X : array-like, shape=(n_samples, n_features)\n            Data to transform.\n\n        Returns\n        -------\n        X_transformed : array, shape=(n_samples, n_components)\n            Transformed data.\n        \"\"\"\n        check_is_fitted(self, 'components_')\n        X = check_array(X, accept_sparse='csr')\n\n        kernel_params = self._get_kernel_params()\n        embedded = pairwise_kernels(X, self.components_,\n                                    metric=self.kernel,\n                                    filter_params=True,\n                                    **kernel_params)\n        return np.dot(embedded, self.normalization_.T)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.Nystroem.transform",
+                "documentation": "Apply feature map to X.\n\nComputes an approximate feature map using the kernel\nbetween some training points and X.\n\nParameters\n----------\nX : array-like, shape=(n_samples, n_features)\n    Data to transform.\n\nReturns\n-------\nX_transformed : array, shape=(n_samples, n_components)\n    Transformed data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.Nystroem.transform"
+                    }
+                ],
+                "similarity": 0.1731696999253834,
+                "end_line": 517,
+                "signature": "sklearn.kernel_approximation.Nystroem.transform(self, X)"
+            },
+            {
+                "start_line": 181,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Apply the approximate feature map to X.\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            New data, where n_samples in the number of samples\n            and n_features is the number of features. All values of X must be\n            strictly greater than \"-skewedness\".\n\n        Returns\n        -------\n        X_new : array-like, shape (n_samples, n_components)\n        \"\"\"\n        check_is_fitted(self, 'random_weights_')\n\n        X = as_float_array(X, copy=True)\n        X = check_array(X, copy=False)\n        if (X <= -self.skewedness).any():\n            raise ValueError(\"X may not contain entries smaller than\"\n                             \" -skewedness.\")\n\n        X += self.skewedness\n        np.log(X, X)\n        projection = safe_sparse_dot(X, self.random_weights_)\n        projection += self.random_offset_\n        np.cos(projection, projection)\n        projection *= np.sqrt(2.) / np.sqrt(self.n_components)\n        return projection",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.SkewedChi2Sampler.transform",
+                "documentation": "Apply the approximate feature map to X.\n\nParameters\n----------\nX : array-like, shape (n_samples, n_features)\n    New data, where n_samples in the number of samples\n    and n_features is the number of features. All values of X must be\n    strictly greater than \"-skewedness\".\n\nReturns\n-------\nX_new : array-like, shape (n_samples, n_components)",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.SkewedChi2Sampler.transform"
+                    }
+                ],
+                "similarity": 0.17262654474462172,
+                "end_line": 209,
+                "signature": "sklearn.kernel_approximation.SkewedChi2Sampler.transform(self, X)"
+            },
+            {
+                "start_line": 183,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y):\n        \"\"\"Fit underlying estimators.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        y : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes]\n            Multi-class targets. An indicator matrix turns on multilabel\n            classification.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        # A sparse LabelBinarizer, with sparse_output=True, has been shown to\n        # outpreform or match a dense label binarizer in all cases and has also\n        # resulted in less or equal memory consumption in the fit_ovr function\n        # overall.\n        self.label_binarizer_ = LabelBinarizer(sparse_output=True)\n        Y = self.label_binarizer_.fit_transform(y)\n        Y = Y.tocsc()\n        self.classes_ = self.label_binarizer_.classes_\n        columns = (col.toarray().ravel() for col in Y.T)\n        # In cases where individual estimators are very fast to train setting\n        # n_jobs > 1 in can results in slower performance due to the overhead\n        # of spawning threads.  See joblib issue #112.\n        self.estimators_ = Parallel(n_jobs=self.n_jobs)(delayed(_fit_binary)(\n            self.estimator, X, column, classes=[\n                \"not %s\" % self.label_binarizer_.classes_[i],\n                self.label_binarizer_.classes_[i]])\n            for i, column in enumerate(columns))\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.fit",
+                "documentation": "Fit underlying estimators.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\ny : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes]\n    Multi-class targets. An indicator matrix turns on multilabel\n    classification.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.fit"
+                    }
+                ],
+                "similarity": 0.1713941715189427,
+                "end_line": 217,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.fit(self, X, y)"
+            },
+            {
+                "start_line": 253,
+                "file_path": "sklearn/preprocessing/imputation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _dense_fit(self, X, strategy, missing_values, axis):\n        \"\"\"Fit the transformer on dense data.\"\"\"\n        X = check_array(X, force_all_finite=False)\n        mask = _get_mask(X, missing_values)\n        masked_X = ma.masked_array(X, mask=mask)\n\n        # Mean\n        if strategy == \"mean\":\n            mean_masked = np.ma.mean(masked_X, axis=axis)\n            # Avoid the warning \"Warning: converting a masked element to nan.\"\n            mean = np.ma.getdata(mean_masked)\n            mean[np.ma.getmask(mean_masked)] = np.nan\n\n            return mean\n\n        # Median\n        elif strategy == \"median\":\n            median_masked = np.ma.median(masked_X, axis=axis)\n            # Avoid the warning \"Warning: converting a masked element to nan.\"\n            median = np.ma.getdata(median_masked)\n            median[np.ma.getmaskarray(median_masked)] = np.nan\n\n            return median\n\n        # Most frequent\n        elif strategy == \"most_frequent\":\n            # scipy.stats.mstats.mode cannot be used because it will no work\n            # properly if the first element is masked and if its frequency\n            # is equal to the frequency of the most frequent valid element\n            # See https://github.com/scipy/scipy/issues/2636\n\n            # To be able access the elements by columns\n            if axis == 0:\n                X = X.transpose()\n                mask = mask.transpose()\n\n            most_frequent = np.empty(X.shape[0])\n\n            for i, (row, row_mask) in enumerate(zip(X[:], mask[:])):\n                row_mask = np.logical_not(row_mask).astype(np.bool)\n                row = row[row_mask]\n                most_frequent[i] = _most_frequent(row, np.nan, 0)\n\n            return most_frequent",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing.imputation.Imputer._dense_fit",
+                "documentation": "Fit the transformer on dense data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/imputation.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/imputation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing.imputation.Imputer._dense_fit"
+                    }
+                ],
+                "similarity": 0.1678412833639489,
+                "end_line": 296,
+                "signature": "sklearn.preprocessing.imputation.Imputer._dense_fit(self, X, strategy, missing_values, axis)"
+            },
+            {
+                "start_line": 220,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def partial_fit(self, X, y, classes=None):\n        \"\"\"Partially fit underlying estimators\n\n        Should be used when memory is inefficient to train all data.\n        Chunks of data can be passed in several iteration.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        y : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes]\n            Multi-class targets. An indicator matrix turns on multilabel\n            classification.\n\n        classes : array, shape (n_classes, )\n            Classes across all calls to partial_fit.\n            Can be obtained via `np.unique(y_all)`, where y_all is the\n            target vector of the entire dataset.\n            This argument is only required in the first call of partial_fit\n            and can be omitted in the subsequent calls.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        if _check_partial_fit_first_call(self, classes):\n            if not hasattr(self.estimator, \"partial_fit\"):\n                raise ValueError((\"Base estimator {0}, doesn't have \"\n                                 \"partial_fit method\").format(self.estimator))\n            self.estimators_ = [clone(self.estimator) for _ in range\n                                (self.n_classes_)]\n\n            # A sparse LabelBinarizer, with sparse_output=True, has been\n            # shown to outperform or match a dense label binarizer in all\n            # cases and has also resulted in less or equal memory consumption\n            # in the fit_ovr function overall.\n            self.label_binarizer_ = LabelBinarizer(sparse_output=True)\n            self.label_binarizer_.fit(self.classes_)\n\n        if len(np.setdiff1d(y, self.classes_)):\n            raise ValueError((\"Mini-batch contains {0} while classes \" +\n                             \"must be subset of {1}\").format(np.unique(y),\n                                                             self.classes_))\n\n        Y = self.label_binarizer_.transform(y)\n        Y = Y.tocsc()\n        columns = (col.toarray().ravel() for col in Y.T)\n\n        self.estimators_ = Parallel(n_jobs=self.n_jobs)(\n            delayed(_partial_fit_binary)(estimator, X, column)\n            for estimator, column in izip(self.estimators_, columns))\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.partial_fit",
+                "documentation": "Partially fit underlying estimators\n\nShould be used when memory is inefficient to train all data.\nChunks of data can be passed in several iteration.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\ny : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes]\n    Multi-class targets. An indicator matrix turns on multilabel\n    classification.\n\nclasses : array, shape (n_classes, )\n    Classes across all calls to partial_fit.\n    Can be obtained via `np.unique(y_all)`, where y_all is the\n    target vector of the entire dataset.\n    This argument is only required in the first call of partial_fit\n    and can be omitted in the subsequent calls.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.partial_fit"
+                    }
+                ],
+                "similarity": 0.16425600272319252,
+                "end_line": 273,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.partial_fit(self, X, y, classes)"
+            },
+            {
+                "start_line": 63,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit the model with X.\n\n        Samples random projection according to n_features.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training data, where n_samples in the number of samples\n            and n_features is the number of features.\n\n        Returns\n        -------\n        self : object\n            Returns the transformer.\n        \"\"\"\n\n        X = check_array(X, accept_sparse='csr')\n        random_state = check_random_state(self.random_state)\n        n_features = X.shape[1]\n\n        self.random_weights_ = (np.sqrt(2 * self.gamma) * random_state.normal(\n            size=(n_features, self.n_components)))\n\n        self.random_offset_ = random_state.uniform(0, 2 * np.pi,\n                                                   size=self.n_components)\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.RBFSampler.fit",
+                "documentation": "Fit the model with X.\n\nSamples random projection according to n_features.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape (n_samples, n_features)\n    Training data, where n_samples in the number of samples\n    and n_features is the number of features.\n\nReturns\n-------\nself : object\n    Returns the transformer.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.RBFSampler.fit"
+                    }
+                ],
+                "similarity": 0.1633466330300766,
+                "end_line": 89,
+                "signature": "sklearn.kernel_approximation.RBFSampler.fit(self, X, y)"
+            },
+            {
                 "start_line": 1999,
                 "file_path": "sklearn/preprocessing/data.py",
                 "issue_id": null,
@@ -31,6 +466,35 @@
                 "signature": "sklearn.preprocessing.data.OneHotEncoder._fit_transform(self, X)"
             },
             {
+                "start_line": 153,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit the model with X.\n\n        Samples random projection according to n_features.\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            Training data, where n_samples in the number of samples\n            and n_features is the number of features.\n\n        Returns\n        -------\n        self : object\n            Returns the transformer.\n        \"\"\"\n\n        X = check_array(X)\n        random_state = check_random_state(self.random_state)\n        n_features = X.shape[1]\n        uniform = random_state.uniform(size=(n_features, self.n_components))\n        # transform by inverse CDF of sech\n        self.random_weights_ = (1. / np.pi\n                                * np.log(np.tan(np.pi / 2. * uniform)))\n        self.random_offset_ = random_state.uniform(0, 2 * np.pi,\n                                                   size=self.n_components)\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.SkewedChi2Sampler.fit",
+                "documentation": "Fit the model with X.\n\nSamples random projection according to n_features.\n\nParameters\n----------\nX : array-like, shape (n_samples, n_features)\n    Training data, where n_samples in the number of samples\n    and n_features is the number of features.\n\nReturns\n-------\nself : object\n    Returns the transformer.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.SkewedChi2Sampler.fit"
+                    }
+                ],
+                "similarity": 0.15833327246901796,
+                "end_line": 179,
+                "signature": "sklearn.kernel_approximation.SkewedChi2Sampler.fit(self, X, y)"
+            },
+            {
                 "start_line": 115,
                 "file_path": "sklearn/preprocessing/label.py",
                 "issue_id": null,
@@ -50,7 +514,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing.label.LabelEncoder.transform"
                     }
@@ -58,6 +522,64 @@
                 "similarity": 0.15619488750917815,
                 "end_line": 135,
                 "signature": "sklearn.preprocessing.label.LabelEncoder.transform(self, y)"
+            },
+            {
+                "start_line": 129,
+                "file_path": "sklearn/preprocessing/imputation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit the imputer on X.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Input data, where ``n_samples`` is the number of samples and\n            ``n_features`` is the number of features.\n\n        Returns\n        -------\n        self : Imputer\n        \"\"\"\n        # Check parameters\n        allowed_strategies = [\"mean\", \"median\", \"most_frequent\"]\n        if self.strategy not in allowed_strategies:\n            raise ValueError(\"Can only use these strategies: {0} \"\n                             \" got strategy={1}\".format(allowed_strategies,\n                                                        self.strategy))\n\n        if self.axis not in [0, 1]:\n            raise ValueError(\"Can only impute missing values on axis 0 and 1, \"\n                             \" got axis={0}\".format(self.axis))\n\n        # Since two different arrays can be provided in fit(X) and\n        # transform(X), the imputation data will be computed in transform()\n        # when the imputation is done per sample (i.e., when axis=1).\n        if self.axis == 0:\n            X = check_array(X, accept_sparse='csc', dtype=np.float64,\n                            force_all_finite=False)\n\n            if sparse.issparse(X):\n                self.statistics_ = self._sparse_fit(X,\n                                                    self.strategy,\n                                                    self.missing_values,\n                                                    self.axis)\n            else:\n                self.statistics_ = self._dense_fit(X,\n                                                   self.strategy,\n                                                   self.missing_values,\n                                                   self.axis)\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing.imputation.Imputer.fit",
+                "documentation": "Fit the imputer on X.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape (n_samples, n_features)\n    Input data, where ``n_samples`` is the number of samples and\n    ``n_features`` is the number of features.\n\nReturns\n-------\nself : Imputer",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/imputation.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/imputation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing.imputation.Imputer.fit"
+                    }
+                ],
+                "similarity": 0.15360454097539664,
+                "end_line": 171,
+                "signature": "sklearn.preprocessing.imputation.Imputer.fit(self, X, y)"
+            },
+            {
+                "start_line": 194,
+                "file_path": "sklearn/preprocessing/_target.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def predict(self, X):\n        \"\"\"Predict using the base regressor, applying inverse.\n\n        The regressor is used to predict and the ``inverse_func`` or\n        ``inverse_transform`` is applied before returning the prediction.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape = (n_samples, n_features)\n            Samples.\n\n        Returns\n        -------\n        y_hat : array, shape = (n_samples,)\n            Predicted values.\n\n        \"\"\"\n        check_is_fitted(self, \"regressor_\")\n        pred = self.regressor_.predict(X)\n        if pred.ndim == 1:\n            pred_trans = self.transformer_.inverse_transform(\n                pred.reshape(-1, 1))\n        else:\n            pred_trans = self.transformer_.inverse_transform(pred)\n        if (self._training_dim == 1 and\n                pred_trans.ndim == 2 and pred_trans.shape[1] == 1):\n            pred_trans = pred_trans.squeeze(axis=1)\n\n        return pred_trans",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing._target.TransformedTargetRegressor.predict",
+                "documentation": "Predict using the base regressor, applying inverse.\n\nThe regressor is used to predict and the ``inverse_func`` or\n``inverse_transform`` is applied before returning the prediction.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape = (n_samples, n_features)\n    Samples.\n\nReturns\n-------\ny_hat : array, shape = (n_samples,)\n    Predicted values.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_target.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_target.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor.predict"
+                    }
+                ],
+                "similarity": 0.15282881905693554,
+                "end_line": 222,
+                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor.predict(self, X)"
             },
             {
                 "start_line": 3091,
@@ -118,6 +640,122 @@
                 "signature": "sklearn.preprocessing.data.OneHotEncoder._transform(self, X)"
             },
             {
+                "start_line": 516,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def partial_fit(self, X, y, classes=None):\n        \"\"\"Partially fit underlying estimators\n\n        Should be used when memory is inefficient to train all data. Chunks\n        of data can be passed in several iteration, where the first call\n        should have an array of all target variables.\n\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        y : array-like, shape = [n_samples]\n            Multi-class targets.\n\n        classes : array, shape (n_classes, )\n            Classes across all calls to partial_fit.\n            Can be obtained via `np.unique(y_all)`, where y_all is the\n            target vector of the entire dataset.\n            This argument is only required in the first call of partial_fit\n            and can be omitted in the subsequent calls.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        if _check_partial_fit_first_call(self, classes):\n            self.estimators_ = [clone(self.estimator) for i in\n                                range(self.n_classes_ *\n                                      (self.n_classes_ - 1) // 2)]\n\n        if len(np.setdiff1d(y, self.classes_)):\n            raise ValueError(\"Mini-batch contains {0} while it \"\n                             \"must be subset of {1}\".format(np.unique(y),\n                                                            self.classes_))\n\n        X, y = check_X_y(X, y, accept_sparse=['csr', 'csc'])\n        check_classification_targets(y)\n        combinations = itertools.combinations(range(self.n_classes_), 2)\n        self.estimators_ = Parallel(\n            n_jobs=self.n_jobs)(\n                delayed(_partial_fit_ovo_binary)(\n                    estimator, X, y, self.classes_[i], self.classes_[j])\n                for estimator, (i, j) in izip(self.estimators_,\n                                              (combinations)))\n\n        self.pairwise_indices_ = None\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsOneClassifier.partial_fit",
+                "documentation": "Partially fit underlying estimators\n\nShould be used when memory is inefficient to train all data. Chunks\nof data can be passed in several iteration, where the first call\nshould have an array of all target variables.\n\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\ny : array-like, shape = [n_samples]\n    Multi-class targets.\n\nclasses : array, shape (n_classes, )\n    Classes across all calls to partial_fit.\n    Can be obtained via `np.unique(y_all)`, where y_all is the\n    target vector of the entire dataset.\n    This argument is only required in the first call of partial_fit\n    and can be omitted in the subsequent calls.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsOneClassifier.partial_fit"
+                    }
+                ],
+                "similarity": 0.15043553606766147,
+                "end_line": 565,
+                "signature": "sklearn.multiclass.OneVsOneClassifier.partial_fit(self, X, y, classes)"
+            },
+            {
+                "start_line": 589,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def decision_function(self, X):\n        \"\"\"Decision function for the OneVsOneClassifier.\n\n        The decision values for the samples are computed by adding the\n        normalized sum of pair-wise classification confidence levels to the\n        votes in order to disambiguate between the decision values when the\n        votes for all the classes are equal leading to a tie.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n\n        Returns\n        -------\n        Y : array-like, shape = [n_samples, n_classes]\n        \"\"\"\n        check_is_fitted(self, 'estimators_')\n\n        indices = self.pairwise_indices_\n        if indices is None:\n            Xs = [X] * len(self.estimators_)\n        else:\n            Xs = [X[:, idx] for idx in indices]\n\n        predictions = np.vstack([est.predict(Xi)\n                                 for est, Xi in zip(self.estimators_, Xs)]).T\n        confidences = np.vstack([_predict_binary(est, Xi)\n                                 for est, Xi in zip(self.estimators_, Xs)]).T\n        Y = _ovr_decision_function(predictions,\n                                   confidences, len(self.classes_))\n        if self.n_classes_ == 2:\n            return Y[:, 1]\n        return Y",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsOneClassifier.decision_function",
+                "documentation": "Decision function for the OneVsOneClassifier.\n\nThe decision values for the samples are computed by adding the\nnormalized sum of pair-wise classification confidence levels to the\nvotes in order to disambiguate between the decision values when the\nvotes for all the classes are equal leading to a tie.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n\nReturns\n-------\nY : array-like, shape = [n_samples, n_classes]",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsOneClassifier.decision_function"
+                    }
+                ],
+                "similarity": 0.15025690010870954,
+                "end_line": 621,
+                "signature": "sklearn.multiclass.OneVsOneClassifier.decision_function(self, X)"
+            },
+            {
+                "start_line": 707,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y):\n        \"\"\"Fit underlying estimators.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        y : numpy array of shape [n_samples]\n            Multi-class targets.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        X, y = check_X_y(X, y)\n        if self.code_size <= 0:\n            raise ValueError(\"code_size should be greater than 0, got {0}\"\n                             \"\".format(self.code_size))\n\n        _check_estimator(self.estimator)\n        random_state = check_random_state(self.random_state)\n        check_classification_targets(y)\n\n        self.classes_ = np.unique(y)\n        n_classes = self.classes_.shape[0]\n        code_size_ = int(n_classes * self.code_size)\n\n        # FIXME: there are more elaborate methods than generating the codebook\n        # randomly.\n        self.code_book_ = random_state.random_sample((n_classes, code_size_))\n        self.code_book_[self.code_book_ > 0.5] = 1\n\n        if hasattr(self.estimator, \"decision_function\"):\n            self.code_book_[self.code_book_ != 1] = -1\n        else:\n            self.code_book_[self.code_book_ != 1] = 0\n\n        classes_index = dict((c, i) for i, c in enumerate(self.classes_))\n\n        Y = np.array([self.code_book_[classes_index[y[i]]]\n                      for i in range(X.shape[0])], dtype=np.int)\n\n        self.estimators_ = Parallel(n_jobs=self.n_jobs)(\n            delayed(_fit_binary)(self.estimator, X, Y[:, i])\n            for i in range(Y.shape[1]))\n\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OutputCodeClassifier.fit",
+                "documentation": "Fit underlying estimators.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\ny : numpy array of shape [n_samples]\n    Multi-class targets.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OutputCodeClassifier.fit"
+                    }
+                ],
+                "similarity": 0.1501129515519726,
+                "end_line": 754,
+                "signature": "sklearn.multiclass.OutputCodeClassifier.fit(self, X, y)"
+            },
+            {
+                "start_line": 567,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def predict(self, X):\n        \"\"\"Estimate the best class label for each sample in X.\n\n        This is implemented as ``argmax(decision_function(X), axis=1)`` which\n        will return the label of the class with most votes by estimators\n        predicting the outcome of a decision for each possible class pair.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        Returns\n        -------\n        y : numpy array of shape [n_samples]\n            Predicted multi-class targets.\n        \"\"\"\n        Y = self.decision_function(X)\n        if self.n_classes_ == 2:\n            return self.classes_[(Y > 0).astype(np.int)]\n        return self.classes_[Y.argmax(axis=1)]",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsOneClassifier.predict",
+                "documentation": "Estimate the best class label for each sample in X.\n\nThis is implemented as ``argmax(decision_function(X), axis=1)`` which\nwill return the label of the class with most votes by estimators\npredicting the outcome of a decision for each possible class pair.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\nReturns\n-------\ny : numpy array of shape [n_samples]\n    Predicted multi-class targets.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsOneClassifier.predict"
+                    }
+                ],
+                "similarity": 0.14877527388608927,
+                "end_line": 587,
+                "signature": "sklearn.multiclass.OneVsOneClassifier.predict(self, X)"
+            },
+            {
                 "start_line": 311,
                 "file_path": "sklearn/preprocessing/label.py",
                 "issue_id": null,
@@ -174,6 +812,93 @@
                 "similarity": 0.14717429303963703,
                 "end_line": 3089,
                 "signature": "sklearn.preprocessing.data.CategoricalEncoder.transform(self, X)"
+            },
+            {
+                "start_line": 385,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def coef_(self):\n        check_is_fitted(self, 'estimators_')\n        if not hasattr(self.estimators_[0], \"coef_\"):\n            raise AttributeError(\n                \"Base estimator doesn't have a coef_ attribute.\")\n        coefs = [e.coef_ for e in self.estimators_]\n        if sp.issparse(coefs[0]):\n            return sp.vstack(coefs)\n        return np.vstack(coefs)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.coef_",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.coef_"
+                    }
+                ],
+                "similarity": 0.14683918876016414,
+                "end_line": 393,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.coef_(self)"
+            },
+            {
+                "start_line": 263,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Set parameters.\"\"\"\n        X = check_array(X, accept_sparse='csr')\n        if self.sample_interval is None:\n            # See reference, figure 2 c)\n            if self.sample_steps == 1:\n                self.sample_interval_ = 0.8\n            elif self.sample_steps == 2:\n                self.sample_interval_ = 0.5\n            elif self.sample_steps == 3:\n                self.sample_interval_ = 0.4\n            else:\n                raise ValueError(\"If sample_steps is not in [1, 2, 3],\"\n                                 \" you need to provide sample_interval\")\n        else:\n            self.sample_interval_ = self.sample_interval\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler.fit",
+                "documentation": "Set parameters.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler.fit"
+                    }
+                ],
+                "similarity": 0.14667295630549565,
+                "end_line": 279,
+                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler.fit(self, X, y)"
+            },
+            {
+                "start_line": 451,
+                "file_path": "sklearn/kernel_approximation.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit estimator to data.\n\n        Samples a subset of training points, computes kernel\n        on these and computes normalization matrix.\n\n        Parameters\n        ----------\n        X : array-like, shape=(n_samples, n_feature)\n            Training data.\n        \"\"\"\n        X = check_array(X, accept_sparse='csr')\n        rnd = check_random_state(self.random_state)\n        n_samples = X.shape[0]\n\n        # get basis vectors\n        if self.n_components > n_samples:\n            # XXX should we just bail?\n            n_components = n_samples\n            warnings.warn(\"n_components > n_samples. This is not possible.\\n\"\n                          \"n_components was set to n_samples, which results\"\n                          \" in inefficient evaluation of the full kernel.\")\n\n        else:\n            n_components = self.n_components\n        n_components = min(n_samples, n_components)\n        inds = rnd.permutation(n_samples)\n        basis_inds = inds[:n_components]\n        basis = X[basis_inds]\n\n        basis_kernel = pairwise_kernels(basis, metric=self.kernel,\n                                        filter_params=True,\n                                        **self._get_kernel_params())\n\n        # sqrt of kernel matrix on basis vectors\n        U, S, V = svd(basis_kernel)\n        S = np.maximum(S, 1e-12)\n        self.normalization_ = np.dot(U / np.sqrt(S), V)\n        self.components_ = basis\n        self.component_indices_ = inds\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.kernel_approximation.Nystroem.fit",
+                "documentation": "Fit estimator to data.\n\nSamples a subset of training points, computes kernel\non these and computes normalization matrix.\n\nParameters\n----------\nX : array-like, shape=(n_samples, n_feature)\n    Training data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/kernel_approximation.py"
+                    },
+                    {
+                        "start_node": "sklearn/kernel_approximation.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.kernel_approximation.Nystroem.fit"
+                    }
+                ],
+                "similarity": 0.14654952297487708,
+                "end_line": 491,
+                "signature": "sklearn.kernel_approximation.Nystroem.fit(self, X, y)"
             },
             {
                 "start_line": 748,
@@ -253,7 +978,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing.label.LabelBinarizer.fit_transform"
                     }
@@ -261,6 +986,35 @@
                 "similarity": 0.14543375862661975,
                 "end_line": 309,
                 "signature": "sklearn.preprocessing.label.LabelBinarizer.fit_transform(self, y)"
+            },
+            {
+                "start_line": 756,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def predict(self, X):\n        \"\"\"Predict multi-class targets using underlying estimators.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        Returns\n        -------\n        y : numpy array of shape [n_samples]\n            Predicted multi-class targets.\n        \"\"\"\n        check_is_fitted(self, 'estimators_')\n        X = check_array(X)\n        Y = np.array([_predict_binary(e, X) for e in self.estimators_]).T\n        pred = euclidean_distances(Y, self.code_book_).argmin(axis=1)\n        return self.classes_[pred]",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OutputCodeClassifier.predict",
+                "documentation": "Predict multi-class targets using underlying estimators.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\nReturns\n-------\ny : numpy array of shape [n_samples]\n    Predicted multi-class targets.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OutputCodeClassifier.predict"
+                    }
+                ],
+                "similarity": 0.14488916608749874,
+                "end_line": 773,
+                "signature": "sklearn.multiclass.OutputCodeClassifier.predict(self, X)"
             },
             {
                 "start_line": 2965,
@@ -311,7 +1065,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing.label.MultiLabelBinarizer.fit_transform"
                     }
@@ -319,6 +1073,35 @@
                 "similarity": 0.143834003654047,
                 "end_line": 746,
                 "signature": "sklearn.preprocessing.label.MultiLabelBinarizer.fit_transform(self, y)"
+            },
+            {
+                "start_line": 275,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def predict(self, X):\n        \"\"\"Predict multi-class targets using underlying estimators.\n\n        Parameters\n        ----------\n        X : (sparse) array-like, shape = [n_samples, n_features]\n            Data.\n\n        Returns\n        -------\n        y : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes].\n            Predicted multi-class targets.\n        \"\"\"\n        check_is_fitted(self, 'estimators_')\n        if (hasattr(self.estimators_[0], \"decision_function\") and\n                is_classifier(self.estimators_[0])):\n            thresh = 0\n        else:\n            thresh = .5\n\n        n_samples = _num_samples(X)\n        if self.label_binarizer_.y_type_ == \"multiclass\":\n            maxima = np.empty(n_samples, dtype=float)\n            maxima.fill(-np.inf)\n            argmaxima = np.zeros(n_samples, dtype=int)\n            for i, e in enumerate(self.estimators_):\n                pred = _predict_binary(e, X)\n                np.maximum(maxima, pred, out=maxima)\n                argmaxima[maxima == pred] = i\n            return self.classes_[np.array(argmaxima.T)]\n        else:\n            indices = array.array('i')\n            indptr = array.array('i', [0])\n            for e in self.estimators_:\n                indices.extend(np.where(_predict_binary(e, X) > thresh)[0])\n                indptr.append(len(indices))\n            data = np.ones(len(indices), dtype=int)\n            indicator = sp.csc_matrix((data, indices, indptr),\n                                      shape=(n_samples, len(self.estimators_)))\n            return self.label_binarizer_.inverse_transform(indicator)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.predict",
+                "documentation": "Predict multi-class targets using underlying estimators.\n\nParameters\n----------\nX : (sparse) array-like, shape = [n_samples, n_features]\n    Data.\n\nReturns\n-------\ny : (sparse) array-like, shape = [n_samples, ], [n_samples, n_classes].\n    Predicted multi-class targets.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.predict"
+                    }
+                ],
+                "similarity": 0.1431922962857261,
+                "end_line": 314,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.predict(self, X)"
             },
             {
                 "start_line": 99,
@@ -340,7 +1123,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing.label.LabelEncoder.fit_transform"
                     }
@@ -437,6 +1220,64 @@
                 "signature": "sklearn.pipeline.FeatureUnion.fit_transform(self, X, y)"
             },
             {
+                "start_line": 356,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def decision_function(self, X):\n        \"\"\"Returns the distance of each sample from the decision boundary for\n        each class. This can only be used with estimators which implement the\n        decision_function method.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n\n        Returns\n        -------\n        T : array-like, shape = [n_samples, n_classes]\n        \"\"\"\n        check_is_fitted(self, 'estimators_')\n        if len(self.estimators_) == 1:\n            return self.estimators_[0].decision_function(X)\n        return np.array([est.decision_function(X).ravel()\n                         for est in self.estimators_]).T",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.decision_function",
+                "documentation": "Returns the distance of each sample from the decision boundary for\neach class. This can only be used with estimators which implement the\ndecision_function method.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n\nReturns\n-------\nT : array-like, shape = [n_samples, n_classes]",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.decision_function"
+                    }
+                ],
+                "similarity": 0.13920529116418248,
+                "end_line": 373,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.decision_function(self, X)"
+            },
+            {
+                "start_line": 101,
+                "file_path": "sklearn/preprocessing/_target.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, regressor=None, transformer=None,\n                 func=None, inverse_func=None, check_inverse=True):\n        self.regressor = regressor\n        self.transformer = transformer\n        self.func = func\n        self.inverse_func = inverse_func\n        self.check_inverse = check_inverse",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing._target.TransformedTargetRegressor.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_target.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_target.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor.__init__"
+                    }
+                ],
+                "similarity": 0.13775245971578043,
+                "end_line": 107,
+                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor.__init__(self, regressor, transformer, func, inverse_func, check_inverse)"
+            },
+            {
                 "start_line": 753,
                 "file_path": "sklearn/pipeline.py",
                 "issue_id": null,
@@ -464,6 +1305,35 @@
                 "similarity": 0.13773718924729092,
                 "end_line": 777,
                 "signature": "sklearn.pipeline.FeatureUnion.transform(self, X)"
+            },
+            {
+                "start_line": 317,
+                "file_path": "sklearn/multiclass.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def predict_proba(self, X):\n        \"\"\"Probability estimates.\n\n        The returned estimates for all classes are ordered by label of classes.\n\n        Note that in the multilabel case, each sample can have any number of\n        labels. This returns the marginal probability that the given sample has\n        the label in question. For example, it is entirely consistent that two\n        labels both have a 90% probability of applying to a given sample.\n\n        In the single label multiclass case, the rows of the returned matrix\n        sum to 1.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n\n        Returns\n        -------\n        T : (sparse) array-like, shape = [n_samples, n_classes]\n            Returns the probability of the sample for each class in the model,\n            where classes are ordered as they are in `self.classes_`.\n        \"\"\"\n        check_is_fitted(self, 'estimators_')\n        # Y[i, j] gives the probability that sample i has the label j.\n        # In the multi-label case, these are not disjoint.\n        Y = np.array([e.predict_proba(X)[:, 1] for e in self.estimators_]).T\n\n        if len(self.estimators_) == 1:\n            # Only one estimator, but we still want to return probabilities\n            # for two classes.\n            Y = np.concatenate(((1 - Y), Y), axis=1)\n\n        if not self.multilabel_:\n            # Then, probabilities should be normalized to 1.\n            Y /= np.sum(Y, axis=1)[:, np.newaxis]\n        return Y",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.multiclass.OneVsRestClassifier.predict_proba",
+                "documentation": "Probability estimates.\n\nThe returned estimates for all classes are ordered by label of classes.\n\nNote that in the multilabel case, each sample can have any number of\nlabels. This returns the marginal probability that the given sample has\nthe label in question. For example, it is entirely consistent that two\nlabels both have a 90% probability of applying to a given sample.\n\nIn the single label multiclass case, the rows of the returned matrix\nsum to 1.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n\nReturns\n-------\nT : (sparse) array-like, shape = [n_samples, n_classes]\n    Returns the probability of the sample for each class in the model,\n    where classes are ordered as they are in `self.classes_`.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/multiclass.py"
+                    },
+                    {
+                        "start_node": "sklearn/multiclass.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.multiclass.OneVsRestClassifier.predict_proba"
+                    }
+                ],
+                "similarity": 0.13703390742817603,
+                "end_line": 353,
+                "signature": "sklearn.multiclass.OneVsRestClassifier.predict_proba(self, X)"
             },
             {
                 "start_line": 653,
@@ -580,888 +1450,6 @@
                 "similarity": 0.13430467510303729,
                 "end_line": 2403,
                 "signature": "sklearn.preprocessing.data.QuantileTransformer._check_inputs(self, X, accept_sparse_negative)"
-            },
-            {
-                "start_line": 26,
-                "file_path": "sklearn/cluster/_feature_agglomeration.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"\n        Transform a new matrix using the built clustering\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features] or [n_features]\n            A M by N array of M observations in N dimensions or a length\n            M array of M one-dimensional observations.\n\n        Returns\n        -------\n        Y : array, shape = [n_samples, n_clusters] or [n_clusters]\n            The pooled values for each feature cluster.\n        \"\"\"\n        check_is_fitted(self, \"labels_\")\n\n        pooling_func = self.pooling_func\n        X = check_array(X)\n        if len(self.labels_) != X.shape[1]:\n            raise ValueError(\"X has a different number of features than \"\n                             \"during fitting.\")\n        if pooling_func == np.mean and not issparse(X):\n            size = np.bincount(self.labels_)\n            n_samples = X.shape[0]\n            # a fast way to compute the mean of grouped features\n            nX = np.array([np.bincount(self.labels_, X[i, :]) / size\n                          for i in range(n_samples)])\n        else:\n            nX = []\n            for l in np.unique(self.labels_):\n                nX.append(pooling_func(X[:, self.labels_ == l], axis=1))\n            nX = np.array(nX).T\n        return nX",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.cluster._feature_agglomeration.AgglomerationTransform.transform",
-                "documentation": "Transform a new matrix using the built clustering\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features] or [n_features]\n    A M by N array of M observations in N dimensions or a length\n    M array of M one-dimensional observations.\n\nReturns\n-------\nY : array, shape = [n_samples, n_clusters] or [n_clusters]\n    The pooled values for each feature cluster.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/cluster/_feature_agglomeration.py"
-                    },
-                    {
-                        "start_node": "sklearn/cluster/_feature_agglomeration.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.cluster._feature_agglomeration.AgglomerationTransform.transform"
-                    }
-                ],
-                "similarity": 0.1342711722061213,
-                "end_line": 59,
-                "signature": "sklearn.cluster._feature_agglomeration.AgglomerationTransform.transform(self, X)"
-            },
-            {
-                "start_line": 684,
-                "file_path": "sklearn/preprocessing/label.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, y):\n        \"\"\"Fit the label sets binarizer, storing `classes_`\n\n        Parameters\n        ----------\n        y : iterable of iterables\n            A set of labels (any orderable and hashable object) for each\n            sample. If the `classes` parameter is set, `y` will not be\n            iterated.\n\n        Returns\n        -------\n        self : returns this MultiLabelBinarizer instance\n        \"\"\"\n        if self.classes is None:\n            classes = sorted(set(itertools.chain.from_iterable(y)))\n        else:\n            classes = self.classes\n        dtype = np.int if all(isinstance(c, int) for c in classes) else object\n        self.classes_ = np.empty(len(classes), dtype=dtype)\n        self.classes_[:] = classes\n        return self",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.label.MultiLabelBinarizer.fit",
-                "documentation": "Fit the label sets binarizer, storing `classes_`\n\nParameters\n----------\ny : iterable of iterables\n    A set of labels (any orderable and hashable object) for each\n    sample. If the `classes` parameter is set, `y` will not be\n    iterated.\n\nReturns\n-------\nself : returns this MultiLabelBinarizer instance",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/label.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.label.MultiLabelBinarizer.fit"
-                    }
-                ],
-                "similarity": 0.13426043474466848,
-                "end_line": 705,
-                "signature": "sklearn.preprocessing.label.MultiLabelBinarizer.fit(self, y)"
-            },
-            {
-                "start_line": 479,
-                "file_path": "sklearn/base.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None, **fit_params):\n        \"\"\"Fit to data, then transform it.\n\n        Fits transformer to X and y with optional parameters fit_params\n        and returns a transformed version of X.\n\n        Parameters\n        ----------\n        X : numpy array of shape [n_samples, n_features]\n            Training set.\n\n        y : numpy array of shape [n_samples]\n            Target values.\n\n        Returns\n        -------\n        X_new : numpy array of shape [n_samples, n_features_new]\n            Transformed array.\n\n        \"\"\"\n        # non-optimized default implementation; override when a better\n        # method is possible for a given clustering algorithm\n        if y is None:\n            # fit method of arity 1 (unsupervised transformation)\n            return self.fit(X, **fit_params).transform(X)\n        else:\n            # fit method of arity 2 (supervised transformation)\n            return self.fit(X, y, **fit_params).transform(X)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.base.TransformerMixin.fit_transform",
-                "documentation": "Fit to data, then transform it.\n\nFits transformer to X and y with optional parameters fit_params\nand returns a transformed version of X.\n\nParameters\n----------\nX : numpy array of shape [n_samples, n_features]\n    Training set.\n\ny : numpy array of shape [n_samples]\n    Target values.\n\nReturns\n-------\nX_new : numpy array of shape [n_samples, n_features_new]\n    Transformed array.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/base.py"
-                    },
-                    {
-                        "start_node": "sklearn/base.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.base.TransformerMixin.fit_transform"
-                    }
-                ],
-                "similarity": 0.13402238101755065,
-                "end_line": 506,
-                "signature": "sklearn.base.TransformerMixin.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 274,
-                "file_path": "sklearn/feature_extraction/dict_vectorizer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"Transform feature->value dicts to array or sparse matrix.\n\n        Named features not encountered during fit or fit_transform will be\n        silently ignored.\n\n        Parameters\n        ----------\n        X : Mapping or iterable over Mappings, length = n_samples\n            Dict(s) or Mapping(s) from feature names (arbitrary Python\n            objects) to feature values (strings or convertible to dtype).\n\n        Returns\n        -------\n        Xa : {array, sparse matrix}\n            Feature vectors; always 2-d.\n        \"\"\"\n        if self.sparse:\n            return self._transform(X, fitting=False)\n\n        else:\n            dtype = self.dtype\n            vocab = self.vocabulary_\n            X = _tosequence(X)\n            Xa = np.zeros((len(X), len(vocab)), dtype=dtype)\n\n            for i, x in enumerate(X):\n                for f, v in six.iteritems(x):\n                    if isinstance(v, six.string_types):\n                        f = \"%s%s%s\" % (f, self.separator, v)\n                        v = 1\n                    try:\n                        Xa[i, vocab[f]] = dtype(v)\n                    except KeyError:\n                        pass\n\n            return Xa",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.transform",
-                "documentation": "Transform feature->value dicts to array or sparse matrix.\n\nNamed features not encountered during fit or fit_transform will be\nsilently ignored.\n\nParameters\n----------\nX : Mapping or iterable over Mappings, length = n_samples\n    Dict(s) or Mapping(s) from feature names (arbitrary Python\n    objects) to feature values (strings or convertible to dtype).\n\nReturns\n-------\nXa : {array, sparse matrix}\n    Feature vectors; always 2-d.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/feature_extraction/dict_vectorizer.py"
-                    },
-                    {
-                        "start_node": "sklearn/feature_extraction/dict_vectorizer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.transform"
-                    }
-                ],
-                "similarity": 0.13392200561165196,
-                "end_line": 310,
-                "signature": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.transform(self, X)"
-            },
-            {
-                "start_line": 1669,
-                "file_path": "sklearn/preprocessing/data.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X, y='deprecated', copy=None):\n        \"\"\"Binarize each element of X\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape [n_samples, n_features]\n            The data to binarize, element by element.\n            scipy.sparse matrices should be in CSR format to avoid an\n            un-necessary copy.\n        y : (ignored)\n            .. deprecated:: 0.19\n               This parameter will be removed in 0.21.\n        copy : bool\n            Copy the input X or not.\n        \"\"\"\n        if not isinstance(y, string_types) or y != 'deprecated':\n            warnings.warn(\"The parameter y on transform() is \"\n                          \"deprecated since 0.19 and will be removed in 0.21\",\n                          DeprecationWarning)\n\n        copy = copy if copy is not None else self.copy\n        return binarize(X, threshold=self.threshold, copy=copy)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.data.Binarizer.transform",
-                "documentation": "Binarize each element of X\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape [n_samples, n_features]\n    The data to binarize, element by element.\n    scipy.sparse matrices should be in CSR format to avoid an\n    un-necessary copy.\ny : (ignored)\n    .. deprecated:: 0.19\n       This parameter will be removed in 0.21.\ncopy : bool\n    Copy the input X or not.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/data.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/data.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.data.Binarizer.transform"
-                    }
-                ],
-                "similarity": 0.13226871467492365,
-                "end_line": 1690,
-                "signature": "sklearn.preprocessing.data.Binarizer.transform(self, X, y, copy)"
-            },
-            {
-                "start_line": 249,
-                "file_path": "sklearn/preprocessing/imputation.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _dense_fit(self, X, strategy, missing_values, axis):\n        \"\"\"Fit the transformer on dense data.\"\"\"\n        X = check_array(X, force_all_finite=False)\n        mask = _get_mask(X, missing_values)\n        masked_X = ma.masked_array(X, mask=mask)\n\n        # Mean\n        if strategy == \"mean\":\n            mean_masked = np.ma.mean(masked_X, axis=axis)\n            # Avoid the warning \"Warning: converting a masked element to nan.\"\n            mean = np.ma.getdata(mean_masked)\n            mean[np.ma.getmask(mean_masked)] = np.nan\n\n            return mean\n\n        # Median\n        elif strategy == \"median\":\n            if tuple(int(v) for v in np.__version__.split('.')[:2]) < (1, 5):\n                # In old versions of numpy, calling a median on an array\n                # containing nans returns nan. This is different is\n                # recent versions of numpy, which we want to mimic\n                masked_X.mask = np.logical_or(masked_X.mask,\n                                              np.isnan(X))\n            median_masked = np.ma.median(masked_X, axis=axis)\n            # Avoid the warning \"Warning: converting a masked element to nan.\"\n            median = np.ma.getdata(median_masked)\n            median[np.ma.getmaskarray(median_masked)] = np.nan\n\n            return median\n\n        # Most frequent\n        elif strategy == \"most_frequent\":\n            # scipy.stats.mstats.mode cannot be used because it will no work\n            # properly if the first element is masked and if its frequency\n            # is equal to the frequency of the most frequent valid element\n            # See https://github.com/scipy/scipy/issues/2636\n\n            # To be able access the elements by columns\n            if axis == 0:\n                X = X.transpose()\n                mask = mask.transpose()\n\n            most_frequent = np.empty(X.shape[0])\n\n            for i, (row, row_mask) in enumerate(zip(X[:], mask[:])):\n                row_mask = np.logical_not(row_mask).astype(np.bool)\n                row = row[row_mask]\n                most_frequent[i] = _most_frequent(row, np.nan, 0)\n\n            return most_frequent",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.imputation.Imputer._dense_fit",
-                "documentation": "Fit the transformer on dense data.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/imputation.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/imputation.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.imputation.Imputer._dense_fit"
-                    }
-                ],
-                "similarity": 0.13018567488988597,
-                "end_line": 298,
-                "signature": "sklearn.preprocessing.imputation.Imputer._dense_fit(self, X, strategy, missing_values, axis)"
-            },
-            {
-                "start_line": 695,
-                "file_path": "sklearn/pipeline.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit all transformers using X.\n\n        Parameters\n        ----------\n        X : iterable or array-like, depending on transformers\n            Input data, used to fit transformers.\n\n        y : array-like, shape (n_samples, ...), optional\n            Targets for supervised learning.\n\n        Returns\n        -------\n        self : FeatureUnion\n            This estimator\n        \"\"\"\n        self.transformer_list = list(self.transformer_list)\n        self._validate_transformers()\n        transformers = Parallel(n_jobs=self.n_jobs)(\n            delayed(_fit_one_transformer)(trans, X, y)\n            for _, trans, _ in self._iter())\n        self._update_transformer_list(transformers)\n        return self",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.pipeline.FeatureUnion.fit",
-                "documentation": "Fit all transformers using X.\n\nParameters\n----------\nX : iterable or array-like, depending on transformers\n    Input data, used to fit transformers.\n\ny : array-like, shape (n_samples, ...), optional\n    Targets for supervised learning.\n\nReturns\n-------\nself : FeatureUnion\n    This estimator",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/pipeline.py"
-                    },
-                    {
-                        "start_node": "sklearn/pipeline.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.pipeline.FeatureUnion.fit"
-                    }
-                ],
-                "similarity": 0.13013121809070632,
-                "end_line": 717,
-                "signature": "sklearn.pipeline.FeatureUnion.fit(self, X, y)"
-            },
-            {
-                "start_line": 139,
-                "file_path": "sklearn/preprocessing/_target.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the model according to the given training data.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape (n_samples, n_features)\n            Training vector, where n_samples is the number of samples and\n            n_features is the number of features.\n\n        y : array-like, shape (n_samples,)\n            Target values.\n\n        sample_weight : array-like, shape (n_samples,) optional\n            Array of weights that are assigned to individual samples.\n            If not provided, then each sample is given unit weight.\n\n        Returns\n        -------\n        self : object\n        \"\"\"\n        y = check_array(y, accept_sparse=False, force_all_finite=True,\n                        ensure_2d=False, dtype='numeric')\n\n        # store the number of dimension of the target to predict an array of\n        # similar shape at predict\n        self._training_dim = y.ndim\n\n        # transformers are designed to modify X which is 2d dimensional, we\n        # need to modify y accordingly.\n        if y.ndim == 1:\n            y_2d = y.reshape(-1, 1)\n        else:\n            y_2d = y\n        self._fit_transformer(y_2d)\n\n        if self.regressor is None:\n            from ..linear_model import LinearRegression\n            self.regressor_ = LinearRegression()\n        else:\n            self.regressor_ = clone(self.regressor)\n\n        # transform y and convert back to 1d array if needed\n        y_trans = self.transformer_.fit_transform(y_2d)\n        # FIXME: a FunctionTransformer can return a 1D array even when validate\n        # is set to True. Therefore, we need to check the number of dimension\n        # first.\n        if y_trans.ndim == 2 and y_trans.shape[1] == 1:\n            y_trans = y_trans.squeeze(axis=1)\n        if sample_weight is None:\n            self.regressor_.fit(X, y_trans)\n        else:\n            self.regressor_.fit(X, y_trans, sample_weight=sample_weight)\n\n        return self",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing._target.TransformedTargetRegressor.fit",
-                "documentation": "Fit the model according to the given training data.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape (n_samples, n_features)\n    Training vector, where n_samples is the number of samples and\n    n_features is the number of features.\n\ny : array-like, shape (n_samples,)\n    Target values.\n\nsample_weight : array-like, shape (n_samples,) optional\n    Array of weights that are assigned to individual samples.\n    If not provided, then each sample is given unit weight.\n\nReturns\n-------\nself : object",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/_target.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/_target.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor.fit"
-                    }
-                ],
-                "similarity": 0.1300323959334278,
-                "end_line": 192,
-                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor.fit(self, X, y, sample_weight)"
-            },
-            {
-                "start_line": 1544,
-                "file_path": "sklearn/preprocessing/data.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X, y='deprecated', copy=None):\n        \"\"\"Scale each non zero row of X to unit norm\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape [n_samples, n_features]\n            The data to normalize, row by row. scipy.sparse matrices should be\n            in CSR format to avoid an un-necessary copy.\n        y : (ignored)\n            .. deprecated:: 0.19\n               This parameter will be removed in 0.21.\n        copy : bool, optional (default: None)\n            Copy the input X or not.\n        \"\"\"\n        if not isinstance(y, string_types) or y != 'deprecated':\n            warnings.warn(\"The parameter y on transform() is \"\n                          \"deprecated since 0.19 and will be removed in 0.21\",\n                          DeprecationWarning)\n\n        copy = copy if copy is not None else self.copy\n        X = check_array(X, accept_sparse='csr')\n        return normalize(X, norm=self.norm, axis=1, copy=copy)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.data.Normalizer.transform",
-                "documentation": "Scale each non zero row of X to unit norm\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape [n_samples, n_features]\n    The data to normalize, row by row. scipy.sparse matrices should be\n    in CSR format to avoid an un-necessary copy.\ny : (ignored)\n    .. deprecated:: 0.19\n       This parameter will be removed in 0.21.\ncopy : bool, optional (default: None)\n    Copy the input X or not.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/data.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/data.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.data.Normalizer.transform"
-                    }
-                ],
-                "similarity": 0.1296303398200129,
-                "end_line": 1565,
-                "signature": "sklearn.preprocessing.data.Normalizer.transform(self, X, y, copy)"
-            },
-            {
-                "start_line": 499,
-                "file_path": "sklearn/feature_extraction/text.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"Transform a sequence of documents to a document-term matrix.\n\n        Parameters\n        ----------\n        X : iterable over raw text documents, length = n_samples\n            Samples. Each sample must be a text document (either bytes or\n            unicode strings, file name or file object depending on the\n            constructor argument) which will be tokenized and hashed.\n\n        Returns\n        -------\n        X : scipy.sparse matrix, shape = (n_samples, self.n_features)\n            Document-term matrix.\n        \"\"\"\n        if isinstance(X, six.string_types):\n            raise ValueError(\n                \"Iterable over raw text documents expected, \"\n                \"string object received.\")\n\n        analyzer = self.build_analyzer()\n        X = self._get_hasher().transform(analyzer(doc) for doc in X)\n        if self.binary:\n            X.data.fill(1)\n        if self.norm is not None:\n            X = normalize(X, norm=self.norm, copy=False)\n        return X",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.feature_extraction.text.HashingVectorizer.transform",
-                "documentation": "Transform a sequence of documents to a document-term matrix.\n\nParameters\n----------\nX : iterable over raw text documents, length = n_samples\n    Samples. Each sample must be a text document (either bytes or\n    unicode strings, file name or file object depending on the\n    constructor argument) which will be tokenized and hashed.\n\nReturns\n-------\nX : scipy.sparse matrix, shape = (n_samples, self.n_features)\n    Document-term matrix.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/feature_extraction/text.py"
-                    },
-                    {
-                        "start_node": "sklearn/feature_extraction/text.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.feature_extraction.text.HashingVectorizer.transform"
-                    }
-                ],
-                "similarity": 0.12957829645953836,
-                "end_line": 525,
-                "signature": "sklearn.feature_extraction.text.HashingVectorizer.transform(self, X)"
-            },
-            {
-                "start_line": 798,
-                "file_path": "sklearn/preprocessing/label.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def inverse_transform(self, yt):\n        \"\"\"Transform the given indicator matrix into label sets\n\n        Parameters\n        ----------\n        yt : array or sparse matrix of shape (n_samples, n_classes)\n            A matrix containing only 1s ands 0s.\n\n        Returns\n        -------\n        y : list of tuples\n            The set of labels for each sample such that `y[i]` consists of\n            `classes_[j]` for each `yt[i, j] == 1`.\n        \"\"\"\n        check_is_fitted(self, 'classes_')\n\n        if yt.shape[1] != len(self.classes_):\n            raise ValueError('Expected indicator for {0} classes, but got {1}'\n                             .format(len(self.classes_), yt.shape[1]))\n\n        if sp.issparse(yt):\n            yt = yt.tocsr()\n            if len(yt.data) != 0 and len(np.setdiff1d(yt.data, [0, 1])) > 0:\n                raise ValueError('Expected only 0s and 1s in label indicator.')\n            return [tuple(self.classes_.take(yt.indices[start:end]))\n                    for start, end in zip(yt.indptr[:-1], yt.indptr[1:])]\n        else:\n            unexpected = np.setdiff1d(yt, [0, 1])\n            if len(unexpected) > 0:\n                raise ValueError('Expected only 0s and 1s in label indicator. '\n                                 'Also got {0}'.format(unexpected))\n            return [tuple(self.classes_.compress(indicators)) for indicators\n                    in yt]",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.label.MultiLabelBinarizer.inverse_transform",
-                "documentation": "Transform the given indicator matrix into label sets\n\nParameters\n----------\nyt : array or sparse matrix of shape (n_samples, n_classes)\n    A matrix containing only 1s ands 0s.\n\nReturns\n-------\ny : list of tuples\n    The set of labels for each sample such that `y[i]` consists of\n    `classes_[j]` for each `yt[i, j] == 1`.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/label.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.label.MultiLabelBinarizer.inverse_transform"
-                    }
-                ],
-                "similarity": 0.12912359542192262,
-                "end_line": 830,
-                "signature": "sklearn.preprocessing.label.MultiLabelBinarizer.inverse_transform(self, yt)"
-            },
-            {
-                "start_line": 2101,
-                "file_path": "sklearn/preprocessing/data.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"Transform X using one-hot encoding.\n\n        Parameters\n        ----------\n        X : array-like, shape [n_samples, n_features]\n            Input array of type int.\n\n        Returns\n        -------\n        X_out : sparse matrix if sparse=True else a 2-d array, dtype=int\n            Transformed input.\n        \"\"\"\n        return _transform_selected(X, self._transform,\n                                   self.categorical_features, copy=True)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.data.OneHotEncoder.transform",
-                "documentation": "Transform X using one-hot encoding.\n\nParameters\n----------\nX : array-like, shape [n_samples, n_features]\n    Input array of type int.\n\nReturns\n-------\nX_out : sparse matrix if sparse=True else a 2-d array, dtype=int\n    Transformed input.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/data.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/data.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.data.OneHotEncoder.transform"
-                    }
-                ],
-                "similarity": 0.1288878045746651,
-                "end_line": 2115,
-                "signature": "sklearn.preprocessing.data.OneHotEncoder.transform(self, X)"
-            },
-            {
-                "start_line": 458,
-                "file_path": "sklearn/linear_model/stochastic_gradient.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _fit_binary(self, X, y, alpha, C, sample_weight,\n                    learning_rate, max_iter):\n        \"\"\"Fit a binary classifier on X and y. \"\"\"\n        coef, intercept, n_iter_ = fit_binary(self, 1, X, y, alpha, C,\n                                              learning_rate, max_iter,\n                                              self._expanded_class_weight[1],\n                                              self._expanded_class_weight[0],\n                                              sample_weight)\n\n        self.t_ += n_iter_ * X.shape[0]\n        self.n_iter_ = n_iter_\n\n        # need to be 2d\n        if self.average > 0:\n            if self.average <= self.t_ - 1:\n                self.coef_ = self.average_coef_.reshape(1, -1)\n                self.intercept_ = self.average_intercept_\n            else:\n                self.coef_ = self.standard_coef_.reshape(1, -1)\n                self.standard_intercept_ = np.atleast_1d(intercept)\n                self.intercept_ = self.standard_intercept_\n        else:\n            self.coef_ = coef.reshape(1, -1)\n            # intercept is a float, need to convert it to an array of length 1\n            self.intercept_ = np.atleast_1d(intercept)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.linear_model.stochastic_gradient.BaseSGDClassifier._fit_binary",
-                "documentation": "Fit a binary classifier on X and y. ",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/linear_model/stochastic_gradient.py"
-                    },
-                    {
-                        "start_node": "sklearn/linear_model/stochastic_gradient.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.linear_model.stochastic_gradient.BaseSGDClassifier._fit_binary"
-                    }
-                ],
-                "similarity": 0.12839236122197847,
-                "end_line": 482,
-                "signature": "sklearn.linear_model.stochastic_gradient.BaseSGDClassifier._fit_binary(self, X, y, alpha, C, sample_weight, learning_rate, max_iter)"
-            },
-            {
-                "start_line": 862,
-                "file_path": "sklearn/cross_decomposition/pls_.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Learn and apply the dimension reduction on the train data.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n            Training vectors, where n_samples is the number of samples and\n            n_features is the number of predictors.\n\n        y : array-like, shape = [n_samples, n_targets]\n            Target vectors, where n_samples is the number of samples and\n            n_targets is the number of response variables.\n\n        Returns\n        -------\n        x_scores if Y is not given, (x_scores, y_scores) otherwise.\n        \"\"\"\n        return self.fit(X, y).transform(X, y)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.cross_decomposition.pls_.PLSSVD.fit_transform",
-                "documentation": "Learn and apply the dimension reduction on the train data.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n    Training vectors, where n_samples is the number of samples and\n    n_features is the number of predictors.\n\ny : array-like, shape = [n_samples, n_targets]\n    Target vectors, where n_samples is the number of samples and\n    n_targets is the number of response variables.\n\nReturns\n-------\nx_scores if Y is not given, (x_scores, y_scores) otherwise.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/cross_decomposition/pls_.py"
-                    },
-                    {
-                        "start_node": "sklearn/cross_decomposition/pls_.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.cross_decomposition.pls_.PLSSVD.fit_transform"
-                    }
-                ],
-                "similarity": 0.12836333490361515,
-                "end_line": 879,
-                "signature": "sklearn.cross_decomposition.pls_.PLSSVD.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 253,
-                "file_path": "sklearn/pipeline.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None, **fit_params):\n        \"\"\"Fit the model and transform with the final estimator\n\n        Fits all the transforms one after the other and transforms the\n        data, then uses fit_transform on transformed data with the final\n        estimator.\n\n        Parameters\n        ----------\n        X : iterable\n            Training data. Must fulfill input requirements of first step of the\n            pipeline.\n\n        y : iterable, default=None\n            Training targets. Must fulfill label requirements for all steps of\n            the pipeline.\n\n        **fit_params : dict of string -> object\n            Parameters passed to the ``fit`` method of each step, where\n            each parameter name is prefixed such that parameter ``p`` for step\n            ``s`` has key ``s__p``.\n\n        Returns\n        -------\n        Xt : array-like, shape = [n_samples, n_transformed_features]\n            Transformed samples\n        \"\"\"\n        last_step = self._final_estimator\n        Xt, fit_params = self._fit(X, y, **fit_params)\n        if hasattr(last_step, 'fit_transform'):\n            return last_step.fit_transform(Xt, y, **fit_params)\n        elif last_step is None:\n            return Xt\n        else:\n            return last_step.fit(Xt, y, **fit_params).transform(Xt)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.pipeline.Pipeline.fit_transform",
-                "documentation": "Fit the model and transform with the final estimator\n\nFits all the transforms one after the other and transforms the\ndata, then uses fit_transform on transformed data with the final\nestimator.\n\nParameters\n----------\nX : iterable\n    Training data. Must fulfill input requirements of first step of the\n    pipeline.\n\ny : iterable, default=None\n    Training targets. Must fulfill label requirements for all steps of\n    the pipeline.\n\n**fit_params : dict of string -> object\n    Parameters passed to the ``fit`` method of each step, where\n    each parameter name is prefixed such that parameter ``p`` for step\n    ``s`` has key ``s__p``.\n\nReturns\n-------\nXt : array-like, shape = [n_samples, n_transformed_features]\n    Transformed samples",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/pipeline.py"
-                    },
-                    {
-                        "start_node": "sklearn/pipeline.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.pipeline.Pipeline.fit_transform"
-                    }
-                ],
-                "similarity": 0.12834997979742363,
-                "end_line": 287,
-                "signature": "sklearn.pipeline.Pipeline.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 437,
-                "file_path": "sklearn/cross_decomposition/pls_.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Learn and apply the dimension reduction on the train data.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n            Training vectors, where n_samples is the number of samples and\n            n_features is the number of predictors.\n\n        y : array-like, shape = [n_samples, n_targets]\n            Target vectors, where n_samples is the number of samples and\n            n_targets is the number of response variables.\n\n        Returns\n        -------\n        x_scores if Y is not given, (x_scores, y_scores) otherwise.\n        \"\"\"\n        return self.fit(X, y).transform(X, y)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.cross_decomposition.pls_._PLS.fit_transform",
-                "documentation": "Learn and apply the dimension reduction on the train data.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n    Training vectors, where n_samples is the number of samples and\n    n_features is the number of predictors.\n\ny : array-like, shape = [n_samples, n_targets]\n    Target vectors, where n_samples is the number of samples and\n    n_targets is the number of response variables.\n\nReturns\n-------\nx_scores if Y is not given, (x_scores, y_scores) otherwise.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/cross_decomposition/pls_.py"
-                    },
-                    {
-                        "start_node": "sklearn/cross_decomposition/pls_.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.cross_decomposition.pls_._PLS.fit_transform"
-                    }
-                ],
-                "similarity": 0.1283153523583476,
-                "end_line": 454,
-                "signature": "sklearn.cross_decomposition.pls_._PLS.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 213,
-                "file_path": "sklearn/feature_extraction/dict_vectorizer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Learn a list of feature name -> indices mappings and transform X.\n\n        Like fit(X) followed by transform(X), but does not require\n        materializing X in memory.\n\n        Parameters\n        ----------\n        X : Mapping or iterable over Mappings\n            Dict(s) or Mapping(s) from feature names (arbitrary Python\n            objects) to feature values (strings or convertible to dtype).\n        y : (ignored)\n\n        Returns\n        -------\n        Xa : {array, sparse matrix}\n            Feature vectors; always 2-d.\n        \"\"\"\n        return self._transform(X, fitting=True)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.fit_transform",
-                "documentation": "Learn a list of feature name -> indices mappings and transform X.\n\nLike fit(X) followed by transform(X), but does not require\nmaterializing X in memory.\n\nParameters\n----------\nX : Mapping or iterable over Mappings\n    Dict(s) or Mapping(s) from feature names (arbitrary Python\n    objects) to feature values (strings or convertible to dtype).\ny : (ignored)\n\nReturns\n-------\nXa : {array, sparse matrix}\n    Feature vectors; always 2-d.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/feature_extraction/dict_vectorizer.py"
-                    },
-                    {
-                        "start_node": "sklearn/feature_extraction/dict_vectorizer.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.fit_transform"
-                    }
-                ],
-                "similarity": 0.12831466365926578,
-                "end_line": 231,
-                "signature": "sklearn.feature_extraction.dict_vectorizer.DictVectorizer.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 169,
-                "file_path": "sklearn/preprocessing/imputation.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _sparse_fit(self, X, strategy, missing_values, axis):\n        \"\"\"Fit the transformer on sparse data.\"\"\"\n        # Imputation is done \"by column\", so if we want to do it\n        # by row we only need to convert the matrix to csr format.\n        if axis == 1:\n            X = X.tocsr()\n        else:\n            X = X.tocsc()\n\n        # Count the zeros\n        if missing_values == 0:\n            n_zeros_axis = np.zeros(X.shape[not axis], dtype=int)\n        else:\n            n_zeros_axis = X.shape[axis] - np.diff(X.indptr)\n\n        # Mean\n        if strategy == \"mean\":\n            if missing_values != 0:\n                n_non_missing = n_zeros_axis\n\n                # Mask the missing elements\n                mask_missing_values = _get_mask(X.data, missing_values)\n                mask_valids = np.logical_not(mask_missing_values)\n\n                # Sum only the valid elements\n                new_data = X.data.copy()\n                new_data[mask_missing_values] = 0\n                X = sparse.csc_matrix((new_data, X.indices, X.indptr),\n                                      copy=False)\n                sums = X.sum(axis=0)\n\n                # Count the elements != 0\n                mask_non_zeros = sparse.csc_matrix(\n                    (mask_valids.astype(np.float64),\n                     X.indices,\n                     X.indptr), copy=False)\n                s = mask_non_zeros.sum(axis=0)\n                n_non_missing = np.add(n_non_missing, s)\n\n            else:\n                sums = X.sum(axis=axis)\n                n_non_missing = np.diff(X.indptr)\n\n            # Ignore the error, columns with a np.nan statistics_\n            # are not an error at this point. These columns will\n            # be removed in transform\n            with np.errstate(all=\"ignore\"):\n                return np.ravel(sums) / np.ravel(n_non_missing)\n\n        # Median + Most frequent\n        else:\n            # Remove the missing values, for each column\n            columns_all = np.hsplit(X.data, X.indptr[1:-1])\n            mask_missing_values = _get_mask(X.data, missing_values)\n            mask_valids = np.hsplit(np.logical_not(mask_missing_values),\n                                    X.indptr[1:-1])\n\n            # astype necessary for bug in numpy.hsplit before v1.9\n            columns = [col[mask.astype(bool, copy=False)]\n                       for col, mask in zip(columns_all, mask_valids)]\n\n            # Median\n            if strategy == \"median\":\n                median = np.empty(len(columns))\n                for i, column in enumerate(columns):\n                    median[i] = _get_median(column, n_zeros_axis[i])\n\n                return median\n\n            # Most frequent\n            elif strategy == \"most_frequent\":\n                most_frequent = np.empty(len(columns))\n\n                for i, column in enumerate(columns):\n                    most_frequent[i] = _most_frequent(column,\n                                                      0,\n                                                      n_zeros_axis[i])\n\n                return most_frequent",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.imputation.Imputer._sparse_fit",
-                "documentation": "Fit the transformer on sparse data.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/imputation.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/imputation.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.imputation.Imputer._sparse_fit"
-                    }
-                ],
-                "similarity": 0.12824483203682494,
-                "end_line": 247,
-                "signature": "sklearn.preprocessing.imputation.Imputer._sparse_fit(self, X, strategy, missing_values, axis)"
-            },
-            {
-                "start_line": 90,
-                "file_path": "sklearn/dummy.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, X, y, sample_weight=None):\n        \"\"\"Fit the random classifier.\n\n        Parameters\n        ----------\n        X : {array-like, object with finite length or shape}\n            Training data, requires length = n_samples\n\n        y : array-like, shape = [n_samples] or [n_samples, n_outputs]\n            Target values.\n\n        sample_weight : array-like of shape = [n_samples], optional\n            Sample weights.\n\n        Returns\n        -------\n        self : object\n        \"\"\"\n        if self.strategy not in (\"most_frequent\", \"stratified\", \"uniform\",\n                                 \"constant\", \"prior\"):\n            raise ValueError(\"Unknown strategy type.\")\n\n        if self.strategy == \"uniform\" and sp.issparse(y):\n            y = y.toarray()\n            warnings.warn('A local copy of the target data has been converted '\n                          'to a numpy array. Predicting on sparse target data '\n                          'with the uniform strategy would not save memory '\n                          'and would be slower.',\n                          UserWarning)\n\n        self.sparse_output_ = sp.issparse(y)\n\n        if not self.sparse_output_:\n            y = np.atleast_1d(y)\n\n        self.output_2d_ = y.ndim == 2\n        if y.ndim == 1:\n            y = np.reshape(y, (-1, 1))\n\n        self.n_outputs_ = y.shape[1]\n\n        check_consistent_length(X, y, sample_weight)\n\n        if self.strategy == \"constant\":\n            if self.constant is None:\n                raise ValueError(\"Constant target value has to be specified \"\n                                 \"when the constant strategy is used.\")\n            else:\n                constant = np.reshape(np.atleast_1d(self.constant), (-1, 1))\n                if constant.shape[0] != self.n_outputs_:\n                    raise ValueError(\"Constant target value should have \"\n                                     \"shape (%d, 1).\" % self.n_outputs_)\n\n        (self.classes_,\n         self.n_classes_,\n         self.class_prior_) = class_distribution(y, sample_weight)\n\n        if (self.strategy == \"constant\" and\n                any(constant[k] not in self.classes_[k]\n                    for k in range(self.n_outputs_))):\n            # Checking in case of constant strategy if the constant\n            # provided by the user is in y.\n            raise ValueError(\"The constant target value must be \"\n                             \"present in training data\")\n\n        if self.n_outputs_ == 1 and not self.output_2d_:\n            self.n_classes_ = self.n_classes_[0]\n            self.classes_ = self.classes_[0]\n            self.class_prior_ = self.class_prior_[0]\n\n        return self",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.dummy.DummyClassifier.fit",
-                "documentation": "Fit the random classifier.\n\nParameters\n----------\nX : {array-like, object with finite length or shape}\n    Training data, requires length = n_samples\n\ny : array-like, shape = [n_samples] or [n_samples, n_outputs]\n    Target values.\n\nsample_weight : array-like of shape = [n_samples], optional\n    Sample weights.\n\nReturns\n-------\nself : object",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/dummy.py"
-                    },
-                    {
-                        "start_node": "sklearn/dummy.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.dummy.DummyClassifier.fit"
-                    }
-                ],
-                "similarity": 0.1281662445730295,
-                "end_line": 160,
-                "signature": "sklearn.dummy.DummyClassifier.fit(self, X, y, sample_weight)"
-            },
-            {
-                "start_line": 1063,
-                "file_path": "sklearn/cross_validation.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(self, y, n_iter=10, test_size=0.1, train_size=None,\n                 random_state=None):\n\n        super(StratifiedShuffleSplit, self).__init__(\n            len(y), n_iter, test_size, train_size, random_state)\n\n        self.y = np.array(y)\n        self.classes, self.y_indices = np.unique(y, return_inverse=True)\n        n_cls = self.classes.shape[0]\n\n        if np.min(np.bincount(self.y_indices)) < 2:\n            raise ValueError(\"The least populated class in y has only 1\"\n                             \" member, which is too few. The minimum\"\n                             \" number of labels for any class cannot\"\n                             \" be less than 2.\")\n\n        if self.n_train < n_cls:\n            raise ValueError('The train_size = %d should be greater or '\n                             'equal to the number of classes = %d' %\n                             (self.n_train, n_cls))\n        if self.n_test < n_cls:\n            raise ValueError('The test_size = %d should be greater or '\n                             'equal to the number of classes = %d' %\n                             (self.n_test, n_cls))",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.cross_validation.StratifiedShuffleSplit.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/cross_validation.py"
-                    },
-                    {
-                        "start_node": "sklearn/cross_validation.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.cross_validation.StratifiedShuffleSplit.__init__"
-                    }
-                ],
-                "similarity": 0.128146483684741,
-                "end_line": 1086,
-                "signature": "sklearn.cross_validation.StratifiedShuffleSplit.__init__(self, y, n_iter, test_size, train_size, random_state)"
-            },
-            {
-                "start_line": 265,
-                "file_path": "sklearn/preprocessing/label.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, y):\n        \"\"\"Fit label binarizer\n\n        Parameters\n        ----------\n        y : array of shape [n_samples,] or [n_samples, n_classes]\n            Target values. The 2-d matrix should only contain 0 and 1,\n            represents multilabel classification.\n\n        Returns\n        -------\n        self : returns an instance of self.\n        \"\"\"\n        self.y_type_ = type_of_target(y)\n        if 'multioutput' in self.y_type_:\n            raise ValueError(\"Multioutput target data is not supported with \"\n                             \"label binarization\")\n        if _num_samples(y) == 0:\n            raise ValueError('y has 0 samples: %r' % y)\n\n        self.sparse_input_ = sp.issparse(y)\n        self.classes_ = unique_labels(y)\n        return self",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing.label.LabelBinarizer.fit",
-                "documentation": "Fit label binarizer\n\nParameters\n----------\ny : array of shape [n_samples,] or [n_samples, n_classes]\n    Target values. The 2-d matrix should only contain 0 and 1,\n    represents multilabel classification.\n\nReturns\n-------\nself : returns an instance of self.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/label.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/label.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing.label.LabelBinarizer.fit"
-                    }
-                ],
-                "similarity": 0.12792735596745775,
-                "end_line": 287,
-                "signature": "sklearn.preprocessing.label.LabelBinarizer.fit(self, y)"
-            },
-            {
-                "start_line": 109,
-                "file_path": "sklearn/preprocessing/_target.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _fit_transformer(self, y):\n        if (self.transformer is not None and\n                (self.func is not None or self.inverse_func is not None)):\n            raise ValueError(\"'transformer' and functions 'func'/\"\n                             \"'inverse_func' cannot both be set.\")\n        elif self.transformer is not None:\n            self.transformer_ = clone(self.transformer)\n        else:\n            if self.func is not None and self.inverse_func is None:\n                raise ValueError(\"When 'func' is provided, 'inverse_func' must\"\n                                 \" also be provided\")\n            self.transformer_ = FunctionTransformer(\n                func=self.func, inverse_func=self.inverse_func, validate=True,\n                check_inverse=self.check_inverse)\n        # XXX: sample_weight is not currently passed to the\n        # transformer. However, if transformer starts using sample_weight, the\n        # code should be modified accordingly. At the time to consider the\n        # sample_prop feature, it is also a good use case to be considered.\n        self.transformer_.fit(y)\n        if self.check_inverse:\n            idx_selected = slice(None, None, max(1, y.shape[0] // 10))\n            y_sel = safe_indexing(y, idx_selected)\n            y_sel_t = self.transformer_.transform(y_sel)\n            if not np.allclose(y_sel,\n                               self.transformer_.inverse_transform(y_sel_t)):\n                warnings.warn(\"The provided functions or transformer are\"\n                              \" not strictly inverse of each other. If\"\n                              \" you are sure you want to proceed regardless\"\n                              \", set 'check_inverse=False'\", UserWarning)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/preprocessing/_target.py"
-                    },
-                    {
-                        "start_node": "sklearn/preprocessing/_target.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer"
-                    }
-                ],
-                "similarity": 0.1277939759821481,
-                "end_line": 137,
-                "signature": "sklearn.preprocessing._target.TransformedTargetRegressor._fit_transformer(self, y)"
-            },
-            {
-                "start_line": 281,
-                "file_path": "sklearn/kernel_approximation.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"Apply approximate feature map to X.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix}, shape = (n_samples, n_features)\n\n        Returns\n        -------\n        X_new : {array, sparse matrix}, \\\n               shape = (n_samples, n_features * (2*sample_steps + 1))\n            Whether the return value is an array of sparse matrix depends on\n            the type of the input X.\n        \"\"\"\n        msg = (\"%(name)s is not fitted. Call fit to set the parameters before\"\n               \" calling transform\")\n        check_is_fitted(self, \"sample_interval_\", msg=msg)\n\n        X = check_array(X, accept_sparse='csr')\n        sparse = sp.issparse(X)\n\n        # check if X has negative values. Doesn't play well with np.log.\n        if ((X.data if sparse else X) < 0).any():\n            raise ValueError(\"Entries of X must be non-negative.\")\n        # zeroth component\n        # 1/cosh = sech\n        # cosh(0) = 1.0\n\n        transf = self._transform_sparse if sparse else self._transform_dense\n        return transf(X)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform",
-                "documentation": "Apply approximate feature map to X.\n\nParameters\n----------\nX : {array-like, sparse matrix}, shape = (n_samples, n_features)\n\nReturns\n-------\nX_new : {array, sparse matrix},                shape = (n_samples, n_features * (2*sample_steps + 1))\n    Whether the return value is an array of sparse matrix depends on\n    the type of the input X.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/kernel_approximation.py"
-                    },
-                    {
-                        "start_node": "sklearn/kernel_approximation.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform"
-                    }
-                ],
-                "similarity": 0.12736791140435327,
-                "end_line": 310,
-                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler.transform(self, X)"
-            },
-            {
-                "start_line": 1902,
-                "file_path": "sklearn/ensemble/forest.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None, sample_weight=None):\n        \"\"\"Fit estimator and transform dataset.\n\n        Parameters\n        ----------\n        X : array-like or sparse matrix, shape=(n_samples, n_features)\n            Input data used to build forests. Use ``dtype=np.float32`` for\n            maximum efficiency.\n\n        sample_weight : array-like, shape = [n_samples] or None\n            Sample weights. If None, then samples are equally weighted. Splits\n            that would create child nodes with net zero or negative weight are\n            ignored while searching for a split in each node. In the case of\n            classification, splits are also ignored if they would result in any\n            single class carrying a negative weight in either child node.\n\n        Returns\n        -------\n        X_transformed : sparse matrix, shape=(n_samples, n_out)\n            Transformed dataset.\n        \"\"\"\n        X = check_array(X, accept_sparse=['csc'])\n        if issparse(X):\n            # Pre-sort indices to avoid that each individual tree of the\n            # ensemble sorts the indices.\n            X.sort_indices()\n\n        rnd = check_random_state(self.random_state)\n        y = rnd.uniform(size=X.shape[0])\n        super(RandomTreesEmbedding, self).fit(X, y,\n                                              sample_weight=sample_weight)\n\n        self.one_hot_encoder_ = OneHotEncoder(sparse=self.sparse_output)\n        return self.one_hot_encoder_.fit_transform(self.apply(X))",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.ensemble.forest.RandomTreesEmbedding.fit_transform",
-                "documentation": "Fit estimator and transform dataset.\n\nParameters\n----------\nX : array-like or sparse matrix, shape=(n_samples, n_features)\n    Input data used to build forests. Use ``dtype=np.float32`` for\n    maximum efficiency.\n\nsample_weight : array-like, shape = [n_samples] or None\n    Sample weights. If None, then samples are equally weighted. Splits\n    that would create child nodes with net zero or negative weight are\n    ignored while searching for a split in each node. In the case of\n    classification, splits are also ignored if they would result in any\n    single class carrying a negative weight in either child node.\n\nReturns\n-------\nX_transformed : sparse matrix, shape=(n_samples, n_out)\n    Transformed dataset.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/ensemble/forest.py"
-                    },
-                    {
-                        "start_node": "sklearn/ensemble/forest.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.ensemble.forest.RandomTreesEmbedding.fit_transform"
-                    }
-                ],
-                "similarity": 0.12729138248827843,
-                "end_line": 1935,
-                "signature": "sklearn.ensemble.forest.RandomTreesEmbedding.fit_transform(self, X, y, sample_weight)"
-            },
-            {
-                "start_line": 836,
-                "file_path": "sklearn/cross_decomposition/pls_.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def transform(self, X, Y=None):\n        \"\"\"\n        Apply the dimension reduction learned on the train data.\n\n        Parameters\n        ----------\n        X : array-like, shape = [n_samples, n_features]\n            Training vectors, where n_samples is the number of samples and\n            n_features is the number of predictors.\n\n        Y : array-like, shape = [n_samples, n_targets]\n            Target vectors, where n_samples is the number of samples and\n            n_targets is the number of response variables.\n        \"\"\"\n        check_is_fitted(self, 'x_mean_')\n        X = check_array(X, dtype=np.float64)\n        Xr = (X - self.x_mean_) / self.x_std_\n        x_scores = np.dot(Xr, self.x_weights_)\n        if Y is not None:\n            if Y.ndim == 1:\n                Y = Y.reshape(-1, 1)\n            Yr = (Y - self.y_mean_) / self.y_std_\n            y_scores = np.dot(Yr, self.y_weights_)\n            return x_scores, y_scores\n        return x_scores",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.cross_decomposition.pls_.PLSSVD.transform",
-                "documentation": "Apply the dimension reduction learned on the train data.\n\nParameters\n----------\nX : array-like, shape = [n_samples, n_features]\n    Training vectors, where n_samples is the number of samples and\n    n_features is the number of predictors.\n\nY : array-like, shape = [n_samples, n_targets]\n    Target vectors, where n_samples is the number of samples and\n    n_targets is the number of response variables.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/cross_decomposition/pls_.py"
-                    },
-                    {
-                        "start_node": "sklearn/cross_decomposition/pls_.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.cross_decomposition.pls_.PLSSVD.transform"
-                    }
-                ],
-                "similarity": 0.1270209499627009,
-                "end_line": 860,
-                "signature": "sklearn.cross_decomposition.pls_.PLSSVD.transform(self, X, Y)"
-            },
-            {
-                "start_line": 454,
-                "file_path": "sklearn/feature_extraction/text.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(self, input='content', encoding='utf-8',\n                 decode_error='strict', strip_accents=None,\n                 lowercase=True, preprocessor=None, tokenizer=None,\n                 stop_words=None, token_pattern=r\"(?u)\\b\\w\\w+\\b\",\n                 ngram_range=(1, 1), analyzer='word', n_features=(2 ** 20),\n                 binary=False, norm='l2', alternate_sign=True,\n                 non_negative=False, dtype=np.float64):\n        self.input = input\n        self.encoding = encoding\n        self.decode_error = decode_error\n        self.strip_accents = strip_accents\n        self.preprocessor = preprocessor\n        self.tokenizer = tokenizer\n        self.analyzer = analyzer\n        self.lowercase = lowercase\n        self.token_pattern = token_pattern\n        self.stop_words = stop_words\n        self.n_features = n_features\n        self.ngram_range = ngram_range\n        self.binary = binary\n        self.norm = norm\n        self.alternate_sign = alternate_sign\n        self.non_negative = non_negative\n        self.dtype = dtype",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.feature_extraction.text.HashingVectorizer.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/feature_extraction/text.py"
-                    },
-                    {
-                        "start_node": "sklearn/feature_extraction/text.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.feature_extraction.text.HashingVectorizer.__init__"
-                    }
-                ],
-                "similarity": 0.12688997781978073,
-                "end_line": 477,
-                "signature": "sklearn.feature_extraction.text.HashingVectorizer.__init__(self, input, encoding, decode_error, strip_accents, lowercase, preprocessor, tokenizer, stop_words, token_pattern, ngram_range, analyzer, n_features, binary, norm, alternate_sign, non_negative, dtype)"
-            },
-            {
-                "start_line": 61,
-                "file_path": "sklearn/utils/fixes.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _unique(ar, return_index=False, return_inverse=False):\n    \"\"\"A replacement for the np.unique that appeared in numpy 1.4.\n\n    While np.unique existed long before, keyword return_inverse was\n    only added in 1.4.\n    \"\"\"\n    try:\n        ar = ar.flatten()\n    except AttributeError:\n        if not return_inverse and not return_index:\n            items = sorted(set(ar))\n            return np.asarray(items)\n        else:\n            ar = np.asarray(ar).flatten()\n\n    if ar.size == 0:\n        if return_inverse and return_index:\n            return ar, np.empty(0, np.bool), np.empty(0, np.bool)\n        elif return_inverse or return_index:\n            return ar, np.empty(0, np.bool)\n        else:\n            return ar\n\n    if return_inverse or return_index:\n        perm = ar.argsort()\n        aux = ar[perm]\n        flag = np.concatenate(([True], aux[1:] != aux[:-1]))\n        if return_inverse:\n            iflag = np.cumsum(flag) - 1\n            iperm = perm.argsort()\n            if return_index:\n                return aux[flag], perm[flag], iflag[iperm]\n            else:\n                return aux[flag], iflag[iperm]\n        else:\n            return aux[flag], perm[flag]\n\n    else:\n        ar.sort()\n        flag = np.concatenate(([True], ar[1:] != ar[:-1]))\n        return ar[flag]",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.utils.fixes._unique",
-                "documentation": "A replacement for the np.unique that appeared in numpy 1.4.\n\nWhile np.unique existed long before, keyword return_inverse was\nonly added in 1.4.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#10458"
-                    },
-                    {
-                        "start_node": "issue#10458",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#10508"
-                    },
-                    {
-                        "start_node": "pr#10508",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "pr#1234"
-                    },
-                    {
-                        "start_node": "pr#1234",
-                        "description": "points to method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.utils.fixes._unique"
-                    }
-                ],
-                "similarity": 0.1268237128797933,
-                "end_line": 101,
-                "signature": "sklearn.utils.fixes._unique(ar, return_index, return_inverse)"
-            },
-            {
-                "start_line": 338,
-                "file_path": "sklearn/kernel_approximation.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _transform_sparse(self, X):\n        indices = X.indices.copy()\n        indptr = X.indptr.copy()\n\n        data_step = np.sqrt(X.data * self.sample_interval_)\n        X_step = sp.csr_matrix((data_step, indices, indptr),\n                               shape=X.shape, dtype=X.dtype, copy=False)\n        X_new = [X_step]\n\n        log_step_nz = self.sample_interval_ * np.log(X.data)\n        step_nz = 2 * X.data * self.sample_interval_\n\n        for j in range(1, self.sample_steps):\n            factor_nz = np.sqrt(step_nz /\n                                np.cosh(np.pi * j * self.sample_interval_))\n\n            data_step = factor_nz * np.cos(j * log_step_nz)\n            X_step = sp.csr_matrix((data_step, indices, indptr),\n                                   shape=X.shape, dtype=X.dtype, copy=False)\n            X_new.append(X_step)\n\n            data_step = factor_nz * np.sin(j * log_step_nz)\n            X_step = sp.csr_matrix((data_step, indices, indptr),\n                                   shape=X.shape, dtype=X.dtype, copy=False)\n            X_new.append(X_step)\n\n        return sp.hstack(X_new)",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/kernel_approximation.py"
-                    },
-                    {
-                        "start_node": "sklearn/kernel_approximation.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse"
-                    }
-                ],
-                "similarity": 0.12674794098378245,
-                "end_line": 364,
-                "signature": "sklearn.kernel_approximation.AdditiveChi2Sampler._transform_sparse(self, X)"
-            },
-            {
-                "start_line": 145,
-                "file_path": "sklearn/pipeline.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_steps(self):\n        names, estimators = zip(*self.steps)\n\n        # validate names\n        self._validate_names(names)\n\n        # validate estimators\n        transformers = estimators[:-1]\n        estimator = estimators[-1]\n\n        for t in transformers:\n            if t is None:\n                continue\n            if (not (hasattr(t, \"fit\") or hasattr(t, \"fit_transform\")) or not\n                    hasattr(t, \"transform\")):\n                raise TypeError(\"All intermediate steps should be \"\n                                \"transformers and implement fit and transform.\"\n                                \" '%s' (type %s) doesn't\" % (t, type(t)))\n\n        # We allow last estimator to be None as an identity transformation\n        if estimator is not None and not hasattr(estimator, \"fit\"):\n            raise TypeError(\"Last step of Pipeline should implement fit. \"\n                            \"'%s' (type %s) doesn't\"\n                            % (estimator, type(estimator)))",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.pipeline.Pipeline._validate_steps",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/pipeline.py"
-                    },
-                    {
-                        "start_node": "sklearn/pipeline.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.pipeline.Pipeline._validate_steps"
-                    }
-                ],
-                "similarity": 0.1262983295635027,
-                "end_line": 168,
-                "signature": "sklearn.pipeline.Pipeline._validate_steps(self)"
-            },
-            {
-                "start_line": 487,
-                "file_path": "sklearn/svm/base.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_targets(self, y):\n        y_ = column_or_1d(y, warn=True)\n        check_classification_targets(y)\n        cls, y = np.unique(y_, return_inverse=True)\n        self.class_weight_ = compute_class_weight(self.class_weight, cls, y_)\n        if len(cls) < 2:\n            raise ValueError(\n                \"The number of classes has to be greater than one; got %d\"\n                \" class\" % len(cls))\n\n        self.classes_ = cls\n\n        return np.asarray(y, dtype=np.float64, order='C')",
-                "distance": 1.25,
-                "title": null,
-                "name": "sklearn.svm.base.BaseSVC._validate_targets",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/svm/base.py"
-                    },
-                    {
-                        "start_node": "sklearn/svm/base.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.svm.base.BaseSVC._validate_targets"
-                    }
-                ],
-                "similarity": 0.12603321108600316,
-                "end_line": 499,
-                "signature": "sklearn.svm.base.BaseSVC._validate_targets(self, y)"
             }
         ],
         "classes": [
@@ -1572,7 +1560,7 @@
                     },
                     {
                         "start_node": "sklearn/externals/six.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.externals.six.Module_six_moves_urllib"
                     }
@@ -1601,7 +1589,7 @@
                     },
                     {
                         "start_node": "sklearn/externals/joblib/my_exceptions.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sklearn.externals.joblib.my_exceptions.WorkerInterrupt"
                     }
@@ -1804,7 +1792,7 @@
                     },
                     {
                         "start_node": "sklearn/externals/six.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.externals.six.Module_six_moves_urllib_parse"
                     }
@@ -1833,7 +1821,7 @@
                     },
                     {
                         "start_node": "sklearn/externals/six.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sklearn.externals.six.Module_six_moves_urllib_response"
                     }
@@ -1891,7 +1879,7 @@
                     },
                     {
                         "start_node": "sklearn/base.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sklearn.base.MetaEstimatorMixin"
                     }
@@ -1911,133 +1899,11 @@
                 "issue_id": "root",
                 "similarity": 2.0,
                 "type": "issue"
-            },
-            {
-                "start_line": null,
-                "file_path": null,
-                "issue_id": "10458",
-                "type": "issue",
-                "content": "Python 3.6.3, scikit_learn 0.19.1\r\n\r\nDepending on which datatypes were used to fit the LabelEncoder, transforming empty lists works or not. Expected behavior would be that empty arrays are returned in both cases.\r\n\r\n```python\r\n>>> from sklearn.preprocessing import LabelEncoder\r\n>>> le = LabelEncoder()\r\n>>> le.fit([1,2])\r\nLabelEncoder()\r\n>>> le.transform([])\r\narray([], dtype=int64)\r\n>>> le.fit([\"a\",\"b\"])\r\nLabelEncoder()\r\n>>> le.transform([])\r\nTraceback (most recent call last):\r\n  File \"[...]\\Python36\\lib\\site-packages\\numpy\\core\\fromnumeric.py\", line 57, in _wrapfunc\r\n    return getattr(obj, method)(*args, **kwds)\r\nTypeError: Cannot cast array data from dtype('float64') to dtype('<U32') according to the rule 'safe'\r\n\r\nDuring handling of the above exception, another exception occurred:\r\n\r\nTraceback (most recent call last):\r\n  File \"<stdin>\", line 1, in <module>\r\n  File \"[...]\\Python36\\lib\\site-packages\\sklearn\\preprocessing\\label.py\", line 134, in transform\r\n    return np.searchsorted(self.classes_, y)\r\n  File \"[...]\\Python36\\lib\\site-packages\\numpy\\core\\fromnumeric.py\", line 1075, in searchsorted\r\n    return _wrapfunc(a, 'searchsorted', v, side=side, sorter=sorter)\r\n  File \"[...]\\Python36\\lib\\site-packages\\numpy\\core\\fromnumeric.py\", line 67, in _wrapfunc\r\n    return _wrapit(obj, method, *args, **kwds)\r\n  File \"[...]\\Python36\\lib\\site-packages\\numpy\\core\\fromnumeric.py\", line 47, in _wrapit\r\n    result = getattr(asarray(obj), method)(*args, **kwds)\r\nTypeError: Cannot cast array data from dtype('float64') to dtype('<U32') according to the rule 'safe'\r\n```\n\n\nComment by glemaitre:\n`le.transform([])` will trigger an numpy array of `dtype=np.float64` and you fit something which was some string.\r\n\r\n```python\r\nfrom sklearn.preprocessing import LabelEncoder                                       \r\nimport numpy as np                                                                   \r\n                                                                                     \r\nle = LabelEncoder()                                                                  \r\nX = np.array([\"a\", \"b\"])                                                             \r\nle.fit(X)                                                                            \r\nX_trans = le.transform(np.array([], dtype=X.dtype))\r\nX_trans\r\narray([], dtype=int64)\r\n```\n\nComment by maykulkarni:\nI would like to take it up. \n\nComment by gxyd:\nHey @maykulkarni go ahead with PR. Sorry, please don't mind my referenced commit, I don't intend to send in a PR.\r\n\r\nI would be happy to have a look over your PR once you send in (not that my review would matter much) :)",
-                "source_code": null,
-                "distance": 0.25,
-                "title": "LabelEncoder transform fails for empty lists (for certain inputs)",
-                "name": "issue#10458",
-                "documentation": null,
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#10458"
-                    }
-                ],
-                "similarity": 0.8610578838430113,
-                "end_line": null,
-                "signature": null
-            },
-            {
-                "start_line": null,
-                "file_path": null,
-                "issue_id": "10508",
-                "type": "issue",
-                "content": "<!--\r\nThanks for contributing a pull request! Please ensure you have taken a look at\r\nthe contribution guidelines: https://github.com/scikit-learn/scikit-learn/blob/master/CONTRIBUTING.md#pull-request-checklist\r\n-->\r\n\r\n#### Reference Issues/PRs\r\nFixes #10458 \r\n<!--\r\nExample: Fixes #1234. See also #3456.\r\nPlease use keywords (e.g., Fixes) to create link to the issues or pull requests\r\nyou resolved, so that they will automatically be closed when your pull request\r\nis merged. See https://github.com/blog/1506-closing-issues-via-pull-requests\r\n-->\r\n\r\n\r\n#### What does this implement/fix? Explain your changes.\r\n- [x] LabelEncoder transforms empty list without raising error\r\n- [x] LabelEncoder inverse transforms empty list without raising error\r\n- [x] test cases to test the changes\r\n\r\n#### Any other comments?\r\nThe original issue reported transform only. The same issue was with `inverse_transform` calling `inverse_transform([])` used to return a strange error which is now fixed. \r\n\r\n<!--\r\nPlease be aware that we are a loose team of volunteers so patience is\r\nnecessary; assistance handling other issues is very welcome. We value\r\nall user contributions, no matter how minor they are. If we are slow to\r\nreview, either the pull request needs some benchmarking, tinkering,\r\nconvincing, etc. or more likely the reviewers are simply busy. In either\r\ncase, we ask for your understanding during the review process.\r\nFor more information, see our FAQ on this topic:\r\nhttp://scikit-learn.org/dev/faq.html#why-is-my-pull-request-not-getting-any-attention.\r\n\r\nThanks for contributing!\r\n-->\r\n\n\n",
-                "source_code": null,
-                "distance": 0.5,
-                "title": "[MRG+1] Fixes #10458: Make LabelEncoder work with empty list/array",
-                "name": "pr#10508",
-                "documentation": null,
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#10458"
-                    },
-                    {
-                        "start_node": "issue#10458",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#10508"
-                    }
-                ],
-                "similarity": 0.590560533798229,
-                "end_line": null,
-                "signature": null
-            },
-            {
-                "start_line": null,
-                "file_path": null,
-                "issue_id": "3456",
-                "type": "issue",
-                "content": "As discussed, here are @MechCoder s changes from PR 2493 played onto master, with necessary adjustments made (sample weights weren't present at the time).\n\nhttps://github.com/scikit-learn/scikit-learn/pull/2493\n\nThis PR is WIP because I haven't added the doc changes yet. Otherwise everything is done.\n\n\n\nComment by arjoly:\nThanks @eickenberg :-)\n\n\nComment by eickenberg:\nOK, I just realized that metrics has been refactored completely, so this will take a few more moments ....\n\n\nComment by eickenberg:\nClosing this, I made a better one just now.\n",
-                "source_code": null,
-                "distance": 1.0,
-                "title": "[WIP] PR2493 cont'd (multiple output scoring)",
-                "name": "pr#3456",
-                "documentation": null,
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#10458"
-                    },
-                    {
-                        "start_node": "issue#10458",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#10508"
-                    },
-                    {
-                        "start_node": "pr#10508",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "pr#3456"
-                    }
-                ],
-                "similarity": 0.21171746943420458,
-                "end_line": null,
-                "signature": null
-            },
-            {
-                "start_line": null,
-                "file_path": null,
-                "issue_id": "1234",
-                "type": "issue",
-                "content": "This should clean up the stuff I pushed earlier.\ncc @ogrisel @gaelvaroquaux Could you have a brief look? What I pushed earlier is buggy but I didn't dare push again after so many failed fixes.\n\n\n\nComment by GaelVaroquaux:\nThis is good. I am merging it in.\n\n\nComment by amueller:\nThanks @GaelVaroquaux :) \n",
-                "source_code": null,
-                "distance": 1.0,
-                "title": "MRG fix bincount mess I made in kmeans.",
-                "name": "pr#1234",
-                "documentation": null,
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#10458"
-                    },
-                    {
-                        "start_node": "issue#10458",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#10508"
-                    },
-                    {
-                        "start_node": "pr#10508",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "pr#1234"
-                    }
-                ],
-                "similarity": 0.15612673035327276,
-                "end_line": null,
-                "signature": null
             }
         ]
     },
     "artifact_stats": {
-        "skipped_due_to_time": 7,
-        "valid_related_items": 35
+        "skipped_due_to_time": 0,
+        "valid_related_items": 1
     }
 }
