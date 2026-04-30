@@ -1,0 +1,2549 @@
+{
+  "related_entities": {
+    "methods": [
+      {
+        "name": "sympy.polys.monomials.itermonomials",
+        "signature": "sympy.polys.monomials.itermonomials(variables, max_degrees, min_degrees)",
+        "file_path": "sympy/polys/monomials.py",
+        "start_line": 15,
+        "source_code": "def itermonomials(variables, max_degrees, min_degrees=None):\n    r\"\"\"\n    ``max_degrees`` and ``min_degrees`` are either both integers or both lists.\n    Unless otherwise specified, ``min_degrees`` is either ``0`` or\n    ``[0, ..., 0]``.\n\n    A generator of all monomials ``monom`` is returned, such that\n    either\n    ``min_degree <= total_degree(monom) <= max_degree``,\n    or\n    ``min_degrees[i] <= degree_list(monom)[i] <= max_degrees[i]``,\n    for all ``i``.\n\n    Case I. ``max_degrees`` and ``min_degrees`` are both integers\n    =============================================================\n\n    Given a set of variables $V$ and a min_degree $N$ and a max_degree $M$\n    generate a set of monomials of degree less than or equal to $N$ and greater\n    than or equal to $M$. The total number of monomials in commutative\n    variables is huge and is given by the following formula if $M = 0$:\n\n        .. math::\n            \\frac{(\\#V + N)!}{\\#V! N!}\n\n    For example if we would like to generate a dense polynomial of\n    a total degree $N = 50$ and $M = 0$, which is the worst case, in 5\n    variables, assuming that exponents and all of coefficients are 32-bit long\n    and stored in an array we would need almost 80 GiB of memory! Fortunately\n    most polynomials, that we will encounter, are sparse.\n\n    Consider monomials in commutative variables $x$ and $y$\n    and non-commutative variables $a$ and $b$::\n\n        >>> from sympy import symbols\n        >>> from sympy.polys.monomials import itermonomials\n        >>> from sympy.polys.orderings import monomial_key\n        >>> from sympy.abc import x, y\n\n        >>> sorted(itermonomials([x, y], 2), key=monomial_key('grlex', [y, x]))\n        [1, x, y, x**2, x*y, y**2]\n\n        >>> sorted(itermonomials([x, y], 3), key=monomial_key('grlex', [y, x]))\n        [1, x, y, x**2, x*y, y**2, x**3, x**2*y, x*y**2, y**3]\n\n        >>> a, b = symbols('a, b', commutative=False)\n        >>> set(itermonomials([a, b, x], 2))\n        {1, a, a**2, b, b**2, x, x**2, a*b, b*a, x*a, x*b}\n\n        >>> sorted(itermonomials([x, y], 2, 1), key=monomial_key('grlex', [y, x]))\n        [x, y, x**2, x*y, y**2]\n\n    Case II. ``max_degrees`` and ``min_degrees`` are both lists\n    ===========================================================\n\n    If ``max_degrees = [d_1, ..., d_n]`` and\n    ``min_degrees = [e_1, ..., e_n]``, the number of monomials generated\n    is:\n\n    .. math::\n        (d_1 - e_1 + 1) (d_2 - e_2 + 1) \\cdots (d_n - e_n + 1)\n\n    Let us generate all monomials ``monom`` in variables $x$ and $y$\n    such that ``[1, 2][i] <= degree_list(monom)[i] <= [2, 4][i]``,\n    ``i = 0, 1`` ::\n\n        >>> from sympy import symbols\n        >>> from sympy.polys.monomials import itermonomials\n        >>> from sympy.polys.orderings import monomial_key\n        >>> from sympy.abc import x, y\n\n        >>> sorted(itermonomials([x, y], [2, 4], [1, 2]), reverse=True, key=monomial_key('lex', [x, y]))\n        [x**2*y**4, x**2*y**3, x**2*y**2, x*y**4, x*y**3, x*y**2]\n    \"\"\"\n    n = len(variables)\n    if is_sequence(max_degrees):\n        if len(max_degrees) != n:\n            raise ValueError('Argument sizes do not match')\n        if min_degrees is None:\n            min_degrees = [0]*n\n        elif not is_sequence(min_degrees):\n            raise ValueError('min_degrees is not a list')\n        else:\n            if len(min_degrees) != n:\n                raise ValueError('Argument sizes do not match')\n            if any(i < 0 for i in min_degrees):\n                raise ValueError(\"min_degrees can't contain negative numbers\")\n        total_degree = False\n    else:\n        max_degree = max_degrees\n        if max_degree < 0:\n            raise ValueError(\"max_degrees can't be negative\")\n        if min_degrees is None:\n            min_degree = 0\n        else:\n            if min_degrees < 0:\n                raise ValueError(\"min_degrees can't be negative\")\n            min_degree = min_degrees\n        total_degree = True\n    if total_degree:\n        if min_degree > max_degree:\n            return\n        if not variables or max_degree == 0:\n            yield S.One\n            return\n        # Force to list in case of passed tuple or other incompatible collection\n        variables = list(variables) + [S.One]\n        if all(variable.is_commutative for variable in variables):\n            monomials_list_comm = []\n            for item in combinations_with_replacement(variables, max_degree):\n                powers = dict()\n                for variable in variables:\n                    powers[variable] = 0\n                for variable in item:\n                    if variable != 1:\n                        powers[variable] += 1\n                if max(powers.values()) >= min_degree:\n                    monomials_list_comm.append(Mul(*item))\n            yield from set(monomials_list_comm)\n        else:\n            monomials_list_non_comm = []\n            for item in product(variables, repeat=max_degree):\n                powers = dict()\n                for variable in variables:\n                    powers[variable] = 0\n                for variable in item:\n                    if variable != 1:\n                        powers[variable] += 1\n                if max(powers.values()) >= min_degree:\n                    monomials_list_non_comm.append(Mul(*item))\n            yield from set(monomials_list_non_comm)\n    else:\n        if any(min_degrees[i] > max_degrees[i] for i in range(n)):\n            raise ValueError('min_degrees[i] must be <= max_degrees[i] for all i')\n        power_lists = []\n        for var, min_d, max_d in zip(variables, min_degrees, max_degrees):\n            power_lists.append([var**i for i in range(min_d, max_d + 1)])\n        for powers in product(*power_lists):\n            yield Mul(*powers)",
+        "end_line": 152,
+        "doc_string": "``max_degrees`` and ``min_degrees`` are either both integers or both lists.\nUnless otherwise specified, ``min_degrees`` is either ``0`` or\n``[0, ..., 0]``.\n\nA generator of all monomials ``monom`` is returned, such that\neither\n``min_degree <= total_degree(monom) <= max_degree``,\nor\n``min_degrees[i] <= degree_list(monom)[i] <= max_degrees[i]``,\nfor all ``i``.\n\nCase I. ``max_degrees`` and ``min_degrees`` are both integers\n=============================================================\n\nGiven a set of variables $V$ and a min_degree $N$ and a max_degree $M$\ngenerate a set of monomials of degree less than or equal to $N$ and greater\nthan or equal to $M$. The total number of monomials in commutative\nvariables is huge and is given by the following formula if $M = 0$:\n\n    .. math::\n        \\frac{(\\#V + N)!}{\\#V! N!}\n\nFor example if we would like to generate a dense polynomial of\na total degree $N = 50$ and $M = 0$, which is the worst case, in 5\nvariables, assuming that exponents and all of coefficients are 32-bit long\nand stored in an array we would need almost 80 GiB of memory! Fortunately\nmost polynomials, that we will encounter, are sparse.\n\nConsider monomials in commutative variables $x$ and $y$\nand non-commutative variables $a$ and $b$::\n\n    >>> from sympy import symbols\n    >>> from sympy.polys.monomials import itermonomials\n    >>> from sympy.polys.orderings import monomial_key\n    >>> from sympy.abc import x, y\n\n    >>> sorted(itermonomials([x, y], 2), key=monomial_key('grlex', [y, x]))\n    [1, x, y, x**2, x*y, y**2]\n\n    >>> sorted(itermonomials([x, y], 3), key=monomial_key('grlex', [y, x]))\n    [1, x, y, x**2, x*y, y**2, x**3, x**2*y, x*y**2, y**3]\n\n    >>> a, b = symbols('a, b', commutative=False)\n    >>> set(itermonomials([a, b, x], 2))\n    {1, a, a**2, b, b**2, x, x**2, a*b, b*a, x*a, x*b}\n\n    >>> sorted(itermonomials([x, y], 2, 1), key=monomial_key('grlex', [y, x]))\n    [x, y, x**2, x*y, y**2]\n\nCase II. ``max_degrees`` and ``min_degrees`` are both lists\n===========================================================\n\nIf ``max_degrees = [d_1, ..., d_n]`` and\n``min_degrees = [e_1, ..., e_n]``, the number of monomials generated\nis:\n\n.. math::\n    (d_1 - e_1 + 1) (d_2 - e_2 + 1) \\cdots (d_n - e_n + 1)\n\nLet us generate all monomials ``monom`` in variables $x$ and $y$\nsuch that ``[1, 2][i] <= degree_list(monom)[i] <= [2, 4][i]``,\n``i = 0, 1`` ::\n\n    >>> from sympy import symbols\n    >>> from sympy.polys.monomials import itermonomials\n    >>> from sympy.polys.orderings import monomial_key\n    >>> from sympy.abc import x, y\n\n    >>> sorted(itermonomials([x, y], [2, 4], [1, 2]), reverse=True, key=monomial_key('lex', [x, y]))\n    [x**2*y**4, x**2*y**3, x**2*y**2, x*y**4, x*y**3, x*y**2]",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#21845"
+          },
+          {
+            "start_node": "issue#21845",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "pr#21846"
+          },
+          {
+            "start_node": "pr#21846",
+            "description": "points to method",
+            "type": "RELATED",
+            "end_node": "sympy.polys.monomials.itermonomials"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "start_line": 237,
+        "file_path": "sympy/core/expr.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __pow__(self, other, mod=None):\n        if mod is None:\n            return self._pow(other)\n        try:\n            _self, other, mod = as_int(self), as_int(other), as_int(mod)\n            if other >= 0:\n                return pow(_self, other, mod)\n            else:\n                from sympy.core.numbers import mod_inverse\n                return mod_inverse(pow(_self, -other, mod), mod)\n        except ValueError:\n            power = self._pow(other)\n            try:\n                return power%mod\n            except TypeError:\n                return NotImplemented",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.expr.Expr.__pow__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/expr.py"
+          },
+          {
+            "start_node": "sympy/core/expr.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.expr.Expr.__pow__"
+          }
+        ],
+        "similarity": 0.20855135948185516,
+        "end_line": 252,
+        "signature": "sympy.core.expr.Expr.__pow__(self, other, mod)"
+      },
+      {
+        "start_line": 481,
+        "file_path": "sympy/core/operations.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, *args, **options):\n        args = (_sympify_(arg) for arg in args)\n\n        try:\n            # /!\\ args is a generator and _new_args_filter\n            # must be careful to handle as such; this\n            # is done so short-circuiting can be done\n            # without having to sympify all values\n            _args = frozenset(cls._new_args_filter(args))\n        except ShortCircuit:\n            return sympify(cls.zero)\n        if not _args:\n            return sympify(cls.identity)\n        elif len(_args) == 1:\n            return set(_args).pop()\n        else:\n            # XXX in almost every other case for __new__, *_args is\n            # passed along, but the expectation here is for _args\n            obj = super(AssocOp, cls).__new__(cls, *ordered(_args))\n            obj._argset = _args\n            return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.operations.LatticeOp.__new__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/operations.py"
+          },
+          {
+            "start_node": "sympy/core/operations.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.operations.LatticeOp.__new__"
+          }
+        ],
+        "similarity": 0.1887893805713942,
+        "end_line": 501,
+        "signature": "sympy.core.operations.LatticeOp.__new__(cls)"
+      },
+      {
+        "start_line": 47,
+        "file_path": "sympy/core/operations.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, *args, evaluate=None, _sympify=True):\n        from sympy import Order\n\n        # Allow faster processing by passing ``_sympify=False``, if all arguments\n        # are already sympified.\n        if _sympify:\n            args = list(map(_sympify_, args))\n\n        # Disallow non-Expr args in Add/Mul\n        typ = cls._args_type\n        if typ is not None:\n            from sympy.core.relational import Relational\n            if any(isinstance(arg, Relational) for arg in args):\n                raise TypeError(\"Relational can not be used in %s\" % cls.__name__)\n\n            # This should raise TypeError once deprecation period is over:\n            if not all(isinstance(arg, typ) for arg in args):\n                SymPyDeprecationWarning(\n                    feature=\"Add/Mul with non-Expr args\",\n                    useinstead=\"Expr args\",\n                    issue=19445,\n                    deprecated_since_version=\"1.7\"\n                ).warn()\n\n        if evaluate is None:\n            evaluate = global_parameters.evaluate\n        if not evaluate:\n            obj = cls._from_args(args)\n            obj = cls._exec_constructor_postprocessors(obj)\n            return obj\n\n        args = [a for a in args if a is not cls.identity]\n\n        if len(args) == 0:\n            return cls.identity\n        if len(args) == 1:\n            return args[0]\n\n        c_part, nc_part, order_symbols = cls.flatten(args)\n        is_commutative = not nc_part\n        obj = cls._from_args(c_part + nc_part, is_commutative)\n        obj = cls._exec_constructor_postprocessors(obj)\n\n        if order_symbols is not None:\n            return Order(obj, *order_symbols)\n        return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.operations.AssocOp.__new__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/operations.py"
+          },
+          {
+            "start_node": "sympy/core/operations.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.operations.AssocOp.__new__"
+          }
+        ],
+        "similarity": 0.18642225462226691,
+        "end_line": 92,
+        "signature": "sympy.core.operations.AssocOp.__new__(cls)"
+      },
+      {
+        "start_line": 160,
+        "file_path": "sympy/core/add.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def flatten(cls, seq):\n        \"\"\"\n        Takes the sequence \"seq\" of nested Adds and returns a flatten list.\n\n        Returns: (commutative_part, noncommutative_part, order_symbols)\n\n        Applies associativity, all terms are commutable with respect to\n        addition.\n\n        NB: the removal of 0 is already handled by AssocOp.__new__\n\n        See also\n        ========\n\n        sympy.core.mul.Mul.flatten\n\n        \"\"\"\n        from sympy.calculus.util import AccumBounds\n        from sympy.matrices.expressions import MatrixExpr\n        from sympy.tensor.tensor import TensExpr\n        rv = None\n        if len(seq) == 2:\n            a, b = seq\n            if b.is_Rational:\n                a, b = b, a\n            if a.is_Rational:\n                if b.is_Mul:\n                    rv = [a, b], [], None\n            if rv:\n                if all(s.is_commutative for s in rv[0]):\n                    return rv\n                return [], rv[0], None\n\n        terms = {}      # term -> coeff\n                        # e.g. x**2 -> 5   for ... + 5*x**2 + ...\n\n        coeff = S.Zero  # coefficient (Number or zoo) to always be in slot 0\n                        # e.g. 3 + ...\n        order_factors = []\n\n        extra = []\n\n        for o in seq:\n\n            # O(x)\n            if o.is_Order:\n                if o.expr.is_zero:\n                    continue\n                for o1 in order_factors:\n                    if o1.contains(o):\n                        o = None\n                        break\n                if o is None:\n                    continue\n                order_factors = [o] + [\n                    o1 for o1 in order_factors if not o.contains(o1)]\n                continue\n\n            # 3 or NaN\n            elif o.is_Number:\n                if (o is S.NaN or coeff is S.ComplexInfinity and\n                        o.is_finite is False) and not extra:\n                    # we know for sure the result will be nan\n                    return [S.NaN], [], None\n                if coeff.is_Number or isinstance(coeff, AccumBounds):\n                    coeff += o\n                    if coeff is S.NaN and not extra:\n                        # we know for sure the result will be nan\n                        return [S.NaN], [], None\n                continue\n\n            elif isinstance(o, AccumBounds):\n                coeff = o.__add__(coeff)\n                continue\n\n            elif isinstance(o, MatrixExpr):\n                # can't add 0 to Matrix so make sure coeff is not 0\n                extra.append(o)\n                continue\n\n            elif isinstance(o, TensExpr):\n                coeff = o.__add__(coeff) if coeff else o\n                continue\n\n            elif o is S.ComplexInfinity:\n                if coeff.is_finite is False and not extra:\n                    # we know for sure the result will be nan\n                    return [S.NaN], [], None\n                coeff = S.ComplexInfinity\n                continue\n\n            # Add([...])\n            elif o.is_Add:\n                # NB: here we assume Add is always commutative\n                seq.extend(o.args)  # TODO zerocopy?\n                continue\n\n            # Mul([...])\n            elif o.is_Mul:\n                c, s = o.as_coeff_Mul()\n\n            # check for unevaluated Pow, e.g. 2**3 or 2**(-1/2)\n            elif o.is_Pow:\n                b, e = o.as_base_exp()\n                if b.is_Number and (e.is_Integer or\n                                   (e.is_Rational and e.is_negative)):\n                    seq.append(b**e)\n                    continue\n                c, s = S.One, o\n\n            else:\n                # everything else\n                c = S.One\n                s = o\n\n            # now we have:\n            # o = c*s, where\n            #\n            # c is a Number\n            # s is an expression with number factor extracted\n            # let's collect terms with the same s, so e.g.\n            # 2*x**2 + 3*x**2  ->  5*x**2\n            if s in terms:\n                terms[s] += c\n                if terms[s] is S.NaN and not extra:\n                    # we know for sure the result will be nan\n                    return [S.NaN], [], None\n            else:\n                terms[s] = c\n\n        # now let's construct new args:\n        # [2*x**2, x**3, 7*x**4, pi, ...]\n        newseq = []\n        noncommutative = False\n        for s, c in terms.items():\n            # 0*s\n            if c.is_zero:\n                continue\n            # 1*s\n            elif c is S.One:\n                newseq.append(s)\n            # c*s\n            else:\n                if s.is_Mul:\n                    # Mul, already keeps its arguments in perfect order.\n                    # so we can simply put c in slot0 and go the fast way.\n                    cs = s._new_rawargs(*((c,) + s.args))\n                    newseq.append(cs)\n                elif s.is_Add:\n                    # we just re-create the unevaluated Mul\n                    newseq.append(Mul(c, s, evaluate=False))\n                else:\n                    # alternatively we have to call all Mul's machinery (slow)\n                    newseq.append(Mul(c, s))\n\n            noncommutative = noncommutative or not s.is_commutative\n\n        # oo, -oo\n        if coeff is S.Infinity:\n            newseq = [f for f in newseq if not (f.is_extended_nonnegative or f.is_real)]\n\n        elif coeff is S.NegativeInfinity:\n            newseq = [f for f in newseq if not (f.is_extended_nonpositive or f.is_real)]\n\n        if coeff is S.ComplexInfinity:\n            # zoo might be\n            #   infinite_real + finite_im\n            #   finite_real + infinite_im\n            #   infinite_real + infinite_im\n            # addition of a finite real or imaginary number won't be able to\n            # change the zoo nature; adding an infinite qualtity would result\n            # in a NaN condition if it had sign opposite of the infinite\n            # portion of zoo, e.g., infinite_real - infinite_real.\n            newseq = [c for c in newseq if not (c.is_finite and\n                                                c.is_extended_real is not None)]\n\n        # process O(x)\n        if order_factors:\n            newseq2 = []\n            for t in newseq:\n                for o in order_factors:\n                    # x + O(x) -> O(x)\n                    if o.contains(t):\n                        t = None\n                        break\n                # x + O(x**2) -> x + O(x**2)\n                if t is not None:\n                    newseq2.append(t)\n            newseq = newseq2 + order_factors\n            # 1 + O(1) -> O(1)\n            for o in order_factors:\n                if o.contains(coeff):\n                    coeff = S.Zero\n                    break\n\n        # order args canonically\n        _addsort(newseq)\n\n        # current code expects coeff to be first\n        if coeff is not S.Zero:\n            newseq.insert(0, coeff)\n\n        if extra:\n            newseq += extra\n            noncommutative = True\n\n        # we are done\n        if noncommutative:\n            return [], newseq, None\n        else:\n            return newseq, [], None",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.add.Add.flatten",
+        "documentation": "Takes the sequence \"seq\" of nested Adds and returns a flatten list.\n\nReturns: (commutative_part, noncommutative_part, order_symbols)\n\nApplies associativity, all terms are commutable with respect to\naddition.\n\nNB: the removal of 0 is already handled by AssocOp.__new__\n\nSee also\n========\n\nsympy.core.mul.Mul.flatten",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/add.py"
+          },
+          {
+            "start_node": "sympy/core/add.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.add.Add.flatten"
+          }
+        ],
+        "similarity": 0.17867206065668667,
+        "end_line": 370,
+        "signature": "sympy.core.add.Add.flatten(cls, seq)"
+      },
+      {
+        "start_line": 335,
+        "file_path": "sympy/polys/multivariate_resultants.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_monomials_of_certain_degree(self, degree):\n        \"\"\"\n        Returns\n        =======\n\n        monomials: list\n            A list of monomials of a certain degree.\n        \"\"\"\n        monomials = [Mul(*monomial) for monomial\n                     in combinations_with_replacement(self.variables,\n                                                      degree)]\n\n        return sorted(monomials, reverse=True,\n                      key=monomial_key('lex', self.variables))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.multivariate_resultants.MacaulayResultant.get_monomials_of_certain_degree",
+        "documentation": "Returns\n=======\n\nmonomials: list\n    A list of monomials of a certain degree.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/multivariate_resultants.py"
+          },
+          {
+            "start_node": "sympy/polys/multivariate_resultants.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.multivariate_resultants.MacaulayResultant.get_monomials_of_certain_degree"
+          }
+        ],
+        "similarity": 0.17442701671090946,
+        "end_line": 348,
+        "signature": "sympy.polys.multivariate_resultants.MacaulayResultant.get_monomials_of_certain_degree(self, degree)"
+      },
+      {
+        "start_line": 1827,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def monoms(self, order=None):\n        \"\"\"Ordered list of polynomial monomials.\n\n        Parameters\n        ==========\n\n        order : :class:`~.MonomialOrder` or coercible, optional\n\n        Examples\n        ========\n\n        >>> from sympy.polys.rings import ring\n        >>> from sympy.polys.domains import ZZ\n        >>> from sympy.polys.orderings import lex, grlex\n\n        >>> _, x, y = ring(\"x, y\", ZZ, lex)\n        >>> f = x*y**7 + 2*x**2*y**3\n\n        >>> f.monoms()\n        [(2, 3), (1, 7)]\n        >>> f.monoms(grlex)\n        [(1, 7), (2, 3)]\n\n        \"\"\"\n        return [ monom for monom, _ in self.terms(order) ]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement.monoms",
+        "documentation": "Ordered list of polynomial monomials.\n\nParameters\n==========\n\norder : :class:`~.MonomialOrder` or coercible, optional\n\nExamples\n========\n\n>>> from sympy.polys.rings import ring\n>>> from sympy.polys.domains import ZZ\n>>> from sympy.polys.orderings import lex, grlex\n\n>>> _, x, y = ring(\"x, y\", ZZ, lex)\n>>> f = x*y**7 + 2*x**2*y**3\n\n>>> f.monoms()\n[(2, 3), (1, 7)]\n>>> f.monoms(grlex)\n[(1, 7), (2, 3)]",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.monoms"
+          }
+        ],
+        "similarity": 0.17232384397103656,
+        "end_line": 1851,
+        "signature": "sympy.polys.rings.PolyElement.monoms(self, order)"
+      },
+      {
+        "start_line": 230,
+        "file_path": "sympy/core/symbol.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _sanitize(assumptions, obj=None):\n        \"\"\"Remove None, covert values to bool, check commutativity *in place*.\n        \"\"\"\n\n        # be strict about commutativity: cannot be None\n        is_commutative = fuzzy_bool(assumptions.get('commutative', True))\n        if is_commutative is None:\n            whose = '%s ' % obj.__name__ if obj else ''\n            raise ValueError(\n                '%scommutativity must be True or False.' % whose)\n\n        # sanitize other assumptions so 1 -> True and 0 -> False\n        for key in list(assumptions.keys()):\n            v = assumptions[key]\n            if v is None:\n                assumptions.pop(key)\n                continue\n            assumptions[key] = bool(v)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.symbol.Symbol._sanitize",
+        "documentation": "Remove None, covert values to bool, check commutativity *in place*.\n        ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/symbol.py"
+          },
+          {
+            "start_node": "sympy/core/symbol.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.symbol.Symbol._sanitize"
+          }
+        ],
+        "similarity": 0.16928603846941936,
+        "end_line": 247,
+        "signature": "sympy.core.symbol.Symbol._sanitize(assumptions, obj)"
+      },
+      {
+        "start_line": 261,
+        "file_path": "sympy/core/symbol.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, name, **assumptions):\n        \"\"\"Symbols are identified by name and assumptions::\n\n        >>> from sympy import Symbol\n        >>> Symbol(\"x\") == Symbol(\"x\")\n        True\n        >>> Symbol(\"x\", real=True) == Symbol(\"x\", real=False)\n        False\n\n        \"\"\"\n        cls._sanitize(assumptions, cls)\n        return Symbol.__xnew_cached_(cls, name, **assumptions)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.symbol.Symbol.__new__",
+        "documentation": "Symbols are identified by name and assumptions::\n\n>>> from sympy import Symbol\n>>> Symbol(\"x\") == Symbol(\"x\")\nTrue\n>>> Symbol(\"x\", real=True) == Symbol(\"x\", real=False)\nFalse",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/symbol.py"
+          },
+          {
+            "start_node": "sympy/core/symbol.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.symbol.Symbol.__new__"
+          }
+        ],
+        "similarity": 0.1687492707838118,
+        "end_line": 272,
+        "signature": "sympy.core.symbol.Symbol.__new__(cls, name)"
+      },
+      {
+        "start_line": 396,
+        "file_path": "sympy/core/symbol.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, name=None, dummy_index=None, **assumptions):\n        if dummy_index is not None:\n            assert name is not None, \"If you specify a dummy_index, you must also provide a name\"\n\n        if name is None:\n            name = \"Dummy_\" + str(Dummy._count)\n\n        if dummy_index is None:\n            dummy_index = Dummy._base_dummy_index + Dummy._count\n            Dummy._count += 1\n\n        cls._sanitize(assumptions, cls)\n        obj = Symbol.__xnew__(cls, name, **assumptions)\n\n        obj.dummy_index = dummy_index\n\n        return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.symbol.Dummy.__new__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/symbol.py"
+          },
+          {
+            "start_node": "sympy/core/symbol.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.symbol.Dummy.__new__"
+          }
+        ],
+        "similarity": 0.16798991043450984,
+        "end_line": 412,
+        "signature": "sympy.core.symbol.Dummy.__new__(cls, name, dummy_index)"
+      },
+      {
+        "start_line": 163,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        def inv(l):\n            if iterable(l):\n                return tuple(inv(x) for x in l)\n            return -l\n        return inv(self.O(monomial))",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.InverseOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.InverseOrder.__call__"
+          }
+        ],
+        "similarity": 0.1638056870749131,
+        "end_line": 168,
+        "signature": "sympy.polys.orderings.InverseOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 876,
+        "file_path": "sympy/polys/polytools.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def monoms(f, order=None):\n        \"\"\"\n        Returns all non-zero monomials from ``f`` in lex order.\n\n        Examples\n        ========\n\n        >>> from sympy import Poly\n        >>> from sympy.abc import x, y\n\n        >>> Poly(x**2 + 2*x*y**2 + x*y + 3*y, x, y).monoms()\n        [(2, 0), (1, 2), (1, 1), (0, 1)]\n\n        See Also\n        ========\n        all_monoms\n\n        \"\"\"\n        return f.rep.monoms(order=order)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polytools.Poly.monoms",
+        "documentation": "Returns all non-zero monomials from ``f`` in lex order.\n\nExamples\n========\n\n>>> from sympy import Poly\n>>> from sympy.abc import x, y\n\n>>> Poly(x**2 + 2*x*y**2 + x*y + 3*y, x, y).monoms()\n[(2, 0), (1, 2), (1, 1), (0, 1)]\n\nSee Also\n========\nall_monoms",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polytools.py"
+          },
+          {
+            "start_node": "sympy/polys/polytools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polytools.Poly.monoms"
+          }
+        ],
+        "similarity": 0.16262494950117906,
+        "end_line": 894,
+        "signature": "sympy.polys.polytools.Poly.monoms(f, order)"
+      },
+      {
+        "start_line": 517,
+        "file_path": "sympy/polys/monomials.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, monom, gens=None):\n        if not iterable(monom):\n            rep, gens = dict_from_expr(sympify(monom), gens=gens)\n            if len(rep) == 1 and list(rep.values())[0] == 1:\n                monom = list(rep.keys())[0]\n            else:\n                raise ValueError(\"Expected a monomial got {}\".format(monom))\n\n        self.exponents = tuple(map(int, monom))\n        self.gens = gens",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.monomials.Monomial.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "monomials.py"
+          },
+          {
+            "start_node": "monomials.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.monomials.Monomial.__init__"
+          }
+        ],
+        "similarity": 0.16095803359333738,
+        "end_line": 526,
+        "signature": "sympy.polys.monomials.Monomial.__init__(self, monom, gens)"
+      },
+      {
+        "start_line": 2151,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _gcd_monom(f, g):\n        ring = f.ring\n        ground_gcd = ring.domain.gcd\n        ground_quo = ring.domain.quo\n        monomial_gcd = ring.monomial_gcd\n        monomial_ldiv = ring.monomial_ldiv\n        mf, cf = list(f.iterterms())[0]\n        _mgcd, _cgcd = mf, cf\n        for mg, cg in g.iterterms():\n            _mgcd = monomial_gcd(_mgcd, mg)\n            _cgcd = ground_gcd(_cgcd, cg)\n        h = f.new([(_mgcd, _cgcd)])\n        cff = f.new([(monomial_ldiv(mf, _mgcd), ground_quo(cf, _cgcd))])\n        cfg = f.new([(monomial_ldiv(mg, _mgcd), ground_quo(cg, _cgcd)) for mg, cg in g.iterterms()])\n        return h, cff, cfg",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement._gcd_monom",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement._gcd_monom"
+          }
+        ],
+        "similarity": 0.15762004993389972,
+        "end_line": 2165,
+        "signature": "sympy.polys.rings.PolyElement._gcd_monom(f, g)"
+      },
+      {
+        "start_line": 534,
+        "file_path": "sympy/core/assumptions.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(cls, *args, **kws):\n        BasicMeta.__init__(cls, *args, **kws)\n\n        local_defs = {}\n        for k in _assume_defined:\n            attrname = as_property(k)\n            v = cls.__dict__.get(attrname, '')\n            if isinstance(v, (bool, int, type(None))):\n                if v is not None:\n                    v = bool(v)\n                local_defs[k] = v\n\n        defs = {}\n        for base in reversed(cls.__bases__):\n            assumptions = getattr(base, '_explicit_class_assumptions', None)\n            if assumptions is not None:\n                defs.update(assumptions)\n        defs.update(local_defs)\n\n        cls._explicit_class_assumptions = defs\n        cls.default_assumptions = StdFactKB(defs)\n\n        cls._prop_handler = {}\n        for k in _assume_defined:\n            eval_is_meth = getattr(cls, '_eval_is_%s' % k, None)\n            if eval_is_meth is not None:\n                cls._prop_handler[k] = eval_is_meth\n\n        # Put definite results directly into the class dict, for speed\n        for k, v in cls.default_assumptions.items():\n            setattr(cls, as_property(k), v)\n\n        # protection e.g. for Integer.is_even=F <- (Rational.is_integer=F)\n        derived_from_bases = set()\n        for base in cls.__bases__:\n            default_assumptions = getattr(base, 'default_assumptions', None)\n            # is an assumption-aware class\n            if default_assumptions is not None:\n                derived_from_bases.update(default_assumptions)\n\n        for fact in derived_from_bases - set(cls.default_assumptions):\n            pname = as_property(fact)\n            if pname not in cls.__dict__:\n                setattr(cls, pname, make_property(fact))\n\n        # Finally, add any missing automagic property (e.g. for Basic)\n        for fact in _assume_defined:\n            pname = as_property(fact)\n            if not hasattr(cls, pname):\n                setattr(cls, pname, make_property(fact))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.assumptions.ManagedProperties.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/assumptions.py"
+          },
+          {
+            "start_node": "sympy/core/assumptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.assumptions.ManagedProperties.__init__"
+          }
+        ],
+        "similarity": 0.1564921923828177,
+        "end_line": 583,
+        "signature": "sympy.core.assumptions.ManagedProperties.__init__(cls)"
+      },
+      {
+        "start_line": 143,
+        "file_path": "sympy/core/expr.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __eq__(self, other):\n        try:\n            other = _sympify(other)\n            if not isinstance(other, Expr):\n                return False\n        except (SympifyError, SyntaxError):\n            return False\n        # check for pure number expr\n        if  not (self.is_Number and other.is_Number) and (\n                type(self) != type(other)):\n            return False\n        a, b = self._hashable_content(), other._hashable_content()\n        if a != b:\n            return False\n        # check number *in* an expression\n        for a, b in zip(a, b):\n            if not isinstance(a, Expr):\n                continue\n            if a.is_Number and type(a) != type(b):\n                return False\n        return True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.expr.Expr.__eq__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/expr.py"
+          },
+          {
+            "start_node": "sympy/core/expr.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.expr.Expr.__eq__"
+          }
+        ],
+        "similarity": 0.15617929567407396,
+        "end_line": 163,
+        "signature": "sympy.core.expr.Expr.__eq__(self, other)"
+      },
+      {
+        "start_line": 24,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        raise NotImplementedError",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.MonomialOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.MonomialOrder.__call__"
+          }
+        ],
+        "similarity": 0.15511779957737684,
+        "end_line": 25,
+        "signature": "sympy.polys.orderings.MonomialOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 257,
+        "file_path": "sympy/printing/printer.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, settings=None):\n        self._str = str\n\n        self._settings = self._get_initial_settings()\n        self._context = dict()  # mutable during printing\n\n        if settings is not None:\n            self._settings.update(settings)\n\n            if len(self._settings) > len(self._default_settings):\n                for key in self._settings:\n                    if key not in self._default_settings:\n                        raise TypeError(\"Unknown setting '%s'.\" % key)\n\n        # _print_level is the number of times self._print() was recursively\n        # called. See StrPrinter._print_Float() for an example of usage\n        self._print_level = 0",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.printer.Printer.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/printer.py"
+          },
+          {
+            "start_node": "sympy/printing/printer.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.printer.Printer.__init__"
+          }
+        ],
+        "similarity": 0.15444565426075177,
+        "end_line": 273,
+        "signature": "sympy.printing.printer.Printer.__init__(self, settings)"
+      },
+      {
+        "start_line": 125,
+        "file_path": "sympy/core/expr.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __hash__(self) -> int:\n        # hash cannot be cached using cache_it because infinite recurrence\n        # occurs as hash is needed for setting cache dictionary keys\n        h = self._mhash\n        if h is None:\n            h = hash((type(self).__name__,) + self._hashable_content())\n            self._mhash = h\n        return h",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.expr.Expr.__hash__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/expr.py"
+          },
+          {
+            "start_node": "sympy/core/expr.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.expr.Expr.__hash__"
+          }
+        ],
+        "similarity": 0.1539086380453111,
+        "end_line": 132,
+        "signature": "sympy.core.expr.Expr.__hash__(self)"
+      },
+      {
+        "start_line": 519,
+        "file_path": "sympy/core/symbol.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, name, exclude=(), properties=(), **assumptions):\n        exclude = tuple([sympify(x) for x in exclude])\n        properties = tuple(properties)\n        cls._sanitize(assumptions, cls)\n        return Wild.__xnew__(cls, name, exclude, properties, **assumptions)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.symbol.Wild.__new__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/symbol.py"
+          },
+          {
+            "start_node": "sympy/core/symbol.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.symbol.Wild.__new__"
+          }
+        ],
+        "similarity": 0.1538385706397134,
+        "end_line": 523,
+        "signature": "sympy.core.symbol.Wild.__new__(cls, name, exclude, properties)"
+      },
+      {
+        "start_line": 1741,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def leading_monom(self):\n        \"\"\"\n        Leading monomial as a polynomial element.\n\n        Examples\n        ========\n\n        >>> from sympy.polys.rings import ring\n        >>> from sympy.polys.domains import ZZ\n\n        >>> _, x, y = ring('x, y', ZZ)\n        >>> (3*x*y + y**2).leading_monom()\n        x*y\n\n        \"\"\"\n        p = self.ring.zero\n        expv = self.leading_expv()\n        if expv:\n            p[expv] = self.ring.domain.one\n        return p",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement.leading_monom",
+        "documentation": "Leading monomial as a polynomial element.\n\nExamples\n========\n\n>>> from sympy.polys.rings import ring\n>>> from sympy.polys.domains import ZZ\n\n>>> _, x, y = ring('x, y', ZZ)\n>>> (3*x*y + y**2).leading_monom()\nx*y",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.leading_monom"
+          }
+        ],
+        "similarity": 0.15328218495415968,
+        "end_line": 1760,
+        "signature": "sympy.polys.rings.PolyElement.leading_monom(self)"
+      },
+      {
+        "start_line": 1695,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __add__(self, other):\n        if global_parameters.evaluate:\n            if isinstance(other, Integer):\n                return Rational(self.p + self.q*other.p, self.q, 1)\n            elif isinstance(other, Rational):\n                #TODO: this can probably be optimized more\n                return Rational(self.p*other.q + self.q*other.p, self.q*other.q)\n            elif isinstance(other, Float):\n                return other + self\n            else:\n                return Number.__add__(self, other)\n        return Number.__add__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Rational.__add__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Rational.__add__"
+          }
+        ],
+        "similarity": 0.15325671459898138,
+        "end_line": 1706,
+        "signature": "sympy.core.numbers.Rational.__add__(self, other)"
+      },
+      {
+        "start_line": 325,
+        "file_path": "sympy/polys/polyclasses.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def all_monoms(f):\n        \"\"\"Returns all monomials from ``f``. \"\"\"\n        if not f.lev:\n            n = dup_degree(f.rep)\n\n            if n < 0:\n                return [(0,)]\n            else:\n                return [ (n - i,) for i, c in enumerate(f.rep) ]\n        else:\n            raise PolynomialError('multivariate polynomials not supported')",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyclasses.DMP.all_monoms",
+        "documentation": "Returns all monomials from ``f``. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyclasses.py"
+          },
+          {
+            "start_node": "sympy/polys/polyclasses.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyclasses.DMP.all_monoms"
+          }
+        ],
+        "similarity": 0.15295647976639198,
+        "end_line": 335,
+        "signature": "sympy.polys.polyclasses.DMP.all_monoms(f)"
+      },
+      {
+        "start_line": 52,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        return (sum(monomial), monomial)",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.GradedLexOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.GradedLexOrder.__call__"
+          }
+        ],
+        "similarity": 0.15246416587803885,
+        "end_line": 53,
+        "signature": "sympy.polys.orderings.GradedLexOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 61,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        return (sum(monomial), tuple(reversed([-m for m in monomial])))",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.ReversedGradedLexOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.ReversedGradedLexOrder.__call__"
+          }
+        ],
+        "similarity": 0.15006814752258713,
+        "end_line": 62,
+        "signature": "sympy.polys.orderings.ReversedGradedLexOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 43,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        return monomial",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.LexOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.LexOrder.__call__"
+          }
+        ],
+        "similarity": 0.14996164013563265,
+        "end_line": 44,
+        "signature": "sympy.polys.orderings.LexOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 716,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __add__(self, other):\n        if isinstance(other, Number) and global_parameters.evaluate:\n            if other is S.NaN:\n                return S.NaN\n            elif other is S.Infinity:\n                return S.Infinity\n            elif other is S.NegativeInfinity:\n                return S.NegativeInfinity\n        return AtomicExpr.__add__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Number.__add__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Number.__add__"
+          }
+        ],
+        "similarity": 0.148659321436233,
+        "end_line": 724,
+        "signature": "sympy.core.numbers.Number.__add__(self, other)"
+      },
+      {
+        "start_line": 932,
+        "file_path": "sympy/polys/polytools.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def all_monoms(f):\n        \"\"\"\n        Returns all monomials from a univariate polynomial ``f``.\n\n        Examples\n        ========\n\n        >>> from sympy import Poly\n        >>> from sympy.abc import x\n\n        >>> Poly(x**3 + 2*x - 1, x).all_monoms()\n        [(3,), (2,), (1,), (0,)]\n\n        See Also\n        ========\n        all_terms\n\n        \"\"\"\n        return f.rep.all_monoms()",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polytools.Poly.all_monoms",
+        "documentation": "Returns all monomials from a univariate polynomial ``f``.\n\nExamples\n========\n\n>>> from sympy import Poly\n>>> from sympy.abc import x\n\n>>> Poly(x**3 + 2*x - 1, x).all_monoms()\n[(3,), (2,), (1,), (0,)]\n\nSee Also\n========\nall_terms",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polytools.py"
+          },
+          {
+            "start_node": "sympy/polys/polytools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polytools.Poly.all_monoms"
+          }
+        ],
+        "similarity": 0.1481016796517447,
+        "end_line": 950,
+        "signature": "sympy.polys.polytools.Poly.all_monoms(f)"
+      },
+      {
+        "start_line": 2156,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __add__(self, other):\n        if global_parameters.evaluate:\n            if isinstance(other, int):\n                return Integer(self.p + other)\n            elif isinstance(other, Integer):\n                return Integer(self.p + other.p)\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.q + other.p, other.q, 1)\n            return Rational.__add__(self, other)\n        else:\n            return Add(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Integer.__add__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Integer.__add__"
+          }
+        ],
+        "similarity": 0.14787511419517935,
+        "end_line": 2166,
+        "signature": "sympy.core.numbers.Integer.__add__(self, other)"
+      },
+      {
+        "start_line": 288,
+        "file_path": "sympy/polys/multivariate_resultants.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, polynomials, variables):\n        \"\"\"\n        Parameters\n        ==========\n\n        variables: list\n            A list of all n variables\n        polynomials : list of sympy polynomials\n            A  list of m n-degree polynomials\n        \"\"\"\n        self.polynomials = polynomials\n        self.variables = variables\n        self.n = len(variables)\n\n        # A list of the d_max of each polynomial.\n        self.degrees = [total_degree(poly, *self.variables) for poly\n                        in self.polynomials]\n\n        self.degree_m = self._get_degree_m()\n        self.monomials_size = self.get_size()\n\n        # The set T of all possible monomials of degree degree_m\n        self.monomial_set = self.get_monomials_of_certain_degree(self.degree_m)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.multivariate_resultants.MacaulayResultant.__init__",
+        "documentation": "Parameters\n==========\n\nvariables: list\n    A list of all n variables\npolynomials : list of sympy polynomials\n    A  list of m n-degree polynomials",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/multivariate_resultants.py"
+          },
+          {
+            "start_node": "sympy/polys/multivariate_resultants.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.multivariate_resultants.MacaulayResultant.__init__"
+          }
+        ],
+        "similarity": 0.14758397295547052,
+        "end_line": 310,
+        "signature": "sympy.polys.multivariate_resultants.MacaulayResultant.__init__(self, polynomials, variables)"
+      },
+      {
+        "start_line": 134,
+        "file_path": "sympy/core/expr.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _hashable_content(self):\n        \"\"\"Return a tuple of information about self that can be used to\n        compute the hash. If a class defines additional attributes,\n        like ``name`` in Symbol, then this method should be updated\n        accordingly to return such relevant attributes.\n        Defining more than _hashable_content is necessary if __eq__ has\n        been defined by a class. See note about this in Basic.__eq__.\"\"\"\n        return self._args",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.expr.Expr._hashable_content",
+        "documentation": "Return a tuple of information about self that can be used to\ncompute the hash. If a class defines additional attributes,\nlike ``name`` in Symbol, then this method should be updated\naccordingly to return such relevant attributes.\nDefining more than _hashable_content is necessary if __eq__ has\nbeen defined by a class. See note about this in Basic.__eq__.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/expr.py"
+          },
+          {
+            "start_node": "sympy/core/expr.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.expr.Expr._hashable_content"
+          }
+        ],
+        "similarity": 0.14589319631618217,
+        "end_line": 141,
+        "signature": "sympy.core.expr.Expr._hashable_content(self)"
+      },
+      {
+        "start_line": 359,
+        "file_path": "sympy/core/basic.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __ne__(self, other):\n        \"\"\"``a != b``  -> Compare two symbolic trees and see whether they are different\n\n        this is the same as:\n\n        ``a.compare(b) != 0``\n\n        but faster\n        \"\"\"\n        return not self == other",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.basic.Basic.__ne__",
+        "documentation": "``a != b``  -> Compare two symbolic trees and see whether they are different\n\nthis is the same as:\n\n``a.compare(b) != 0``\n\nbut faster",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/basic.py"
+          },
+          {
+            "start_node": "sympy/core/basic.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.basic.Basic.__ne__"
+          }
+        ],
+        "similarity": 0.14582620819877173,
+        "end_line": 368,
+        "signature": "sympy.core.basic.Basic.__ne__(self, other)"
+      },
+      {
+        "start_line": 432,
+        "file_path": "sympy/core/assumptions.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, facts=None):\n        super().__init__(_assume_rules)\n        # save a copy of the facts dict\n        if not facts:\n            self._generator = {}\n        elif not isinstance(facts, FactKB):\n            self._generator = facts.copy()\n        else:\n            self._generator = facts.generator\n        if facts:\n            self.deduce_all_facts(facts)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.assumptions.StdFactKB.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/assumptions.py"
+          },
+          {
+            "start_node": "sympy/core/assumptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.assumptions.StdFactKB.__init__"
+          }
+        ],
+        "similarity": 0.14580240460067653,
+        "end_line": 442,
+        "signature": "sympy.core.assumptions.StdFactKB.__init__(self, facts)"
+      },
+      {
+        "start_line": 3957,
+        "file_path": "sympy/polys/polytools.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def is_monomial(f):\n        \"\"\"\n        Returns ``True`` if ``f`` is zero or has only one term.\n\n        Examples\n        ========\n\n        >>> from sympy import Poly\n        >>> from sympy.abc import x\n\n        >>> Poly(3*x**2, x).is_monomial\n        True\n        >>> Poly(3*x**2 + 1, x).is_monomial\n        False\n\n        \"\"\"\n        return f.rep.is_monomial",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polytools.Poly.is_monomial",
+        "documentation": "Returns ``True`` if ``f`` is zero or has only one term.\n\nExamples\n========\n\n>>> from sympy import Poly\n>>> from sympy.abc import x\n\n>>> Poly(3*x**2, x).is_monomial\nTrue\n>>> Poly(3*x**2 + 1, x).is_monomial\nFalse",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polytools.py"
+          },
+          {
+            "start_node": "sympy/polys/polytools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polytools.Poly.is_monomial"
+          }
+        ],
+        "similarity": 0.14529072285962347,
+        "end_line": 3973,
+        "signature": "sympy.polys.polytools.Poly.is_monomial(f)"
+      },
+      {
+        "start_line": 1528,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _iadd_monom(self, mc):\n        \"\"\"add to self the monomial coeff*x0**i0*x1**i1*...\n        unless self is a generator -- then just return the sum of the two.\n\n        mc is a tuple, (monom, coeff), where monomial is (i0, i1, ...)\n\n        Examples\n        ========\n\n        >>> from sympy.polys.rings import ring\n        >>> from sympy.polys.domains import ZZ\n\n        >>> _, x, y = ring('x, y', ZZ)\n        >>> p = x**4 + 2*y\n        >>> m = (1, 2)\n        >>> p1 = p._iadd_monom((m, 5))\n        >>> p1\n        x**4 + 5*x*y**2 + 2*y\n        >>> p1 is p\n        True\n        >>> p = x\n        >>> p1 = p._iadd_monom((m, 5))\n        >>> p1\n        5*x*y**2 + x\n        >>> p1 is p\n        False\n\n        \"\"\"\n        if self in self.ring._gens_set:\n            cpself = self.copy()\n        else:\n            cpself = self\n        expv, coeff = mc\n        c = cpself.get(expv)\n        if c is None:\n            cpself[expv] = coeff\n        else:\n            c += coeff\n            if c:\n                cpself[expv] = c\n            else:\n                del cpself[expv]\n        return cpself",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement._iadd_monom",
+        "documentation": "add to self the monomial coeff*x0**i0*x1**i1*...\nunless self is a generator -- then just return the sum of the two.\n\nmc is a tuple, (monom, coeff), where monomial is (i0, i1, ...)\n\nExamples\n========\n\n>>> from sympy.polys.rings import ring\n>>> from sympy.polys.domains import ZZ\n\n>>> _, x, y = ring('x, y', ZZ)\n>>> p = x**4 + 2*y\n>>> m = (1, 2)\n>>> p1 = p._iadd_monom((m, 5))\n>>> p1\nx**4 + 5*x*y**2 + 2*y\n>>> p1 is p\nTrue\n>>> p = x\n>>> p1 = p._iadd_monom((m, 5))\n>>> p1\n5*x*y**2 + x\n>>> p1 is p\nFalse",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement._iadd_monom"
+          }
+        ],
+        "similarity": 0.14459589010318433,
+        "end_line": 1570,
+        "signature": "sympy.polys.rings.PolyElement._iadd_monom(self, mc)"
+      },
+      {
+        "start_line": 599,
+        "file_path": "sympy/polys/monomials.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __pow__(self, other):\n        n = int(other)\n\n        if not n:\n            return self.rebuild([0]*len(self))\n        elif n > 0:\n            exponents = self.exponents\n\n            for i in range(1, n):\n                exponents = monomial_mul(exponents, self.exponents)\n\n            return self.rebuild(exponents)\n        else:\n            raise ValueError(\"a non-negative integer expected, got %s\" % other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.monomials.Monomial.__pow__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "monomials.py"
+          },
+          {
+            "start_node": "monomials.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.monomials.Monomial.__pow__"
+          }
+        ],
+        "similarity": 0.14421723752454382,
+        "end_line": 612,
+        "signature": "sympy.polys.monomials.Monomial.__pow__(self, other)"
+      },
+      {
+        "start_line": 95,
+        "file_path": "sympy/core/operations.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _from_args(cls, args, is_commutative=None):\n        \"\"\"Create new instance with already-processed args.\n        If the args are not in canonical order, then a non-canonical\n        result will be returned, so use with caution. The order of\n        args may change if the sign of the args is changed.\"\"\"\n        if len(args) == 0:\n            return cls.identity\n        elif len(args) == 1:\n            return args[0]\n\n        obj = super().__new__(cls, *args)\n        if is_commutative is None:\n            is_commutative = fuzzy_and(a.is_commutative for a in args)\n        obj.is_commutative = is_commutative\n        return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.operations.AssocOp._from_args",
+        "documentation": "Create new instance with already-processed args.\nIf the args are not in canonical order, then a non-canonical\nresult will be returned, so use with caution. The order of\nargs may change if the sign of the args is changed.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/operations.py"
+          },
+          {
+            "start_node": "sympy/core/operations.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sympy.core.operations.AssocOp._from_args"
+          }
+        ],
+        "similarity": 0.1441919606949249,
+        "end_line": 109,
+        "signature": "sympy.core.operations.AssocOp._from_args(cls, args, is_commutative)"
+      },
+      {
+        "start_line": 738,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __mul__(self, other):\n        if isinstance(other, Number) and global_parameters.evaluate:\n            if other is S.NaN:\n                return S.NaN\n            elif other is S.Infinity:\n                if self.is_zero:\n                    return S.NaN\n                elif self.is_positive:\n                    return S.Infinity\n                else:\n                    return S.NegativeInfinity\n            elif other is S.NegativeInfinity:\n                if self.is_zero:\n                    return S.NaN\n                elif self.is_positive:\n                    return S.NegativeInfinity\n                else:\n                    return S.Infinity\n        elif isinstance(other, Tuple):\n            return NotImplemented\n        return AtomicExpr.__mul__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Number.__mul__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Number.__mul__"
+          }
+        ],
+        "similarity": 0.14400016974784868,
+        "end_line": 758,
+        "signature": "sympy.core.numbers.Number.__mul__(self, other)"
+      },
+      {
+        "start_line": 626,
+        "file_path": "sympy/polys/monomials.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def lcm(self, other):\n        \"\"\"Least common multiple of monomials. \"\"\"\n        if isinstance(other, Monomial):\n            exponents = other.exponents\n        elif isinstance(other, (tuple, Tuple)):\n            exponents = other\n        else:\n            raise TypeError(\n                \"an instance of Monomial class expected, got %s\" % other)\n\n        return self.rebuild(monomial_lcm(self.exponents, exponents))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.monomials.Monomial.lcm",
+        "documentation": "Least common multiple of monomials. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "monomials.py"
+          },
+          {
+            "start_node": "monomials.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.monomials.Monomial.lcm"
+          }
+        ],
+        "similarity": 0.1436956686812235,
+        "end_line": 636,
+        "signature": "sympy.polys.monomials.Monomial.lcm(self, other)"
+      },
+      {
+        "start_line": 111,
+        "file_path": "sympy/polys/orderings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __call__(self, monomial):\n        return tuple(O(lamda(monomial)) for (O, lamda) in self.args)",
+        "distance": 0.5,
+        "title": null,
+        "name": "sympy.polys.orderings.ProductOrder.__call__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/orderings.py"
+          },
+          {
+            "start_node": "sympy/polys/orderings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.orderings.ProductOrder.__call__"
+          }
+        ],
+        "similarity": 0.14278814179556856,
+        "end_line": 112,
+        "signature": "sympy.polys.orderings.ProductOrder.__call__(self, monomial)"
+      },
+      {
+        "start_line": 1215,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _pow_multinomial(self, n):\n        multinomials = multinomial_coefficients(len(self), n).items()\n        monomial_mulpow = self.ring.monomial_mulpow\n        zero_monom = self.ring.zero_monom\n        terms = self.items()\n        zero = self.ring.domain.zero\n        poly = self.ring.zero\n\n        for multinomial, multinomial_coeff in multinomials:\n            product_monom = zero_monom\n            product_coeff = multinomial_coeff\n\n            for exp, (monom, coeff) in zip(multinomial, terms):\n                if exp:\n                    product_monom = monomial_mulpow(product_monom, monom, exp)\n                    product_coeff *= coeff**exp\n\n            monom = tuple(product_monom)\n            coeff = product_coeff\n\n            coeff = poly.get(monom, zero) + coeff\n\n            if coeff:\n                poly[monom] = coeff\n            elif monom in poly:\n                del poly[monom]\n\n        return poly",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement._pow_multinomial",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement._pow_multinomial"
+          }
+        ],
+        "similarity": 0.14257693599464985,
+        "end_line": 1242,
+        "signature": "sympy.polys.rings.PolyElement._pow_multinomial(self, n)"
+      },
+      {
+        "start_line": 2197,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __mul__(self, other):\n        if global_parameters.evaluate:\n            if isinstance(other, int):\n                return Integer(self.p*other)\n            elif isinstance(other, Integer):\n                return Integer(self.p*other.p)\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.p, other.q, igcd(self.p, other.q))\n            return Rational.__mul__(self, other)\n        return Rational.__mul__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Integer.__mul__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Integer.__mul__"
+          }
+        ],
+        "similarity": 0.14222819769416406,
+        "end_line": 2206,
+        "signature": "sympy.core.numbers.Integer.__mul__(self, other)"
+      },
+      {
+        "start_line": 3163,
+        "file_path": "sympy/combinatorics/perm_groups.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _distinct_primes_lemma(cls, primes):\n        \"\"\"Subroutine to test if there is only one cyclic group for the\n        order.\"\"\"\n        primes = sorted(primes)\n        l = len(primes)\n        for i in range(l):\n            for j in range(i+1, l):\n                if primes[j] % primes[i] == 1:\n                    return None\n        return True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.combinatorics.perm_groups.PermutationGroup._distinct_primes_lemma",
+        "documentation": "Subroutine to test if there is only one cyclic group for the\norder.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/combinatorics/perm_groups.py"
+          },
+          {
+            "start_node": "sympy/combinatorics/perm_groups.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.combinatorics.perm_groups.PermutationGroup._distinct_primes_lemma"
+          }
+        ],
+        "similarity": 0.14211875813248367,
+        "end_line": 3172,
+        "signature": "sympy.combinatorics.perm_groups.PermutationGroup._distinct_primes_lemma(cls, primes)"
+      },
+      {
+        "start_line": 274,
+        "file_path": "sympy/core/symbol.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new_stage2__(cls, name, **assumptions):\n        if not isinstance(name, str):\n            raise TypeError(\"name should be a string, not %s\" % repr(type(name)))\n\n        obj = Expr.__new__(cls)\n        obj.name = name\n\n        # TODO: Issue #8873: Forcing the commutative assumption here means\n        # later code such as ``srepr()`` cannot tell whether the user\n        # specified ``commutative=True`` or omitted it.  To workaround this,\n        # we keep a copy of the assumptions dict, then create the StdFactKB,\n        # and finally overwrite its ``._generator`` with the dict copy.  This\n        # is a bit of a hack because we assume StdFactKB merely copies the\n        # given dict as ``._generator``, but future modification might, e.g.,\n        # compute a minimal equivalent assumption set.\n        tmp_asm_copy = assumptions.copy()\n\n        # be strict about commutativity\n        is_commutative = fuzzy_bool(assumptions.get('commutative', True))\n        assumptions['commutative'] = is_commutative\n        obj._assumptions = StdFactKB(assumptions)\n        obj._assumptions._generator = tmp_asm_copy  # Issue #8873\n        return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.symbol.Symbol.__new_stage2__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/symbol.py"
+          },
+          {
+            "start_node": "sympy/core/symbol.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.symbol.Symbol.__new_stage2__"
+          }
+        ],
+        "similarity": 0.14206688516888188,
+        "end_line": 296,
+        "signature": "sympy.core.symbol.Symbol.__new_stage2__(cls, name)"
+      },
+      {
+        "start_line": 1734,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __mul__(self, other):\n        if global_parameters.evaluate:\n            if isinstance(other, Integer):\n                return Rational(self.p*other.p, self.q, igcd(other.p, self.q))\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.p, self.q*other.q, igcd(self.p, other.q)*igcd(self.q, other.p))\n            elif isinstance(other, Float):\n                return other*self\n            else:\n                return Number.__mul__(self, other)\n        return Number.__mul__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Rational.__mul__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Rational.__mul__"
+          }
+        ],
+        "similarity": 0.14168530006900712,
+        "end_line": 1744,
+        "signature": "sympy.core.numbers.Rational.__mul__(self, other)"
+      },
+      {
+        "start_line": 773,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __ne__(self, other):\n        raise NotImplementedError('%s needs .__ne__() method' %\n            (self.__class__.__name__))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Number.__ne__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Number.__ne__"
+          }
+        ],
+        "similarity": 0.14092693865986194,
+        "end_line": 775,
+        "signature": "sympy.core.numbers.Number.__ne__(self, other)"
+      },
+      {
+        "start_line": 589,
+        "file_path": "sympy/printing/str.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_Pow(self, expr, rational=False):\n        \"\"\"Printing helper function for ``Pow``\n\n        Parameters\n        ==========\n\n        rational : bool, optional\n            If ``True``, it will not attempt printing ``sqrt(x)`` or\n            ``x**S.Half`` as ``sqrt``, and will use ``x**(1/2)``\n            instead.\n\n            See examples for additional details\n\n        Examples\n        ========\n\n        >>> from sympy.functions import sqrt\n        >>> from sympy.printing.str import StrPrinter\n        >>> from sympy.abc import x\n\n        How ``rational`` keyword works with ``sqrt``:\n\n        >>> printer = StrPrinter()\n        >>> printer._print_Pow(sqrt(x), rational=True)\n        'x**(1/2)'\n        >>> printer._print_Pow(sqrt(x), rational=False)\n        'sqrt(x)'\n        >>> printer._print_Pow(1/sqrt(x), rational=True)\n        'x**(-1/2)'\n        >>> printer._print_Pow(1/sqrt(x), rational=False)\n        '1/sqrt(x)'\n\n        Notes\n        =====\n\n        ``sqrt(x)`` is canonicalized as ``Pow(x, S.Half)`` in SymPy,\n        so there is no need of defining a separate printer for ``sqrt``.\n        Instead, it should be handled here as well.\n        \"\"\"\n        PREC = precedence(expr)\n\n        if expr.exp is S.Half and not rational:\n            return \"sqrt(%s)\" % self._print(expr.base)\n\n        if expr.is_commutative:\n            if -expr.exp is S.Half and not rational:\n                # Note: Don't test \"expr.exp == -S.Half\" here, because that will\n                # match -0.5, which we don't want.\n                return \"%s/sqrt(%s)\" % tuple(map(lambda arg: self._print(arg), (S.One, expr.base)))\n            if expr.exp is -S.One:\n                # Similarly to the S.Half case, don't test with \"==\" here.\n                return '%s/%s' % (self._print(S.One),\n                                  self.parenthesize(expr.base, PREC, strict=False))\n\n        e = self.parenthesize(expr.exp, PREC, strict=False)\n        if self.printmethod == '_sympyrepr' and expr.exp.is_Rational and expr.exp.q != 1:\n            # the parenthesized exp should be '(Rational(a, b))' so strip parens,\n            # but just check to be sure.\n            if e.startswith('(Rational'):\n                return '%s**%s' % (self.parenthesize(expr.base, PREC, strict=False), e[1:-1])\n        return '%s**%s' % (self.parenthesize(expr.base, PREC, strict=False), e)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.str.StrPrinter._print_Pow",
+        "documentation": "Printing helper function for ``Pow``\n\nParameters\n==========\n\nrational : bool, optional\n    If ``True``, it will not attempt printing ``sqrt(x)`` or\n    ``x**S.Half`` as ``sqrt``, and will use ``x**(1/2)``\n    instead.\n\n    See examples for additional details\n\nExamples\n========\n\n>>> from sympy.functions import sqrt\n>>> from sympy.printing.str import StrPrinter\n>>> from sympy.abc import x\n\nHow ``rational`` keyword works with ``sqrt``:\n\n>>> printer = StrPrinter()\n>>> printer._print_Pow(sqrt(x), rational=True)\n'x**(1/2)'\n>>> printer._print_Pow(sqrt(x), rational=False)\n'sqrt(x)'\n>>> printer._print_Pow(1/sqrt(x), rational=True)\n'x**(-1/2)'\n>>> printer._print_Pow(1/sqrt(x), rational=False)\n'1/sqrt(x)'\n\nNotes\n=====\n\n``sqrt(x)`` is canonicalized as ``Pow(x, S.Half)`` in SymPy,\nso there is no need of defining a separate printer for ``sqrt``.\nInstead, it should be handled here as well.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/str.py"
+          },
+          {
+            "start_node": "sympy/printing/str.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.str.StrPrinter._print_Pow"
+          }
+        ],
+        "similarity": 0.14063497691372523,
+        "end_line": 649,
+        "signature": "sympy.printing.str.StrPrinter._print_Pow(self, expr, rational)"
+      },
+      {
+        "start_line": 614,
+        "file_path": "sympy/polys/monomials.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def gcd(self, other):\n        \"\"\"Greatest common divisor of monomials. \"\"\"\n        if isinstance(other, Monomial):\n            exponents = other.exponents\n        elif isinstance(other, (tuple, Tuple)):\n            exponents = other\n        else:\n            raise TypeError(\n                \"an instance of Monomial class expected, got %s\" % other)\n\n        return self.rebuild(monomial_gcd(self.exponents, exponents))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.monomials.Monomial.gcd",
+        "documentation": "Greatest common divisor of monomials. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "monomials.py"
+          },
+          {
+            "start_node": "monomials.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.monomials.Monomial.gcd"
+          }
+        ],
+        "similarity": 0.14022638443879884,
+        "end_line": 624,
+        "signature": "sympy.polys.monomials.Monomial.gcd(self, other)"
+      },
+      {
+        "start_line": 1859,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __eq__(self, other):\n        from sympy.core.power import integer_log\n        try:\n            other = _sympify(other)\n        except SympifyError:\n            return NotImplemented\n        if not isinstance(other, Number):\n            # S(0) == S.false is False\n            # S(0) == False is True\n            return False\n        if not self:\n            return not other\n        if other.is_NumberSymbol:\n            if other.is_irrational:\n                return False\n            return other.__eq__(self)\n        if other.is_Rational:\n            # a Rational is always in reduced form so will never be 2/4\n            # so we can just check equivalence of args\n            return self.p == other.p and self.q == other.q\n        if other.is_Float:\n            # all Floats have a denominator that is a power of 2\n            # so if self doesn't, it can't be equal to other\n            if self.q & (self.q - 1):\n                return False\n            s, m, t = other._mpf_[:3]\n            if s:\n                m = -m\n            if not t:\n                # other is an odd integer\n                if not self.is_Integer or self.is_even:\n                    return False\n                return m == self.p\n            if t > 0:\n                # other is an even integer\n                if not self.is_Integer:\n                    return False\n                # does m*2**t == self.p\n                return self.p and not self.p % m and \\\n                    integer_log(self.p//m, 2) == (t, True)\n            # does non-integer s*m/2**-t = p/q?\n            if self.is_Integer:\n                return False\n            return m == self.p and integer_log(self.q, 2) == (-t, True)\n        return False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Rational.__eq__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Rational.__eq__"
+          }
+        ],
+        "similarity": 0.140220696811124,
+        "end_line": 1903,
+        "signature": "sympy.core.numbers.Rational.__eq__(self, other)"
+      },
+      {
+        "start_line": 545,
+        "file_path": "sympy/polys/polyclasses.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def homogeneous_order(f):\n        \"\"\"Returns the homogeneous order of ``f``. \"\"\"\n        if f.is_zero:\n            return -oo\n\n        monoms = f.monoms()\n        tdeg = sum(monoms[0])\n\n        for monom in monoms:\n            _tdeg = sum(monom)\n\n            if _tdeg != tdeg:\n                return None\n\n        return tdeg",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyclasses.DMP.homogeneous_order",
+        "documentation": "Returns the homogeneous order of ``f``. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyclasses.py"
+          },
+          {
+            "start_node": "sympy/polys/polyclasses.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyclasses.DMP.homogeneous_order"
+          }
+        ],
+        "similarity": 0.1400190530841258,
+        "end_line": 559,
+        "signature": "sympy.polys.polyclasses.DMP.homogeneous_order(f)"
+      }
+    ],
+    "classes": [
+      {
+        "start_line": 1658,
+        "file_path": "sympy/integrals/risch.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonElementaryIntegral(Integral):\n    \"\"\"\n    Represents a nonelementary Integral.\n\n    Explanation\n    ===========\n\n    If the result of integrate() is an instance of this class, it is\n    guaranteed to be nonelementary.  Note that integrate() by default will try\n    to find any closed-form solution, even in terms of special functions which\n    may themselves not be elementary.  To make integrate() only give\n    elementary solutions, or, in the cases where it can prove the integral to\n    be nonelementary, instances of this class, use integrate(risch=True).\n    In this case, integrate() may raise NotImplementedError if it cannot make\n    such a determination.\n\n    integrate() uses the deterministic Risch algorithm to integrate elementary\n    functions or prove that they have no elementary integral.  In some cases,\n    this algorithm can split an integral into an elementary and nonelementary\n    part, so that the result of integrate will be the sum of an elementary\n    expression and a NonElementaryIntegral.\n\n    Examples\n    ========\n\n    >>> from sympy import integrate, exp, log, Integral\n    >>> from sympy.abc import x\n\n    >>> a = integrate(exp(-x**2), x, risch=True)\n    >>> print(a)\n    Integral(exp(-x**2), x)\n    >>> type(a)\n    <class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n    >>> expr = (2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x))\n    >>> b = integrate(expr, x, risch=True)\n    >>> print(b)\n    -log(-x + log(x))/2 + log(x + log(x))/2 + Integral(1/log(x), x)\n    >>> type(b.atoms(Integral).pop())\n    <class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n    \"\"\"\n    # TODO: This is useful in and of itself, because isinstance(result,\n    # NonElementaryIntegral) will tell if the integral has been proven to be\n    # elementary. But should we do more?  Perhaps a no-op .doit() if\n    # elementary=True?  Or maybe some information on why the integral is\n    # nonelementary.\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.risch.NonElementaryIntegral",
+        "documentation": "Represents a nonelementary Integral.\n\nExplanation\n===========\n\nIf the result of integrate() is an instance of this class, it is\nguaranteed to be nonelementary.  Note that integrate() by default will try\nto find any closed-form solution, even in terms of special functions which\nmay themselves not be elementary.  To make integrate() only give\nelementary solutions, or, in the cases where it can prove the integral to\nbe nonelementary, instances of this class, use integrate(risch=True).\nIn this case, integrate() may raise NotImplementedError if it cannot make\nsuch a determination.\n\nintegrate() uses the deterministic Risch algorithm to integrate elementary\nfunctions or prove that they have no elementary integral.  In some cases,\nthis algorithm can split an integral into an elementary and nonelementary\npart, so that the result of integrate will be the sum of an elementary\nexpression and a NonElementaryIntegral.\n\nExamples\n========\n\n>>> from sympy import integrate, exp, log, Integral\n>>> from sympy.abc import x\n\n>>> a = integrate(exp(-x**2), x, risch=True)\n>>> print(a)\nIntegral(exp(-x**2), x)\n>>> type(a)\n<class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n>>> expr = (2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x))\n>>> b = integrate(expr, x, risch=True)\n>>> print(b)\n-log(-x + log(x))/2 + log(x + log(x))/2 + Integral(1/log(x), x)\n>>> type(b.atoms(Integral).pop())\n<class 'sympy.integrals.risch.NonElementaryIntegral'>",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/risch.py"
+          },
+          {
+            "start_node": "sympy/integrals/risch.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.risch.NonElementaryIntegral"
+          }
+        ],
+        "similarity": 0.11266873810699028,
+        "end_line": 1705,
+        "signature": null
+      },
+      {
+        "start_line": 775,
+        "file_path": "sympy/integrals/risch.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonElementaryIntegralException(Exception):\n    \"\"\"\n    Exception used by subroutines within the Risch algorithm to indicate to one\n    another that the function being integrated does not have an elementary\n    integral in the given differential field.\n    \"\"\"\n    # TODO: Rewrite algorithms below to use this (?)\n\n    # TODO: Pass through information about why the integral was nonelementary,\n    # and store that in the resulting NonElementaryIntegral somehow.\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.risch.NonElementaryIntegralException",
+        "documentation": "Exception used by subroutines within the Risch algorithm to indicate to one\nanother that the function being integrated does not have an elementary\nintegral in the given differential field.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/risch.py"
+          },
+          {
+            "start_node": "sympy/integrals/risch.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.risch.NonElementaryIntegralException"
+          }
+        ],
+        "similarity": 0.10731264051634551,
+        "end_line": 785,
+        "signature": null
+      },
+      {
+        "start_line": 32,
+        "file_path": "sympy/solvers/ode/systems.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ODEOrderError(ValueError):\n    \"\"\"Raised by linear_ode_to_matrix if the system has the wrong order\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.ode.systems.ODEOrderError",
+        "documentation": "Raised by linear_ode_to_matrix if the system has the wrong order",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/ode/systems.py"
+          },
+          {
+            "start_node": "sympy/solvers/ode/systems.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.ode.systems.ODEOrderError"
+          }
+        ],
+        "similarity": 0.0747630860466065,
+        "end_line": 34,
+        "signature": null
+      },
+      {
+        "start_line": 619,
+        "file_path": "sympy/physics/quantum/state.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class OrthogonalState(State, StateBase):\n    \"\"\"General abstract quantum state used as a base class for Ket and Bra.\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.quantum.state.OrthogonalState",
+        "documentation": "General abstract quantum state used as a base class for Ket and Bra.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/quantum/state.py"
+          },
+          {
+            "start_node": "sympy/physics/quantum/state.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.quantum.state.OrthogonalState"
+          }
+        ],
+        "similarity": 0.07381172198229849,
+        "end_line": 621,
+        "signature": null
+      },
+      {
+        "start_line": 14,
+        "file_path": "sympy/utilities/misc.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Undecidable(ValueError):\n    # an error to be raised when a decision cannot be made definitively\n    # where a definitive answer is needed\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.misc.Undecidable",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/misc.py"
+          },
+          {
+            "start_node": "sympy/utilities/misc.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.misc.Undecidable"
+          }
+        ],
+        "similarity": 0.07339151492040319,
+        "end_line": 17,
+        "signature": null
+      },
+      {
+        "start_line": 38,
+        "file_path": "sympy/solvers/ode/single.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ODEMatchError(NotImplementedError):\n    \"\"\"Raised if a SingleODESolver is asked to solve an ODE it does not match\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.ode.single.ODEMatchError",
+        "documentation": "Raised if a SingleODESolver is asked to solve an ODE it does not match",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/ode/single.py"
+          },
+          {
+            "start_node": "sympy/solvers/ode/single.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.ode.single.ODEMatchError"
+          }
+        ],
+        "similarity": 0.06801241238526956,
+        "end_line": 40,
+        "signature": null
+      },
+      {
+        "start_line": 303,
+        "file_path": "sympy/integrals/meijerint.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _CoeffExpValueError(ValueError):\n    \"\"\"\n    Exception raised by _get_coeff_exp, for internal use only.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.meijerint._CoeffExpValueError",
+        "documentation": "Exception raised by _get_coeff_exp, for internal use only.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/meijerint.py"
+          },
+          {
+            "start_node": "sympy/integrals/meijerint.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.meijerint._CoeffExpValueError"
+          }
+        ],
+        "similarity": 0.0670083248484721,
+        "end_line": 307,
+        "signature": null
+      },
+      {
+        "start_line": 18,
+        "file_path": "sympy/core/mul.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NC_Marker:\n    is_Order = False\n    is_Mul = False\n    is_Number = False\n    is_Poly = False\n\n    is_commutative = False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.mul.NC_Marker",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/mul.py"
+          },
+          {
+            "start_node": "sympy/core/mul.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.mul.NC_Marker"
+          }
+        ],
+        "similarity": 0.06441258796752804,
+        "end_line": 24,
+        "signature": null
+      },
+      {
+        "start_line": 37,
+        "file_path": "sympy/solvers/ode/systems.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ODENonlinearError(NonlinearError):\n    \"\"\"Raised by linear_ode_to_matrix if the system is nonlinear\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.ode.systems.ODENonlinearError",
+        "documentation": "Raised by linear_ode_to_matrix if the system is nonlinear",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/ode/systems.py"
+          },
+          {
+            "start_node": "sympy/solvers/ode/systems.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.ode.systems.ODENonlinearError"
+          }
+        ],
+        "similarity": 0.06415111573822063,
+        "end_line": 39,
+        "signature": null
+      },
+      {
+        "start_line": 356,
+        "file_path": "sympy/stats/rv.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ProductPSpace(PSpace):\n    \"\"\"\n    Abstract class for representing probability spaces with multiple random\n    variables.\n\n    See Also\n    ========\n\n    sympy.stats.rv.IndependentProductPSpace\n    sympy.stats.joint_rv.JointPSpace\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.stats.rv.ProductPSpace",
+        "documentation": "Abstract class for representing probability spaces with multiple random\nvariables.\n\nSee Also\n========\n\nsympy.stats.rv.IndependentProductPSpace\nsympy.stats.joint_rv.JointPSpace",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/stats/rv.py"
+          },
+          {
+            "start_node": "sympy/stats/rv.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.stats.rv.ProductPSpace"
+          }
+        ],
+        "similarity": 0.06335309133741027,
+        "end_line": 367,
+        "signature": null
+      },
+      {
+        "start_line": 111,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadArgumentsError(TypeError):\n    '''Raised when a Lambda is called with an incorrect number of arguments'''\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.BadArgumentsError",
+        "documentation": "Raised when a Lambda is called with an incorrect number of arguments",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.BadArgumentsError"
+          }
+        ],
+        "similarity": 0.061083427085430166,
+        "end_line": 113,
+        "signature": null
+      },
+      {
+        "start_line": 61,
+        "file_path": "sympy/solvers/solveset.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonlinearError(ValueError):\n    \"\"\"Raised when unexpectedly encountering nonlinear equations\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.solveset.NonlinearError",
+        "documentation": "Raised when unexpectedly encountering nonlinear equations",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/solveset.py"
+          },
+          {
+            "start_node": "sympy/solvers/solveset.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.solveset.NonlinearError"
+          }
+        ],
+        "similarity": 0.0540661141076693,
+        "end_line": 63,
+        "signature": null
+      },
+      {
+        "start_line": 363,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Argument(Variable):\n    \"\"\"An abstract Argument data structure: a name and a data type.\n\n    This structure is refined in the descendants below.\n\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.Argument",
+        "documentation": "An abstract Argument data structure: a name and a data type.\n\nThis structure is refined in the descendants below.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.Argument"
+          }
+        ],
+        "similarity": 0.051114687229636434,
+        "end_line": 369,
+        "signature": null
+      },
+      {
+        "start_line": 153,
+        "file_path": "sympy/utilities/matchpy_connector.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class WildPlus(_WildAbstract):\n    min_length = 1\n    fixed_size = False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.matchpy_connector.WildPlus",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/matchpy_connector.py"
+          },
+          {
+            "start_node": "sympy/utilities/matchpy_connector.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.matchpy_connector.WildPlus"
+          }
+        ],
+        "similarity": 0.04930680611097175,
+        "end_line": 155,
+        "signature": null
+      },
+      {
+        "start_line": 26,
+        "file_path": "sympy/physics/quantum/shor.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class OrderFindingException(QuantumError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.quantum.shor.OrderFindingException",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/quantum/shor.py"
+          },
+          {
+            "start_node": "sympy/physics/quantum/shor.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.physics.quantum.shor.OrderFindingException"
+          }
+        ],
+        "similarity": 0.049091141131561815,
+        "end_line": 27,
+        "signature": null
+      },
+      {
+        "start_line": 28,
+        "file_path": "sympy/printing/codeprinter.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AssignmentError(Exception):\n    \"\"\"\n    Raised if an assignment variable for a loop is missing.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.codeprinter.AssignmentError",
+        "documentation": "Raised if an assignment variable for a loop is missing.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/codeprinter.py"
+          },
+          {
+            "start_node": "sympy/printing/codeprinter.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.codeprinter.AssignmentError"
+          }
+        ],
+        "similarity": 0.048758740606301226,
+        "end_line": 32,
+        "signature": null
+      },
+      {
+        "start_line": 110,
+        "file_path": "sympy/printing/cxx.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CXX98CodePrinter(_CXXCodePrinterBase, C89CodePrinter):\n    standard = 'C++98'\n    reserved_words = set(reserved['C++98'])",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.cxx.CXX98CodePrinter",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/cxx.py"
+          },
+          {
+            "start_node": "sympy/printing/cxx.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.printing.cxx.CXX98CodePrinter"
+          }
+        ],
+        "similarity": 0.04833520490811125,
+        "end_line": 112,
+        "signature": null
+      },
+      {
+        "start_line": 106,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadSignatureError(TypeError):\n    '''Raised when a Lambda is created with an invalid signature'''\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.BadSignatureError",
+        "documentation": "Raised when a Lambda is created with an invalid signature",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.BadSignatureError"
+          }
+        ],
+        "similarity": 0.047917773354377025,
+        "end_line": 108,
+        "signature": null
+      },
+      {
+        "start_line": 590,
+        "file_path": "sympy/solvers/solveset.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _SolveTrig1Error(Exception):\n    \"\"\"Raised when _solve_trig1 heuristics do not apply\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.solveset._SolveTrig1Error",
+        "documentation": "Raised when _solve_trig1 heuristics do not apply",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/solveset.py"
+          },
+          {
+            "start_node": "sympy/solvers/solveset.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.solveset._SolveTrig1Error"
+          }
+        ],
+        "similarity": 0.04779357349861976,
+        "end_line": 591,
+        "signature": null
+      },
+      {
+        "start_line": 329,
+        "file_path": "sympy/physics/quantum/state.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class State(StateBase):\n    \"\"\"General abstract quantum state used as a base class for Ket and Bra.\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.quantum.state.State",
+        "documentation": "General abstract quantum state used as a base class for Ket and Bra.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/quantum/state.py"
+          },
+          {
+            "start_node": "sympy/physics/quantum/state.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.quantum.state.State"
+          }
+        ],
+        "similarity": 0.047528631793401874,
+        "end_line": 331,
+        "signature": null
+      },
+      {
+        "start_line": 147,
+        "file_path": "sympy/utilities/matchpy_connector.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class WildDot(_WildAbstract):\n    min_length = 1\n    fixed_size = True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.matchpy_connector.WildDot",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/matchpy_connector.py"
+          },
+          {
+            "start_node": "sympy/utilities/matchpy_connector.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.matchpy_connector.WildDot"
+          }
+        ],
+        "similarity": 0.04142737669097066,
+        "end_line": 149,
+        "signature": null
+      },
+      {
+        "start_line": 50,
+        "file_path": "sympy/core/evalf.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PrecisionExhausted(ArithmeticError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.evalf.PrecisionExhausted",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/evalf.py"
+          },
+          {
+            "start_node": "sympy/core/evalf.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.core.evalf.PrecisionExhausted"
+          }
+        ],
+        "similarity": 0.041013684851383944,
+        "end_line": 51,
+        "signature": null
+      },
+      {
+        "start_line": 159,
+        "file_path": "sympy/utilities/matchpy_connector.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class WildStar(_WildAbstract):\n    min_length = 0\n    fixed_size = False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.matchpy_connector.WildStar",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/matchpy_connector.py"
+          },
+          {
+            "start_node": "sympy/utilities/matchpy_connector.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.matchpy_connector.WildStar"
+          }
+        ],
+        "similarity": 0.040775426091010085,
+        "end_line": 161,
+        "signature": null
+      },
+      {
+        "start_line": 96,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PoleError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.PoleError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.PoleError"
+          }
+        ],
+        "similarity": 0.03880549802047823,
+        "end_line": 97,
+        "signature": null
+      },
+      {
+        "start_line": 1085,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class C89CodeGen(CCodeGen):\n    standard = 'C89'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.C89CodeGen",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.C89CodeGen"
+          }
+        ],
+        "similarity": 0.034776313732941655,
+        "end_line": 1086,
+        "signature": null
+      },
+      {
+        "start_line": 22,
+        "file_path": "sympy/tensor/index_methods.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class IndexConformanceException(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.tensor.index_methods.IndexConformanceException",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/tensor/index_methods.py"
+          },
+          {
+            "start_node": "sympy/tensor/index_methods.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.tensor.index_methods.IndexConformanceException"
+          }
+        ],
+        "similarity": 0.03432350707834113,
+        "end_line": 23,
+        "signature": null
+      },
+      {
+        "start_line": 1899,
+        "file_path": "sympy/tensor/tensor.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _TensorMetaclass(ManagedProperties, ABCMeta):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.tensor.tensor._TensorMetaclass",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/tensor/tensor.py"
+          },
+          {
+            "start_node": "sympy/tensor/tensor.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.tensor.tensor._TensorMetaclass"
+          }
+        ],
+        "similarity": 0.03265212628866531,
+        "end_line": 1900,
+        "signature": null
+      },
+      {
+        "start_line": 437,
+        "file_path": "sympy/core/operations.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ShortCircuit(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.operations.ShortCircuit",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/operations.py"
+          },
+          {
+            "start_node": "sympy/core/operations.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.core.operations.ShortCircuit"
+          }
+        ],
+        "similarity": 0.03209730065540829,
+        "end_line": 438,
+        "signature": null
+      },
+      {
+        "start_line": 372,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InputArgument(Argument):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.InputArgument",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.InputArgument"
+          }
+        ],
+        "similarity": 0.02452018825836359,
+        "end_line": 373,
+        "signature": null
+      },
+      {
+        "start_line": 1088,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class C99CodeGen(CCodeGen):\n    standard = 'C99'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.C99CodeGen",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.C99CodeGen"
+          }
+        ],
+        "similarity": 0.024384178922602022,
+        "end_line": 1089,
+        "signature": null
+      },
+      {
+        "start_line": 847,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CodeGenError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.CodeGenError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.CodeGenError"
+          }
+        ],
+        "similarity": 0.020991440132355817,
+        "end_line": 848,
+        "signature": null
+      },
+      {
+        "start_line": 108,
+        "file_path": "sympy/utilities/autowrap.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CodeWrapError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.autowrap.CodeWrapError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/autowrap.py"
+          },
+          {
+            "start_node": "sympy/utilities/autowrap.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.autowrap.CodeWrapError"
+          }
+        ],
+        "similarity": 0.020438698850872405,
+        "end_line": 109,
+        "signature": null
+      },
+      {
+        "start_line": 18,
+        "file_path": "sympy/tensor/array/expressions/array_expressions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _ArrayExpr(Expr):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.tensor.array.expressions.array_expressions._ArrayExpr",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/tensor/array/expressions/array_expressions.py"
+          },
+          {
+            "start_node": "sympy/tensor/array/expressions/array_expressions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.tensor.array.expressions.array_expressions._ArrayExpr"
+          }
+        ],
+        "similarity": 0.00461979595067143,
+        "end_line": 19,
+        "signature": null
+      }
+    ],
+    "issues": [
+      {
+        "content": "`itermonomials` returns incorrect monomials when using optional `min_degrees` argument\r\n\r\nFor example, the following code introduces three symbolic variables and generates monomials with max and min degree of 3:\r\n\r\n\r\n```\r\nimport sympy as sp\r\nfrom sympy.polys.orderings import monomial_key\r\n\r\nx1, x2, x3 = sp.symbols('x1, x2, x3')\r\nstates = [x1, x2, x3]\r\nmax_degrees = 3\r\nmin_degrees = 3\r\nmonomials = sorted(sp.itermonomials(states, max_degrees, min_degrees=min_degrees), \r\n                   key=monomial_key('grlex', states))\r\nprint(monomials)\r\n```\r\nThe code returns `[x3**3, x2**3, x1**3]`, when it _should_ also return monomials such as `x1*x2**2, x2*x3**2, etc...` that also have total degree of 3. This behaviour is inconsistent with the documentation that states that \r\n\r\n> A generator of all monomials `monom` is returned, such that either `min_degree <= total_degree(monom) <= max_degree`...\r\n\r\nThe monomials are also missing when `max_degrees` is increased above `min_degrees`.\n",
+        "distance": 0,
+        "title": "itermonomials returns incorrect monomials when using min_degrees argument",
+        "name": "root",
+        "path": [],
+        "issue_id": "root",
+        "similarity": 2.0,
+        "type": "issue"
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "21845",
+        "type": "issue",
+        "content": "`itermonomials` returns incorrect monomials when using optional `min_degrees` argument\r\n\r\nFor example, the following code introduces three symbolic variables and generates monomials with max and min degree of 3:\r\n\r\n\r\n```\r\nimport sympy as sp\r\nfrom sympy.polys.orderings import monomial_key\r\n\r\nx1, x2, x3 = sp.symbols('x1, x2, x3')\r\nstates = [x1, x2, x3]\r\nmax_degrees = 3\r\nmin_degrees = 3\r\nmonomials = sorted(sp.itermonomials(states, max_degrees, min_degrees=min_degrees), \r\n                   key=monomial_key('grlex', states))\r\nprint(monomials)\r\n```\r\nThe code returns `[x3**3, x2**3, x1**3]`, when it _should_ also return monomials such as `x1*x2**2, x2*x3**2, etc...` that also have total degree of 3. This behaviour is inconsistent with the documentation that states that \r\n\r\n> A generator of all monomials `monom` is returned, such that either `min_degree <= total_degree(monom) <= max_degree`...\r\n\r\nThe monomials are also missing when `max_degrees` is increased above `min_degrees`.\n\n\nComment by oscarbenjamin:\nDoesn't look like the `min_degrees` argument is actually used anywhere in the codebase. Also there don't seem to be any nontrivial tests for passing `min_degrees` as an integer.\r\n\r\nThe issue would be fixed with this diff and some tests in `test_monomials.py`:\r\n```diff\r\ndiff --git a/sympy/polys/monomials.py b/sympy/polys/monomials.py\r\nindex 0e84403307..d2cd3451e5 100644\r\n--- a/sympy/polys/monomials.py\r\n+++ b/sympy/polys/monomials.py\r\n@@ -127,7 +127,7 @@ def itermonomials(variables, max_degrees, min_degrees=None):\r\n                 for variable in item:\r\n                     if variable != 1:\r\n                         powers[variable] += 1\r\n-                if max(powers.values()) >= min_degree:\r\n+                if sum(powers.values()) >= min_degree:\r\n                     monomials_list_comm.append(Mul(*item))\r\n             yield from set(monomials_list_comm)\r\n         else:\r\n@@ -139,7 +139,7 @@ def itermonomials(variables, max_degrees, min_degrees=None):\r\n                 for variable in item:\r\n                     if variable != 1:\r\n                         powers[variable] += 1\r\n-                if max(powers.values()) >= min_degree:\r\n+                if sum(powers.values()) >= min_degree:\r\n                     monomials_list_non_comm.append(Mul(*item))\r\n             yield from set(monomials_list_non_comm)\r\n     else:\r\n```\r\n\n\nComment by BalasubramanyamEvani:\nHi @oscarbenjamin  can I work on this? First-time contributor here",
+        "source_code": null,
+        "distance": 0.25,
+        "title": "itermonomials returns incorrect monomials when using min_degrees argument",
+        "name": "issue#21845",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#21845"
+          }
+        ],
+        "similarity": 0.8513207686100255,
+        "end_line": null,
+        "signature": null
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "21847",
+        "type": "issue",
+        "content": "\r\n\r\n<!-- Your title above should be a short description of what\r\nwas changed. Do not include the issue number in the title. -->\r\n\r\n#### References to other Issues or PRs\r\nFixes #21845\r\n<!-- If this pull request fixes an issue, write \"Fixes #NNNN\" in that exact\r\nformat, e.g. \"Fixes #1234\" (see\r\nhttps://tinyurl.com/auto-closing for more information). Also, please\r\nwrite a comment on that issue linking back to this pull request once it is\r\nopen. -->\r\n\r\n\r\n#### Brief description of what is fixed or changed\r\n\r\nmin_degree is an optional argument that enforces a lower bound\r\non the degree of the monomials generated by itermonomials. Previously,\r\nitertools returned monomials with maximum degree greater than or\r\nequal to the lower bound. This is now changed to monomials with\r\ntotal degree greater than of equal to the lower bound. Test have also\r\nbeen introduced to ensure the proper functionality.\r\n\r\n#### Other comments\r\n\r\n\r\n#### Release Notes\r\n\r\n<!-- Write the release notes for this release below between the BEGIN and END\r\nstatements. The basic format is a bulleted list with the name of the subpackage\r\nand the release note for this PR. For example:\r\n\r\n* solvers\r\n  * Added a new solver for logarithmic equations.\r\n\r\n* functions\r\n  * Fixed a bug with log of integers.\r\n\r\nor if no release note(s) should be included use:\r\n\r\nNO ENTRY\r\n\r\nSee https://github.com/sympy/sympy/wiki/Writing-Release-Notes for more\r\ninformation on how to write release notes. The bot will check your release\r\nnotes automatically to see if they are formatted correctly. -->\r\n\r\n<!-- BEGIN RELEASE NOTES -->\r\n* polys\r\n  * Fixed a bug in itermonomials when using min_degrees argument\r\n<!-- END RELEASE NOTES -->\r\n\n\n",
+        "source_code": null,
+        "distance": 0.5,
+        "title": "monomials: fixed min_degrees functionality of itermonomials",
+        "name": "pr#21847",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#21845"
+          },
+          {
+            "start_node": "issue#21845",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "pr#21847"
+          }
+        ],
+        "similarity": 0.6092682990803995,
+        "end_line": null,
+        "signature": null
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "21846",
+        "type": "issue",
+        "content": "<!-- Your title above should be a short description of what\r\nwas changed. Do not include the issue number in the title. -->\r\n\r\n#### References to other Issues or PRs\r\n<!-- If this pull request fixes an issue, write \"Fixes #NNNN\" in that exact\r\nformat, e.g. \"Fixes #1234\" (see\r\nhttps://tinyurl.com/auto-closing for more information). Also, please\r\nwrite a comment on that issue linking back to this pull request once it is\r\nopen. -->\r\n\r\nFixes #21845\r\n\r\n#### Brief description of what is fixed or changed\r\n\r\n\r\n#### Other comments\r\n\r\n\r\n#### Release Notes\r\n\r\n<!-- Write the release notes for this release below between the BEGIN and END\r\nstatements. The basic format is a bulleted list with the name of the subpackage\r\nand the release note for this PR. For example:\r\n\r\n* solvers\r\n  * Added a new solver for logarithmic equations.\r\n\r\n* functions\r\n  * Fixed a bug with log of integers.\r\n\r\nor if no release note(s) should be included use:\r\n\r\nNO ENTRY\r\n\r\nSee https://github.com/sympy/sympy/wiki/Writing-Release-Notes for more\r\ninformation on how to write release notes. The bot will check your release\r\nnotes automatically to see if they are formatted correctly. -->\r\n\r\n<!-- BEGIN RELEASE NOTES -->\r\nNO ENTRY\r\n<!-- END RELEASE NOTES -->\r\n\n\n\nComment by sympy-bot:\n:white_check_mark:\n\nHi, I am the [SymPy bot](https://github.com/sympy/sympy-bot) (v161). I'm here to help you write a release notes entry. Please read the [guide on how to write release notes](https://github.com/sympy/sympy/wiki/Writing-Release-Notes).\n\n\n\n* No release notes entry will be added for this pull request.\n\n<details><summary>Click here to see the pull request description that was parsed.</summary>\n\n    <!-- Your title above should be a short description of what\r\n    was changed. Do not include the issue number in the title. -->\r\n\r\n    #### References to other Issues or PRs\r\n    <!-- If this pull request fixes an issue, write \"Fixes #NNNN\" in that exact\r\n    format, e.g. \"Fixes #1234\" (see\r\n    https://tinyurl.com/auto-closing for more information). Also, please\r\n    write a comment on that issue linking back to this pull request once it is\r\n    open. -->\r\n\r\n    Fixes #21845\r\n\r\n    #### Brief description of what is fixed or changed\r\n\r\n\r\n    #### Other comments\r\n\r\n\r\n    #### Release Notes\r\n\r\n    <!-- Write the release notes for this release below between the BEGIN and END\r\n    statements. The basic format is a bulleted list with the name of the subpackage\r\n    and the release note for this PR. For example:\r\n\r\n    * solvers\r\n      * Added a new solver for logarithmic equations.\r\n\r\n    * functions\r\n      * Fixed a bug with log of integers.\r\n\r\n    or if no release note(s) should be included use:\r\n\r\n    NO ENTRY\r\n\r\n    See https://github.com/sympy/sympy/wiki/Writing-Release-Notes for more\r\n    information on how to write release notes. The bot will check your release\r\n    notes automatically to see if they are formatted correctly. -->\r\n\r\n    <!-- BEGIN RELEASE NOTES -->\r\n    NO ENTRY\r\n    <!-- END RELEASE NOTES -->\r\n\n\n</details><p>\n",
+        "source_code": null,
+        "distance": 0.5,
+        "title": "Intermonomials now return correct monomials",
+        "name": "pr#21846",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#21845"
+          },
+          {
+            "start_node": "issue#21845",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "pr#21846"
+          }
+        ],
+        "similarity": 0.2901893759379356,
+        "end_line": null,
+        "signature": null
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "1234",
+        "type": "issue",
+        "content": "Title says it all.\n\n\n\nComment by scolobb:\n**SymPy Bot Summary:** :eight_spoked_asterisk: All tests have passed.\n\nTest results html report: http://reviews.sympy.org/report/agZzeW1weTNyDAsSBFRhc2sYvqwTDA\n\n_Interpreter:_   /usr/bin/python  (2.7.2-final-0)\n_Architecture:_ Linux (64-bit)\n_Cache:_        yes\n_Test command:_ setup.py test\n_master hash_: 0af063ef397fa9f44eca6d9f4bf0acefa9e15ee8\n_branch hash_: 772aacbee56dcb9ff0c0d1834e038c1cbc320e5a\n\nAutomatic review by [SymPy Bot](https://github.com/sympy/sympy-bot).\n\n\nComment by flacjacket:\nThanks, scholobb.\n\n\nComment by ness01:\n**SymPy Bot Summary:** :x: Could not fetch the branch.\n\n@flacjacket: Please run the sympy-bot tests again.\n\nTest results html report: http://reviews.sympy.org/report/agZzeW1weTNyDAsSBFRhc2sY9uoTDA\n\n_Interpreter:_   /usr/bin/python  (2.7.2-final-0)\n_Architecture:_ Linux (64-bit)\n_Cache:_        yes\n_Test command:_ setup.py test\n_master hash_: \n_branch hash_: \n\nAutomatic review by [SymPy Bot](https://github.com/sympy/sympy-bot).\n\n\nComment by asmeurer:\n**[SymPy Bot](https://github.com/sympy/sympy-bot) Summary**: :x: Could not fetch the branch flacjacket/beginner.precision_fix.\n@flacjacket: Please make sure that flacjacket/beginner.precision_fix has been pushed to GitHub and run the sympy-bot tests again.\n\n\nComment by asmeurer:\n**[SymPy Bot](https://github.com/sympy/sympy-bot) Summary**: :x: Could not fetch the branch flacjacket/beginner.precision_fix.\n@flacjacket: Please make sure that flacjacket/beginner.precision_fix has been pushed to GitHub and run the sympy-bot tests again.\n",
+        "source_code": null,
+        "distance": 1.0,
+        "title": "Fix test failure in beginner/precision.py example",
+        "name": "pr#1234",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#21845"
+          },
+          {
+            "start_node": "issue#21845",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "pr#21846"
+          },
+          {
+            "start_node": "pr#21846",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "pr#1234"
+          }
+        ],
+        "similarity": 0.13074667967303633,
+        "end_line": null,
+        "signature": null
+      }
+    ]
+  },
+  "artifact_stats": {
+    "skipped_due_to_time": 9,
+    "valid_related_items": 26
+  }
+}
