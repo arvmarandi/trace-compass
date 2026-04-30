@@ -46,11 +46,17 @@ from functools import lru_cache
 def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
     """Load settrace data for an instance and compute per-function trace scores.
 
-    Scores are in [0, 1]:
-      - exception_frames: 1/(depth_from_innermost+1)  (0=innermost, closest to crash)
-      - all_calls only:   1/(call_depth+1)             (0=called directly from test)
+    Uses all_calls filtered to call_depth <= MAX_TRACE_DEPTH, plus
+    exception_frames (always included regardless of depth). This keeps the
+    high-recall signal from all_calls while reducing noise from deeply-nested
+    utility functions that are unlikely to be buggy.
+
+    exception_frames are scored by 0.85^depth_from_innermost (0=innermost).
+    all_calls are scored by 0.85^call_depth (0=called directly from test).
     The max score across all tests is kept per (file_path, func_name) pair.
     """
+    MAX_TRACE_DEPTH = 10
+
     traj_path = Path(traces_dir) / instance_id / f"{instance_id}.traj.json"
     if not traj_path.exists():
         print(f"No trace file found at {traj_path}, skipping trace augmentation")
@@ -74,17 +80,15 @@ def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
         for depth_from_inner, frame in enumerate(reversed(exc_frames)):
             key = (frame.get("file", ""), frame.get("func", ""))
             if key[0] and key[1]:
-                # scores[key] = max(scores.get(key, 0.0), 1.0 / (depth_from_inner + 1))
-                scores[key] = max(scores.get(key, 0.0), 0.85**(call_depth))
-
+                scores[key] = max(scores.get(key, 0.0), 0.85 ** depth_from_inner)
 
         for frame in all_calls:
+            call_depth = frame.get("call_depth", 0) or 0
+            if call_depth > MAX_TRACE_DEPTH:
+                continue
             key = (frame.get("file", ""), frame.get("func", ""))
             if key[0] and key[1]:
-                call_depth = frame.get("call_depth", 0) or 0
-                # scores[key] = max(scores.get(key, 0.0), 1.0 / (call_depth + 1))
-                scores[key] = max(scores.get(key, 0.0), 0.85**(call_depth))
-
+                scores[key] = max(scores.get(key, 0.0), 0.85 ** call_depth)
 
     print(f"Loaded trace scores for {len(scores)} (file, func) pairs from {traj_path}")
     return scores
@@ -1255,30 +1259,35 @@ class CodeAnalyzer:
         start_time = end_time - (7 * 24 * 60 * 60)  # Number of seconds in 7 days
         time_range = (start_time, end_time)
         
+        use_github_search = True
         if self.config['repo_name'] == 'django/django':
-            import pandas as pd
-            df = pd.read_csv('django-tickets.csv')
-            best_id = None
-            for _, row in df.iterrows():
-                title_clean = title.lower().replace('.', '').replace(' ', '')
-                issue_title_clean = row['Summary'].lower().replace('.', '').replace(' ', '')
-                same_length = pylcs.lcs(title_clean, issue_title_clean)
-                similarity = same_length / max(len(title_clean), len(issue_title_clean))
-                # Update best match
-                if similarity > max_similarity:
-                    # Potential best match, fetch to check time
-                    potential_issue = self._get_issues('django/django', issue_id=row['id'])
-                    if potential_issue: # _get_issues for Django already does time check and counting
-                        max_similarity = similarity
-                        best_id = row['id'] # Keep track of ID
-                        best_match_issue = potential_issue # Store the already time-checked issue
-                    # If potential_issue is None, it was time-skipped by _get_issues
-            # best_match_issue is now either a valid one or None
-            if best_id and not best_match_issue: # if we had a best_id but it resolved to None (time skipped)
-                 pass # Already handled by _get_issues's call to _check_and_count_artifact_time
-            elif best_match_issue: # If it's a valid issue
-                 pass # Already handled by _get_issues
-        else:
+            try:
+                import pandas as pd
+                df = pd.read_csv('django-tickets.csv')
+                use_github_search = False
+                best_id = None
+                for _, row in df.iterrows():
+                    title_clean = title.lower().replace('.', '').replace(' ', '')
+                    issue_title_clean = row['Summary'].lower().replace('.', '').replace(' ', '')
+                    same_length = pylcs.lcs(title_clean, issue_title_clean)
+                    similarity = same_length / max(len(title_clean), len(issue_title_clean))
+                    # Update best match
+                    if similarity > max_similarity:
+                        # Potential best match, fetch to check time
+                        potential_issue = self._get_issues('django/django', issue_id=row['id'])
+                        if potential_issue: # _get_issues for Django already does time check and counting
+                            max_similarity = similarity
+                            best_id = row['id'] # Keep track of ID
+                            best_match_issue = potential_issue # Store the already time-checked issue
+                        # If potential_issue is None, it was time-skipped by _get_issues
+                # best_match_issue is now either a valid one or None
+                if best_id and not best_match_issue: # if we had a best_id but it resolved to None (time skipped)
+                     pass # Already handled by _get_issues's call to _check_and_count_artifact_time
+                elif best_match_issue: # If it's a valid issue
+                     pass # Already handled by _get_issues
+            except FileNotFoundError:
+                print("django-tickets.csv not found, falling back to GitHub search for django/django")
+        if use_github_search:
             for issue in self._get_issues(self.config['repo_name'], time_range=time_range):
                 # Time check and count for each issue from search
                 if not self._check_and_count_artifact_time(issue.created_at.timestamp(), f"gh_{issue.number}"):

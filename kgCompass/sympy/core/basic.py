@@ -90,6 +90,8 @@ class Basic(with_metaclass(ManagedProperties)):
     is_Matrix = False
     is_Vector = False
     is_Point = False
+    is_MatAdd = False
+    is_MatMul = False
 
     def __new__(cls, *args):
         obj = object.__new__(cls)
@@ -313,16 +315,10 @@ class Basic(with_metaclass(ManagedProperties)):
 
         from http://docs.python.org/dev/reference/datamodel.html#object.__hash__
         """
-        from sympy import Pow
         if self is other:
             return True
 
         if type(self) is not type(other):
-            # issue 6100 a**1.0 == a like a**2.0 == a**2
-            if isinstance(self, Pow) and self.exp == 1:
-                return self.base == other
-            if isinstance(other, Pow) and other.exp == 1:
-                return self == other.base
             try:
                 other = _sympify(other)
             except SympifyError:
@@ -500,6 +496,10 @@ class Basic(with_metaclass(ManagedProperties)):
         return set().union(*[a.free_symbols for a in self.args])
 
     @property
+    def expr_free_symbols(self):
+        return set([])
+
+    @property
     def canonical_variables(self):
         """Return a dictionary mapping any variable defined in
         ``self.variables`` as underscore-suffixed numbers
@@ -519,7 +519,7 @@ class Basic(with_metaclass(ManagedProperties)):
         if not hasattr(self, 'variables'):
             return {}
         u = "_"
-        while any(s.name.endswith(u) for s in self.free_symbols):
+        while any(str(s).endswith(u) for s in self.free_symbols):
             u += "_"
         name = '%%i%s' % u
         V = self.variables
@@ -599,12 +599,13 @@ class Basic(with_metaclass(ManagedProperties)):
         is_real = self.is_real
         if is_real is False:
             return False
-        is_number = self.is_number
-        if is_number is False:
+        if not self.is_number:
             return False
+        # don't re-eval numbers that are already evaluated since
+        # this will create spurious precision
         n, i = [p.evalf(2) if not p.is_Number else p
             for p in self.as_real_imag()]
-        if not i.is_Number or not n.is_Number:
+        if not (i.is_Number and n.is_Number):
             return False
         if i:
             # if _prec = 1 we can't decide and if not,
@@ -1578,6 +1579,40 @@ class Basic(with_metaclass(ManagedProperties)):
                 if rewritten is not None:
                     return rewritten
         return self.func(*args)
+
+    def _accept_eval_derivative(self, s):
+        # This method needs to be overridden by array-like objects
+        return s._visit_eval_derivative_scalar(self)
+
+    def _visit_eval_derivative_scalar(self, base):
+        # Base is a scalar
+        # Types are (base: scalar, self: scalar)
+        return base._eval_derivative(self)
+
+    def _visit_eval_derivative_array(self, base):
+        # Types are (base: array/matrix, self: scalar)
+        # Base is some kind of array/matrix,
+        # it should have `.applyfunc(lambda x: x.diff(self)` implemented:
+        return base._eval_derivative(self)
+
+    def _eval_derivative_n_times(self, s, n):
+        # This is the default evaluator for derivatives (as called by `diff`
+        # and `Derivative`), it will attempt a loop to derive the expression
+        # `n` times by calling the corresponding `_eval_derivative` method,
+        # while leaving the derivative unevaluated if `n` is symbolic.  This
+        # method should be overridden if the object has a closed form for its
+        # symbolic n-th derivative.
+        from sympy import Integer
+        if isinstance(n, (int, Integer)):
+            obj = self
+            for i in range(n):
+                obj2 = obj._accept_eval_derivative(s)
+                if obj == obj2:
+                    break
+                obj = obj2
+            return obj
+        else:
+            return None
 
     def rewrite(self, *args, **hints):
         """ Rewrite functions in terms of other functions.

@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 
 
-RECALL_K = [1, 3, 5, 10, 15, 20]
+RECALL_K = [1, 3, 5, 10, 15, 20, 25]
 
 
 # ---------------------------------------------------------------------------
@@ -143,19 +143,21 @@ def main():
     for r in results:
         by_repo.setdefault(r["repo"], []).append(r)
 
-    print(f"\n  {'Repo':<43}  {'n':>4}  {'MRR':>7}  {'R@5':>6}  {'R@10':>6}  {'R@15':>6}")
-    print("  " + "-" * 80)
+    print(f"\n  {'Repo':<43}  {'n':>4}  {'MRR':>7}  {'R@5':>6}  {'R@10':>6}  {'R@15':>6}  {'R@20':>6}  {'R@25':>6}")
+    print("  " + "-" * 95)
     for repo, recs in sorted(by_repo.items()):
         repo_ranks = [r["rank"] for r in recs]
         print(f"  {repo:<43}  {len(recs):>4}  {mrr(repo_ranks):>7.4f}"
               f"  {recall_at_k(repo_ranks, 5):>6.1%}"
               f"  {recall_at_k(repo_ranks, 10):>6.1%}"
-              f"  {recall_at_k(repo_ranks, 15):>6.1%}")
+              f"  {recall_at_k(repo_ranks, 15):>6.1%}"
+              f"  {recall_at_k(repo_ranks, 20):>6.1%}"
+              f"  {recall_at_k(repo_ranks, 25):>6.1%}")
 
     # ---- Rank distribution ----
     print("\nRank distribution:")
     found = [r for r in ranks if r is not None]
-    buckets = {"1": 0, "2-5": 0, "6-10": 0, "11-15": 0, "16-20": 0, ">20": 0, "not found": 0}
+    buckets = {"1": 0, "2-5": 0, "6-10": 0, "11-15": 0, "16-20": 0, "21-25": 0, ">25": 0, "not found": 0}
     for r in ranks:
         if r is None:        buckets["not found"] += 1
         elif r == 1:         buckets["1"]         += 1
@@ -163,7 +165,8 @@ def main():
         elif r <= 10:        buckets["6-10"]       += 1
         elif r <= 15:        buckets["11-15"]      += 1
         elif r <= 20:        buckets["16-20"]      += 1
-        else:                buckets[">20"]        += 1
+        elif r <= 25:        buckets["21-25"]      += 1
+        else:                buckets[">25"]        += 1
     for label, count in buckets.items():
         print(f"  {label:>10}: {count:>4}  ({count/n:.1%})")
 

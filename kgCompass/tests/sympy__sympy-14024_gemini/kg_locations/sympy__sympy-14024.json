@@ -1,0 +1,1932 @@
+{
+    "related_entities": {
+        "methods": [
+            {
+                "start_line": 202,
+                "file_path": "sympy/core/symbol.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, name, **assumptions):\n        \"\"\"Symbols are identified by name and assumptions::\n\n        >>> from sympy import Symbol\n        >>> Symbol(\"x\") == Symbol(\"x\")\n        True\n        >>> Symbol(\"x\", real=True) == Symbol(\"x\", real=False)\n        False\n\n        \"\"\"\n        cls._sanitize(assumptions, cls)\n        return Symbol.__xnew_cached_(cls, name, **assumptions)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.symbol.Symbol.__new__",
+                "documentation": "Symbols are identified by name and assumptions::\n\n>>> from sympy import Symbol\n>>> Symbol(\"x\") == Symbol(\"x\")\nTrue\n>>> Symbol(\"x\", real=True) == Symbol(\"x\", real=False)\nFalse",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/symbol.py"
+                    },
+                    {
+                        "start_node": "sympy/core/symbol.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.symbol.Symbol.__new__"
+                    }
+                ],
+                "similarity": 0.20385177059610748,
+                "end_line": 213,
+                "signature": "sympy.core.symbol.Symbol.__new__(cls, name)"
+            },
+            {
+                "start_line": 727,
+                "file_path": "sympy/core/basic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def subs(self, *args, **kwargs):\n        \"\"\"\n        Substitutes old for new in an expression after sympifying args.\n\n        `args` is either:\n          - two arguments, e.g. foo.subs(old, new)\n          - one iterable argument, e.g. foo.subs(iterable). The iterable may be\n             o an iterable container with (old, new) pairs. In this case the\n               replacements are processed in the order given with successive\n               patterns possibly affecting replacements already made.\n             o a dict or set whose key/value items correspond to old/new pairs.\n               In this case the old/new pairs will be sorted by op count and in\n               case of a tie, by number of args and the default_sort_key. The\n               resulting sorted list is then processed as an iterable container\n               (see previous).\n\n        If the keyword ``simultaneous`` is True, the subexpressions will not be\n        evaluated until all the substitutions have been made.\n\n        Examples\n        ========\n\n        >>> from sympy import pi, exp, limit, oo\n        >>> from sympy.abc import x, y\n        >>> (1 + x*y).subs(x, pi)\n        pi*y + 1\n        >>> (1 + x*y).subs({x:pi, y:2})\n        1 + 2*pi\n        >>> (1 + x*y).subs([(x, pi), (y, 2)])\n        1 + 2*pi\n        >>> reps = [(y, x**2), (x, 2)]\n        >>> (x + y).subs(reps)\n        6\n        >>> (x + y).subs(reversed(reps))\n        x**2 + 2\n\n        >>> (x**2 + x**4).subs(x**2, y)\n        y**2 + y\n\n        To replace only the x**2 but not the x**4, use xreplace:\n\n        >>> (x**2 + x**4).xreplace({x**2: y})\n        x**4 + y\n\n        To delay evaluation until all substitutions have been made,\n        set the keyword ``simultaneous`` to True:\n\n        >>> (x/y).subs([(x, 0), (y, 0)])\n        0\n        >>> (x/y).subs([(x, 0), (y, 0)], simultaneous=True)\n        nan\n\n        This has the added feature of not allowing subsequent substitutions\n        to affect those already made:\n\n        >>> ((x + y)/y).subs({x + y: y, y: x + y})\n        1\n        >>> ((x + y)/y).subs({x + y: y, y: x + y}, simultaneous=True)\n        y/(x + y)\n\n        In order to obtain a canonical result, unordered iterables are\n        sorted by count_op length, number of arguments and by the\n        default_sort_key to break any ties. All other iterables are left\n        unsorted.\n\n        >>> from sympy import sqrt, sin, cos\n        >>> from sympy.abc import a, b, c, d, e\n\n        >>> A = (sqrt(sin(2*x)), a)\n        >>> B = (sin(2*x), b)\n        >>> C = (cos(2*x), c)\n        >>> D = (x, d)\n        >>> E = (exp(x), e)\n\n        >>> expr = sqrt(sin(2*x))*sin(exp(x)*x)*cos(2*x) + sin(2*x)\n\n        >>> expr.subs(dict([A, B, C, D, E]))\n        a*c*sin(d*e) + b\n\n        The resulting expression represents a literal replacement of the\n        old arguments with the new arguments. This may not reflect the\n        limiting behavior of the expression:\n\n        >>> (x**3 - 3*x).subs({x: oo})\n        nan\n\n        >>> limit(x**3 - 3*x, x, oo)\n        oo\n\n        If the substitution will be followed by numerical\n        evaluation, it is better to pass the substitution to\n        evalf as\n\n        >>> (1/x).evalf(subs={x: 3.0}, n=21)\n        0.333333333333333333333\n\n        rather than\n\n        >>> (1/x).subs({x: 3.0}).evalf(21)\n        0.333333333333333314830\n\n        as the former will ensure that the desired level of precision is\n        obtained.\n\n        See Also\n        ========\n        replace: replacement capable of doing wildcard-like matching,\n                 parsing of match, and conditional replacements\n        xreplace: exact node replacement in expr tree; also capable of\n                  using matching rules\n        evalf: calculates the given formula to a desired level of precision\n\n        \"\"\"\n        from sympy.core.containers import Dict\n        from sympy.utilities import default_sort_key\n        from sympy import Dummy, Symbol\n\n        unordered = False\n        if len(args) == 1:\n            sequence = args[0]\n            if isinstance(sequence, set):\n                unordered = True\n            elif isinstance(sequence, (Dict, Mapping)):\n                unordered = True\n                sequence = sequence.items()\n            elif not iterable(sequence):\n                from sympy.utilities.misc import filldedent\n                raise ValueError(filldedent(\"\"\"\n                   When a single argument is passed to subs\n                   it should be a dictionary of old: new pairs or an iterable\n                   of (old, new) tuples.\"\"\"))\n        elif len(args) == 2:\n            sequence = [args]\n        else:\n            raise ValueError(\"subs accepts either 1 or 2 arguments\")\n\n        sequence = list(sequence)\n        for i in range(len(sequence)):\n            s = list(sequence[i])\n            for j, si in enumerate(s):\n                try:\n                    si = sympify(si, strict=True)\n                except SympifyError:\n                    if type(si) is str:\n                        si = Symbol(si)\n                    else:\n                        # if it can't be sympified, skip it\n                        sequence[i] = None\n                        break\n                s[j] = si\n            else:\n                sequence[i] = None if _aresame(*s) else tuple(s)\n        sequence = list(filter(None, sequence))\n\n        if unordered:\n            sequence = dict(sequence)\n            if not all(k.is_Atom for k in sequence):\n                d = {}\n                for o, n in sequence.items():\n                    try:\n                        ops = o.count_ops(), len(o.args)\n                    except TypeError:\n                        ops = (0, 0)\n                    d.setdefault(ops, []).append((o, n))\n                newseq = []\n                for k in sorted(d.keys(), reverse=True):\n                    newseq.extend(\n                        sorted([v[0] for v in d[k]], key=default_sort_key))\n                sequence = [(k, sequence[k]) for k in newseq]\n                del newseq, d\n            else:\n                sequence = sorted([(k, v) for (k, v) in sequence.items()],\n                                  key=default_sort_key)\n\n        if kwargs.pop('simultaneous', False):  # XXX should this be the default for dict subs?\n            reps = {}\n            rv = self\n            kwargs['hack2'] = True\n            m = Dummy()\n            for old, new in sequence:\n                d = Dummy(commutative=new.is_commutative)\n                # using d*m so Subs will be used on dummy variables\n                # in things like Derivative(f(x, y), x) in which x\n                # is both free and bound\n                rv = rv._subs(old, d*m, **kwargs)\n                if not isinstance(rv, Basic):\n                    break\n                reps[d] = new\n            reps[m] = S.One  # get rid of m\n            return rv.xreplace(reps)\n        else:\n            rv = self\n            for old, new in sequence:\n                rv = rv._subs(old, new, **kwargs)\n                if not isinstance(rv, Basic):\n                    break\n            return rv",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.basic.Basic.subs",
+                "documentation": "Substitutes old for new in an expression after sympifying args.\n\n`args` is either:\n  - two arguments, e.g. foo.subs(old, new)\n  - one iterable argument, e.g. foo.subs(iterable). The iterable may be\n     o an iterable container with (old, new) pairs. In this case the\n       replacements are processed in the order given with successive\n       patterns possibly affecting replacements already made.\n     o a dict or set whose key/value items correspond to old/new pairs.\n       In this case the old/new pairs will be sorted by op count and in\n       case of a tie, by number of args and the default_sort_key. The\n       resulting sorted list is then processed as an iterable container\n       (see previous).\n\nIf the keyword ``simultaneous`` is True, the subexpressions will not be\nevaluated until all the substitutions have been made.\n\nExamples\n========\n\n>>> from sympy import pi, exp, limit, oo\n>>> from sympy.abc import x, y\n>>> (1 + x*y).subs(x, pi)\npi*y + 1\n>>> (1 + x*y).subs({x:pi, y:2})\n1 + 2*pi\n>>> (1 + x*y).subs([(x, pi), (y, 2)])\n1 + 2*pi\n>>> reps = [(y, x**2), (x, 2)]\n>>> (x + y).subs(reps)\n6\n>>> (x + y).subs(reversed(reps))\nx**2 + 2\n\n>>> (x**2 + x**4).subs(x**2, y)\ny**2 + y\n\nTo replace only the x**2 but not the x**4, use xreplace:\n\n>>> (x**2 + x**4).xreplace({x**2: y})\nx**4 + y\n\nTo delay evaluation until all substitutions have been made,\nset the keyword ``simultaneous`` to True:\n\n>>> (x/y).subs([(x, 0), (y, 0)])\n0\n>>> (x/y).subs([(x, 0), (y, 0)], simultaneous=True)\nnan\n\nThis has the added feature of not allowing subsequent substitutions\nto affect those already made:\n\n>>> ((x + y)/y).subs({x + y: y, y: x + y})\n1\n>>> ((x + y)/y).subs({x + y: y, y: x + y}, simultaneous=True)\ny/(x + y)\n\nIn order to obtain a canonical result, unordered iterables are\nsorted by count_op length, number of arguments and by the\ndefault_sort_key to break any ties. All other iterables are left\nunsorted.\n\n>>> from sympy import sqrt, sin, cos\n>>> from sympy.abc import a, b, c, d, e\n\n>>> A = (sqrt(sin(2*x)), a)\n>>> B = (sin(2*x), b)\n>>> C = (cos(2*x), c)\n>>> D = (x, d)\n>>> E = (exp(x), e)\n\n>>> expr = sqrt(sin(2*x))*sin(exp(x)*x)*cos(2*x) + sin(2*x)\n\n>>> expr.subs(dict([A, B, C, D, E]))\na*c*sin(d*e) + b\n\nThe resulting expression represents a literal replacement of the\nold arguments with the new arguments. This may not reflect the\nlimiting behavior of the expression:\n\n>>> (x**3 - 3*x).subs({x: oo})\nnan\n\n>>> limit(x**3 - 3*x, x, oo)\noo\n\nIf the substitution will be followed by numerical\nevaluation, it is better to pass the substitution to\nevalf as\n\n>>> (1/x).evalf(subs={x: 3.0}, n=21)\n0.333333333333333333333\n\nrather than\n\n>>> (1/x).subs({x: 3.0}).evalf(21)\n0.333333333333333314830\n\nas the former will ensure that the desired level of precision is\nobtained.\n\nSee Also\n========\nreplace: replacement capable of doing wildcard-like matching,\n         parsing of match, and conditional replacements\nxreplace: exact node replacement in expr tree; also capable of\n          using matching rules\nevalf: calculates the given formula to a desired level of precision",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/basic.py"
+                    },
+                    {
+                        "start_node": "sympy/core/basic.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.basic.Basic.subs"
+                    }
+                ],
+                "similarity": 0.19295813048589472,
+                "end_line": 923,
+                "signature": "sympy.core.basic.Basic.subs(self)"
+            },
+            {
+                "start_line": 1774,
+                "file_path": "sympy/core/function.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, expr, variables, point, **assumptions):\n        from sympy import Symbol\n        if not is_sequence(variables, Tuple):\n            variables = [variables]\n        variables = list(sympify(variables))\n\n        if list(uniq(variables)) != variables:\n            repeated = [ v for v in set(variables) if variables.count(v) > 1 ]\n            raise ValueError('cannot substitute expressions %s more than '\n                             'once.' % repeated)\n\n        point = Tuple(*(point if is_sequence(point, Tuple) else [point]))\n\n        if len(point) != len(variables):\n            raise ValueError('Number of point values must be the same as '\n                             'the number of variables.')\n\n        expr = sympify(expr)\n\n        # use symbols with names equal to the point value (with preppended _)\n        # to give a variable-independent expression\n        pre = \"_\"\n        pts = sorted(set(point), key=default_sort_key)\n        from sympy.printing import StrPrinter\n        class CustomStrPrinter(StrPrinter):\n            def _print_Dummy(self, expr):\n                return str(expr) + str(expr.dummy_index)\n        def mystr(expr, **settings):\n            p = CustomStrPrinter(settings)\n            return p.doprint(expr)\n        while 1:\n            s_pts = {p: Symbol(pre + mystr(p)) for p in pts}\n            reps = [(v, s_pts[p])\n                for v, p in zip(variables, point)]\n            # if any underscore-preppended symbol is already a free symbol\n            # and is a variable with a different point value, then there\n            # is a clash, e.g. _0 clashes in Subs(_0 + _1, (_0, _1), (1, 0))\n            # because the new symbol that would be created is _1 but _1\n            # is already mapped to 0 so __0 and __1 are used for the new\n            # symbols\n            if any(r in expr.free_symbols and\n                   r in variables and\n                   Symbol(pre + mystr(point[variables.index(r)])) != r\n                   for _, r in reps):\n                pre += \"_\"\n                continue\n            break\n\n        obj = Expr.__new__(cls, expr, Tuple(*variables), point)\n        obj._expr = expr.subs(reps)\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.function.Subs.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/function.py"
+                    },
+                    {
+                        "start_node": "sympy/core/function.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.function.Subs.__new__"
+                    }
+                ],
+                "similarity": 0.19291203385109412,
+                "end_line": 1824,
+                "signature": "sympy.core.function.Subs.__new__(cls, expr, variables, point)"
+            },
+            {
+                "start_line": 2325,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, expr, coeffs=None, alias=None, **args):\n        \"\"\"Construct a new algebraic number. \"\"\"\n        from sympy import Poly\n        from sympy.polys.polyclasses import ANP, DMP\n        from sympy.polys.numberfields import minimal_polynomial\n        from sympy.core.symbol import Symbol\n\n        expr = sympify(expr)\n\n        if isinstance(expr, (tuple, Tuple)):\n            minpoly, root = expr\n\n            if not minpoly.is_Poly:\n                minpoly = Poly(minpoly)\n        elif expr.is_AlgebraicNumber:\n            minpoly, root = expr.minpoly, expr.root\n        else:\n            minpoly, root = minimal_polynomial(\n                expr, args.get('gen'), polys=True), expr\n\n        dom = minpoly.get_domain()\n\n        if coeffs is not None:\n            if not isinstance(coeffs, ANP):\n                rep = DMP.from_sympy_list(sympify(coeffs), 0, dom)\n                scoeffs = Tuple(*coeffs)\n            else:\n                rep = DMP.from_list(coeffs.to_list(), 0, dom)\n                scoeffs = Tuple(*coeffs.to_list())\n\n            if rep.degree() >= minpoly.degree():\n                rep = rep.rem(minpoly.rep)\n\n        else:\n            rep = DMP.from_list([1, 0], 0, dom)\n            scoeffs = Tuple(1, 0)\n\n            if root.is_negative:\n                rep = -rep\n                scoeffs = Tuple(-1, 0)\n\n        sargs = (root, scoeffs)\n\n        if alias is not None:\n            if not isinstance(alias, Symbol):\n                alias = Symbol(alias)\n            sargs = sargs + (alias,)\n\n        obj = Expr.__new__(cls, *sargs)\n\n        obj.rep = rep\n        obj.root = root\n        obj.alias = alias\n        obj.minpoly = minpoly\n\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.AlgebraicNumber.__new__",
+                "documentation": "Construct a new algebraic number. ",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.AlgebraicNumber.__new__"
+                    }
+                ],
+                "similarity": 0.1919871458605534,
+                "end_line": 2380,
+                "signature": "sympy.core.numbers.AlgebraicNumber.__new__(cls, expr, coeffs, alias)"
+            },
+            {
+                "start_line": 361,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def is_number(self):\n        \"\"\"Returns True if ``self`` has no free symbols and no\n        undefined functions (AppliedUndef, to be precise). It will be\n        faster than ``if not self.free_symbols``, however, since\n        ``is_number`` will fail as soon as it hits a free symbol\n        or undefined function.\n\n        Examples\n        ========\n\n        >>> from sympy import log, Integral, cos, sin, pi\n        >>> from sympy.core.function import Function\n        >>> from sympy.abc import x\n        >>> f = Function('f')\n\n        >>> x.is_number\n        False\n        >>> f(1).is_number\n        False\n        >>> (2*x).is_number\n        False\n        >>> (2 + Integral(2, x)).is_number\n        False\n        >>> (2 + Integral(2, (x, 1, 2))).is_number\n        True\n\n        Not all numbers are Numbers in the SymPy sense:\n\n        >>> pi.is_number, pi.is_Number\n        (True, False)\n\n        If something is a number it should evaluate to a number with\n        real and imaginary parts that are Numbers; the result may not\n        be comparable, however, since the real and/or imaginary part\n        of the result may not have precision.\n\n        >>> cos(1).is_number and cos(1).is_comparable\n        True\n\n        >>> z = cos(1)**2 + sin(1)**2 - 1\n        >>> z.is_number\n        True\n        >>> z.is_comparable\n        False\n\n        See Also\n        ========\n        sympy.core.basic.is_comparable\n        \"\"\"\n        return all(obj.is_number for obj in self.args)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.is_number",
+                "documentation": "Returns True if ``self`` has no free symbols and no\nundefined functions (AppliedUndef, to be precise). It will be\nfaster than ``if not self.free_symbols``, however, since\n``is_number`` will fail as soon as it hits a free symbol\nor undefined function.\n\nExamples\n========\n\n>>> from sympy import log, Integral, cos, sin, pi\n>>> from sympy.core.function import Function\n>>> from sympy.abc import x\n>>> f = Function('f')\n\n>>> x.is_number\nFalse\n>>> f(1).is_number\nFalse\n>>> (2*x).is_number\nFalse\n>>> (2 + Integral(2, x)).is_number\nFalse\n>>> (2 + Integral(2, (x, 1, 2))).is_number\nTrue\n\nNot all numbers are Numbers in the SymPy sense:\n\n>>> pi.is_number, pi.is_Number\n(True, False)\n\nIf something is a number it should evaluate to a number with\nreal and imaginary parts that are Numbers; the result may not\nbe comparable, however, since the real and/or imaginary part\nof the result may not have precision.\n\n>>> cos(1).is_number and cos(1).is_comparable\nTrue\n\n>>> z = cos(1)**2 + sin(1)**2 - 1\n>>> z.is_number\nTrue\n>>> z.is_comparable\nFalse\n\nSee Also\n========\nsympy.core.basic.is_comparable",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.is_number"
+                    }
+                ],
+                "similarity": 0.19095054978757647,
+                "end_line": 410,
+                "signature": "sympy.core.expr.Expr.is_number(self)"
+            },
+            {
+                "start_line": 152,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __pow__(self, other, mod=None):\n        if mod is None:\n            return self._pow(other)\n        try:\n            _self, other, mod = as_int(self), as_int(other), as_int(mod)\n            if other >= 0:\n                return pow(_self, other, mod)\n            else:\n                from sympy.core.numbers import mod_inverse\n                return mod_inverse(pow(_self, -other, mod), mod)\n        except ValueError:\n            power = self._pow(other)\n            try:\n                return power%mod\n            except TypeError:\n                return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.__pow__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.__pow__"
+                    }
+                ],
+                "similarity": 0.1894418668656025,
+                "end_line": 167,
+                "signature": "sympy.core.expr.Expr.__pow__(self, other, mod)"
+            },
+            {
+                "start_line": 453,
+                "file_path": "sympy/core/symbol.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, name, exclude=(), properties=(), **assumptions):\n        exclude = tuple([sympify(x) for x in exclude])\n        properties = tuple(properties)\n        cls._sanitize(assumptions, cls)\n        return Wild.__xnew__(cls, name, exclude, properties, **assumptions)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.symbol.Wild.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/symbol.py"
+                    },
+                    {
+                        "start_node": "sympy/core/symbol.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.symbol.Wild.__new__"
+                    }
+                ],
+                "similarity": 0.1872273875851826,
+                "end_line": 457,
+                "signature": "sympy.core.symbol.Wild.__new__(cls, name, exclude, properties)"
+            },
+            {
+                "start_line": 1975,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, i):\n        if isinstance(i, string_types):\n            i = i.replace(' ', '')\n        # whereas we cannot, in general, make a Rational from an\n        # arbitrary expression, we can make an Integer unambiguously\n        # (except when a non-integer expression happens to round to\n        # an integer). So we proceed by taking int() of the input and\n        # let the int routines determine whether the expression can\n        # be made into an int or whether an error should be raised.\n        try:\n            ival = int(i)\n        except TypeError:\n            raise TypeError(\n                'Integer can only work with integer expressions.')\n        try:\n            return _intcache[ival]\n        except KeyError:\n            # We only work with well-behaved integer types. This converts, for\n            # example, numpy.int32 instances.\n            obj = Expr.__new__(cls)\n            obj.p = ival\n\n            _intcache[ival] = obj\n            return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Integer.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Integer.__new__"
+                    }
+                ],
+                "similarity": 0.1836097659091666,
+                "end_line": 1998,
+                "signature": "sympy.core.numbers.Integer.__new__(cls, i)"
+            },
+            {
+                "start_line": 2559,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__():\n        return S.NegativeOne",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.One.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.One.__neg__"
+                    }
+                ],
+                "similarity": 0.1835238996852527,
+                "end_line": 2560,
+                "signature": "sympy.core.numbers.One.__neg__()"
+            },
+            {
+                "start_line": 679,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __div__(self, other):\n        if isinstance(other, Number) and global_evaluate[0]:\n            if other is S.NaN:\n                return S.NaN\n            elif other is S.Infinity or other is S.NegativeInfinity:\n                return S.Zero\n        return AtomicExpr.__div__(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Number.__div__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Number.__div__"
+                    }
+                ],
+                "similarity": 0.18330859278568212,
+                "end_line": 685,
+                "signature": "sympy.core.numbers.Number.__div__(self, other)"
+            },
+            {
+                "start_line": 110,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return Mul(S.NegativeOne, self)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.__neg__"
+                    }
+                ],
+                "similarity": 0.18258218119898748,
+                "end_line": 111,
+                "signature": "sympy.core.expr.Expr.__neg__(self)"
+            },
+            {
+                "start_line": 636,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def equals(self, other, failing_expression=False):\n        \"\"\"Return True if self == other, False if it doesn't, or None. If\n        failing_expression is True then the expression which did not simplify\n        to a 0 will be returned instead of None.\n\n        If ``self`` is a Number (or complex number) that is not zero, then\n        the result is False.\n\n        If ``self`` is a number and has not evaluated to zero, evalf will be\n        used to test whether the expression evaluates to zero. If it does so\n        and the result has significance (i.e. the precision is either -1, for\n        a Rational result, or is greater than 1) then the evalf value will be\n        used to return True or False.\n\n        \"\"\"\n        from sympy.simplify.simplify import nsimplify, simplify\n        from sympy.solvers.solveset import solveset\n        from sympy.polys.polyerrors import NotAlgebraic\n        from sympy.polys.numberfields import minimal_polynomial\n\n        other = sympify(other)\n        if self == other:\n            return True\n\n        # they aren't the same so see if we can make the difference 0;\n        # don't worry about doing simplification steps one at a time\n        # because if the expression ever goes to 0 then the subsequent\n        # simplification steps that are done will be very fast.\n        diff = factor_terms(simplify(self - other), radical=True)\n\n        if not diff:\n            return True\n\n        if not diff.has(Add, Mod):\n            # if there is no expanding to be done after simplifying\n            # then this can't be a zero\n            return False\n\n        constant = diff.is_constant(simplify=False, failing_number=True)\n\n        if constant is False:\n            return False\n\n        if constant is None and (diff.free_symbols or not diff.is_number):\n            # e.g. unless the right simplification is done, a symbolic\n            # zero is possible (see expression of issue 6829: without\n            # simplification constant will be None).\n            return\n\n        if constant is True:\n            ndiff = diff._random()\n            if ndiff:\n                return False\n\n        # sometimes we can use a simplified result to give a clue as to\n        # what the expression should be; if the expression is *not* zero\n        # then we should have been able to compute that and so now\n        # we can just consider the cases where the approximation appears\n        # to be zero -- we try to prove it via minimal_polynomial.\n        if diff.is_number:\n            approx = diff.nsimplify()\n            if not approx:\n                # try to prove via self-consistency\n                surds = [s for s in diff.atoms(Pow) if s.args[0].is_Integer]\n                # it seems to work better to try big ones first\n                surds.sort(key=lambda x: -x.args[0])\n                for s in surds:\n                    try:\n                        # simplify is False here -- this expression has already\n                        # been identified as being hard to identify as zero;\n                        # we will handle the checking ourselves using nsimplify\n                        # to see if we are in the right ballpark or not and if so\n                        # *then* the simplification will be attempted.\n                        if s.is_Symbol:\n                            sol = list(solveset(diff, s))\n                        else:\n                            sol = [s]\n                        if sol:\n                            if s in sol:\n                                return True\n                            if s.is_real:\n                                if any(nsimplify(si, [s]) == s and simplify(si) == s\n                                        for si in sol):\n                                    return True\n                    except NotImplementedError:\n                        pass\n\n                # try to prove with minimal_polynomial but know when\n                # *not* to use this or else it can take a long time. e.g. issue 8354\n                if True:  # change True to condition that assures non-hang\n                    try:\n                        mp = minimal_polynomial(diff)\n                        if mp.is_Symbol:\n                            return True\n                        return False\n                    except (NotAlgebraic, NotImplementedError):\n                        pass\n\n        # diff has not simplified to zero; constant is either None, True\n        # or the number with significance (prec != 1) that was randomly\n        # calculated twice as the same value.\n        if constant not in (True, None) and constant != 0:\n            return False\n\n        if failing_expression:\n            return diff\n        return None",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.equals",
+                "documentation": "Return True if self == other, False if it doesn't, or None. If\nfailing_expression is True then the expression which did not simplify\nto a 0 will be returned instead of None.\n\nIf ``self`` is a Number (or complex number) that is not zero, then\nthe result is False.\n\nIf ``self`` is a number and has not evaluated to zero, evalf will be\nused to test whether the expression evaluates to zero. If it does so\nand the result has significance (i.e. the precision is either -1, for\na Rational result, or is greater than 1) then the evalf value will be\nused to return True or False.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.equals"
+                    }
+                ],
+                "similarity": 0.1824315551512607,
+                "end_line": 742,
+                "signature": "sympy.core.expr.Expr.equals(self, other, failing_expression)"
+            },
+            {
+                "start_line": 2612,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__():\n        return S.One",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.NegativeOne.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.NegativeOne.__neg__"
+                    }
+                ],
+                "similarity": 0.18119699204548645,
+                "end_line": 2613,
+                "signature": "sympy.core.numbers.NegativeOne.__neg__()"
+            },
+            {
+                "start_line": 1567,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return Rational(-self.p, self.q)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Rational.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Rational.__neg__"
+                    }
+                ],
+                "similarity": 0.1809357830841771,
+                "end_line": 1568,
+                "signature": "sympy.core.numbers.Rational.__neg__(self)"
+            },
+            {
+                "start_line": 332,
+                "file_path": "sympy/core/symbol.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, name=None, dummy_index=None, **assumptions):\n        if dummy_index is not None:\n            assert name is not None, \"If you specify a dummy_index, you must also provide a name\"\n\n        if name is None:\n            name = \"Dummy_\" + str(Dummy._count)\n\n        if dummy_index is None:\n            dummy_index = Dummy._base_dummy_index + Dummy._count\n            Dummy._count += 1\n\n        cls._sanitize(assumptions, cls)\n        obj = Symbol.__xnew__(cls, name, **assumptions)\n\n        obj.dummy_index = dummy_index\n\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.symbol.Dummy.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/symbol.py"
+                    },
+                    {
+                        "start_node": "sympy/core/symbol.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.symbol.Dummy.__new__"
+                    }
+                ],
+                "similarity": 0.18061992311286734,
+                "end_line": 348,
+                "signature": "sympy.core.symbol.Dummy.__new__(cls, name, dummy_index)"
+            },
+            {
+                "start_line": 245,
+                "file_path": "sympy/core/power.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, b, e, evaluate=None):\n        if evaluate is None:\n            evaluate = global_evaluate[0]\n        from sympy.functions.elementary.exponential import exp_polar\n\n        b = _sympify(b)\n        e = _sympify(e)\n        if evaluate:\n            if e is S.ComplexInfinity:\n                return S.NaN\n            if e is S.Zero:\n                return S.One\n            elif e is S.One:\n                return b\n            # Only perform autosimplification if exponent or base is a Symbol or number\n            elif (b.is_Symbol or b.is_number) and (e.is_Symbol or e.is_number) and\\\n                e.is_integer and _coeff_isneg(b):\n                if e.is_even:\n                    b = -b\n                elif e.is_odd:\n                    return -Pow(-b, e)\n            if S.NaN in (b, e):  # XXX S.NaN**x -> S.NaN under assumption that x != 0\n                return S.NaN\n            elif b is S.One:\n                if abs(e).is_infinite:\n                    return S.NaN\n                return S.One\n            else:\n                # recognize base as E\n                if not e.is_Atom and b is not S.Exp1 and not isinstance(b, exp_polar):\n                    from sympy import numer, denom, log, sign, im, factor_terms\n                    c, ex = factor_terms(e, sign=False).as_coeff_Mul()\n                    den = denom(ex)\n                    if isinstance(den, log) and den.args[0] == b:\n                        return S.Exp1**(c*numer(ex))\n                    elif den.is_Add:\n                        s = sign(im(b))\n                        if s.is_Number and s and den == \\\n                                log(-factor_terms(b, sign=False)) + s*S.ImaginaryUnit*S.Pi:\n                            return S.Exp1**(c*numer(ex))\n\n                obj = b._eval_power(e)\n                if obj is not None:\n                    return obj\n        obj = Expr.__new__(cls, b, e)\n        obj = cls._exec_constructor_postprocessors(obj)\n        if not isinstance(obj, Pow):\n            return obj\n        obj.is_commutative = (b.is_commutative and e.is_commutative)\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.power.Pow.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/power.py"
+                    },
+                    {
+                        "start_node": "sympy/core/power.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.power.Pow.__new__"
+                    }
+                ],
+                "similarity": 0.1799544387483211,
+                "end_line": 294,
+                "signature": "sympy.core.power.Pow.__new__(cls, b, e, evaluate)"
+            },
+            {
+                "start_line": 621,
+                "file_path": "sympy/core/basic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def func(self):\n        \"\"\"\n        The top-level function in an expression.\n\n        The following should hold for all objects::\n\n            >> x == x.func(*x.args)\n\n        Examples\n        ========\n\n        >>> from sympy.abc import x\n        >>> a = 2*x\n        >>> a.func\n        <class 'sympy.core.mul.Mul'>\n        >>> a.args\n        (2, x)\n        >>> a.func(*a.args)\n        2*x\n        >>> a == a.func(*a.args)\n        True\n\n        \"\"\"\n        return self.__class__",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.basic.Basic.func",
+                "documentation": "The top-level function in an expression.\n\nThe following should hold for all objects::\n\n    >> x == x.func(*x.args)\n\nExamples\n========\n\n>>> from sympy.abc import x\n>>> a = 2*x\n>>> a.func\n<class 'sympy.core.mul.Mul'>\n>>> a.args\n(2, x)\n>>> a.func(*a.args)\n2*x\n>>> a == a.func(*a.args)\nTrue",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/basic.py"
+                    },
+                    {
+                        "start_node": "sympy/core/basic.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.basic.Basic.func"
+                    }
+                ],
+                "similarity": 0.17994950254669279,
+                "end_line": 644,
+                "signature": "sympy.core.basic.Basic.func(self)"
+            },
+            {
+                "start_line": 2497,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__():\n        return S.Zero",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Zero.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Zero.__neg__"
+                    }
+                ],
+                "similarity": 0.17949911466187554,
+                "end_line": 2498,
+                "signature": "sympy.core.numbers.Zero.__neg__()"
+            },
+            {
+                "start_line": 1657,
+                "file_path": "sympy/core/function.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, variables, expr):\n        from sympy.sets.sets import FiniteSet\n        v = list(variables) if iterable(variables) else [variables]\n        for i in v:\n            if not getattr(i, 'is_Symbol', False):\n                raise TypeError('variable is not a symbol: %s' % i)\n        if len(v) == 1 and v[0] == expr:\n            return S.IdentityFunction\n\n        obj = Expr.__new__(cls, Tuple(*v), sympify(expr))\n        obj.nargs = FiniteSet(len(v))\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.function.Lambda.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/function.py"
+                    },
+                    {
+                        "start_node": "sympy/core/function.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.function.Lambda.__new__"
+                    }
+                ],
+                "similarity": 0.17795663736535977,
+                "end_line": 1668,
+                "signature": "sympy.core.function.Lambda.__new__(cls, variables, expr)"
+            },
+            {
+                "start_line": 3312,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__():\n        return S.ComplexInfinity",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.ComplexInfinity.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.ComplexInfinity.__neg__"
+                    }
+                ],
+                "similarity": 0.17735877514545909,
+                "end_line": 3313,
+                "signature": "sympy.core.numbers.ComplexInfinity.__neg__()"
+            },
+            {
+                "start_line": 634,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __add__(self, other):\n        if isinstance(other, Number) and global_evaluate[0]:\n            if other is S.NaN:\n                return S.NaN\n            elif other is S.Infinity:\n                return S.Infinity\n            elif other is S.NegativeInfinity:\n                return S.NegativeInfinity\n        return AtomicExpr.__add__(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Number.__add__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Number.__add__"
+                    }
+                ],
+                "similarity": 0.1769885019855868,
+                "end_line": 642,
+                "signature": "sympy.core.numbers.Number.__add__(self, other)"
+            },
+            {
+                "start_line": 1471,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, p, q=None, gcd=None):\n        if q is None:\n            if isinstance(p, Rational):\n                return p\n\n            if isinstance(p, string_types):\n                if p.count('/') > 1:\n                    raise TypeError('invalid input: %s' % p)\n                pq = p.rsplit('/', 1)\n                if len(pq) == 2:\n                    p, q = pq\n                    fp = fractions.Fraction(p)\n                    fq = fractions.Fraction(q)\n                    f = fp/fq\n                    return Rational(f.numerator, f.denominator, 1)\n                p = p.replace(' ', '')\n                try:\n                    p = fractions.Fraction(p)\n                except ValueError:\n                    pass  # error will raise below\n\n            if not isinstance(p, string_types):\n                try:\n                    if isinstance(p, fractions.Fraction):\n                        return Rational(p.numerator, p.denominator, 1)\n                except NameError:\n                    pass  # error will raise below\n\n                if isinstance(p, (float, Float)):\n                    return Rational(*_as_integer_ratio(p))\n\n            if not isinstance(p, SYMPY_INTS + (Rational,)):\n                raise TypeError('invalid input: %s' % p)\n            q = q or S.One\n            gcd = 1\n        else:\n            p = Rational(p)\n            q = Rational(q)\n\n        if isinstance(q, Rational):\n            p *= q.q\n            q = q.p\n        if isinstance(p, Rational):\n            q *= p.q\n            p = p.p\n\n        # p and q are now integers\n        if q == 0:\n            if p == 0:\n                if _errdict[\"divide\"]:\n                    raise ValueError(\"Indeterminate 0/0\")\n                else:\n                    return S.NaN\n            return S.ComplexInfinity\n        if q < 0:\n            q = -q\n            p = -p\n        if not gcd:\n            gcd = igcd(abs(p), q)\n        if gcd > 1:\n            p //= gcd\n            q //= gcd\n        if q == 1:\n            return Integer(p)\n        if p == 1 and q == 2:\n            return S.Half\n        obj = Expr.__new__(cls)\n        obj.p = p\n        obj.q = q\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Rational.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Rational.__new__"
+                    }
+                ],
+                "similarity": 0.1766365793380657,
+                "end_line": 1540,
+                "signature": "sympy.core.numbers.Rational.__new__(cls, p, q, gcd)"
+            },
+            {
+                "start_line": 215,
+                "file_path": "sympy/core/symbol.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new_stage2__(cls, name, **assumptions):\n        if not isinstance(name, string_types):\n            raise TypeError(\"name should be a string, not %s\" % repr(type(name)))\n\n        obj = Expr.__new__(cls)\n        obj.name = name\n\n        # TODO: Issue #8873: Forcing the commutative assumption here means\n        # later code such as ``srepr()`` cannot tell whether the user\n        # specified ``commutative=True`` or omitted it.  To workaround this,\n        # we keep a copy of the assumptions dict, then create the StdFactKB,\n        # and finally overwrite its ``._generator`` with the dict copy.  This\n        # is a bit of a hack because we assume StdFactKB merely copies the\n        # given dict as ``._generator``, but future modification might, e.g.,\n        # compute a minimal equivalent assumption set.\n        tmp_asm_copy = assumptions.copy()\n\n        # be strict about commutativity\n        is_commutative = fuzzy_bool(assumptions.get('commutative', True))\n        assumptions['commutative'] = is_commutative\n        obj._assumptions = StdFactKB(assumptions)\n        obj._assumptions._generator = tmp_asm_copy  # Issue #8873\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.symbol.Symbol.__new_stage2__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/symbol.py"
+                    },
+                    {
+                        "start_node": "sympy/core/symbol.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.symbol.Symbol.__new_stage2__"
+                    }
+                ],
+                "similarity": 0.1763524268065652,
+                "end_line": 237,
+                "signature": "sympy.core.symbol.Symbol.__new_stage2__(cls, name)"
+            },
+            {
+                "start_line": 2799,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return S.NegativeInfinity",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Infinity.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Infinity.__neg__"
+                    }
+                ],
+                "similarity": 0.17577469535291218,
+                "end_line": 2800,
+                "signature": "sympy.core.numbers.Infinity.__neg__(self)"
+            },
+            {
+                "start_line": 2015,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return Integer(-self.p)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Integer.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Integer.__neg__"
+                    }
+                ],
+                "similarity": 0.17566223923182248,
+                "end_line": 2016,
+                "signature": "sympy.core.numbers.Integer.__neg__(self)"
+            },
+            {
+                "start_line": 1156,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return Float._new(mlib.mpf_neg(self._mpf_), self._prec)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Float.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Float.__neg__"
+                    }
+                ],
+                "similarity": 0.17549212851567636,
+                "end_line": 1157,
+                "signature": "sympy.core.numbers.Float.__neg__(self)"
+            },
+            {
+                "start_line": 2947,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __add__(self, other):\n        if isinstance(other, Number):\n            if other is S.Infinity or other is S.NaN:\n                return S.NaN\n            elif other.is_Float:\n                if other == Float('inf'):\n                    return Float('nan')\n                else:\n                    return Float('-inf')\n            else:\n                return S.NegativeInfinity\n        return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.NegativeInfinity.__add__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.NegativeInfinity.__add__"
+                    }
+                ],
+                "similarity": 0.17411117297668838,
+                "end_line": 2958,
+                "signature": "sympy.core.numbers.NegativeInfinity.__add__(self, other)"
+            },
+            {
+                "start_line": 2996,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __div__(self, other):\n        if isinstance(other, Number):\n            if other is S.Infinity or \\\n                other is S.NegativeInfinity or \\\n                    other is S.NaN:\n                return S.NaN\n            elif other.is_Float:\n                if other == Float('-inf') or \\\n                    other == Float('inf') or \\\n                        other is S.NaN:\n                    return S.NaN\n                elif other.is_nonnegative:\n                    return Float('-inf')\n                else:\n                    return Float('inf')\n            else:\n                if other >= 0:\n                    return S.NegativeInfinity\n                else:\n                    return S.Infinity\n        return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.NegativeInfinity.__div__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.NegativeInfinity.__div__"
+                    }
+                ],
+                "similarity": 0.1731287971079478,
+                "end_line": 3016,
+                "signature": "sympy.core.numbers.NegativeInfinity.__div__(self, other)"
+            },
+            {
+                "start_line": 3023,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __neg__(self):\n        return S.Infinity",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.NegativeInfinity.__neg__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.NegativeInfinity.__neg__"
+                    }
+                ],
+                "similarity": 0.1725901490278242,
+                "end_line": 3024,
+                "signature": "sympy.core.numbers.NegativeInfinity.__neg__(self)"
+            },
+            {
+                "start_line": 1344,
+                "file_path": "sympy/core/evalf.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def evalf(self, n=15, subs=None, maxn=100, chop=False, strict=False, quad=None, verbose=False):\n        \"\"\"\n        Evaluate the given formula to an accuracy of n digits.\n        Optional keyword arguments:\n\n            subs=<dict>\n                Substitute numerical values for symbols, e.g.\n                subs={x:3, y:1+pi}. The substitutions must be given as a\n                dictionary.\n\n            maxn=<integer>\n                Allow a maximum temporary working precision of maxn digits\n                (default=100)\n\n            chop=<bool>\n                Replace tiny real or imaginary parts in subresults\n                by exact zeros (default=False)\n\n            strict=<bool>\n                Raise PrecisionExhausted if any subresult fails to evaluate\n                to full accuracy, given the available maxprec\n                (default=False)\n\n            quad=<str>\n                Choose algorithm for numerical quadrature. By default,\n                tanh-sinh quadrature is used. For oscillatory\n                integrals on an infinite interval, try quad='osc'.\n\n            verbose=<bool>\n                Print debug information (default=False)\n\n        \"\"\"\n        from sympy import Float, Number\n        n = n if n is not None else 15\n\n        if subs and is_sequence(subs):\n            raise TypeError('subs must be given as a dictionary')\n\n        # for sake of sage that doesn't like evalf(1)\n        if n == 1 and isinstance(self, Number):\n            from sympy.core.expr import _mag\n            rv = self.evalf(2, subs, maxn, chop, strict, quad, verbose)\n            m = _mag(rv)\n            rv = rv.round(1 - m)\n            return rv\n\n        if not evalf_table:\n            _create_evalf_table()\n        prec = dps_to_prec(n)\n        options = {'maxprec': max(prec, int(maxn*LG10)), 'chop': chop,\n               'strict': strict, 'verbose': verbose}\n        if subs is not None:\n            options['subs'] = subs\n        if quad is not None:\n            options['quad'] = quad\n        try:\n            result = evalf(self, prec + 4, options)\n        except NotImplementedError:\n            # Fall back to the ordinary evalf\n            v = self._eval_evalf(prec)\n            if v is None:\n                return self\n            try:\n                # If the result is numerical, normalize it\n                result = evalf(v, prec, options)\n            except NotImplementedError:\n                # Probably contains symbols or unknown functions\n                return v\n        re, im, re_acc, im_acc = result\n        if re:\n            p = max(min(prec, re_acc), 1)\n            re = Float._new(re, p)\n        else:\n            re = S.Zero\n        if im:\n            p = max(min(prec, im_acc), 1)\n            im = Float._new(im, p)\n            return re + im*S.ImaginaryUnit\n        else:\n            return re",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.evalf.EvalfMixin.evalf",
+                "documentation": "Evaluate the given formula to an accuracy of n digits.\nOptional keyword arguments:\n\n    subs=<dict>\n        Substitute numerical values for symbols, e.g.\n        subs={x:3, y:1+pi}. The substitutions must be given as a\n        dictionary.\n\n    maxn=<integer>\n        Allow a maximum temporary working precision of maxn digits\n        (default=100)\n\n    chop=<bool>\n        Replace tiny real or imaginary parts in subresults\n        by exact zeros (default=False)\n\n    strict=<bool>\n        Raise PrecisionExhausted if any subresult fails to evaluate\n        to full accuracy, given the available maxprec\n        (default=False)\n\n    quad=<str>\n        Choose algorithm for numerical quadrature. By default,\n        tanh-sinh quadrature is used. For oscillatory\n        integrals on an infinite interval, try quad='osc'.\n\n    verbose=<bool>\n        Print debug information (default=False)",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/evalf.py"
+                    },
+                    {
+                        "start_node": "sympy/core/evalf.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.evalf.EvalfMixin.evalf"
+                    }
+                ],
+                "similarity": 0.17243649494192703,
+                "end_line": 1423,
+                "signature": "sympy.core.evalf.EvalfMixin.evalf(self, n, subs, maxn, chop, strict, quad, verbose)"
+            },
+            {
+                "start_line": 333,
+                "file_path": "sympy/core/basic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __ne__(self, other):\n        \"\"\"a != b  -> Compare two symbolic trees and see whether they are different\n\n           this is the same as:\n\n             a.compare(b) != 0\n\n           but faster\n        \"\"\"\n        return not self == other",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.basic.Basic.__ne__",
+                "documentation": "a != b  -> Compare two symbolic trees and see whether they are different\n\nthis is the same as:\n\n  a.compare(b) != 0\n\nbut faster",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/basic.py"
+                    },
+                    {
+                        "start_node": "sympy/core/basic.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.basic.Basic.__ne__"
+                    }
+                ],
+                "similarity": 0.1721033089262176,
+                "end_line": 342,
+                "signature": "sympy.core.basic.Basic.__ne__(self, other)"
+            },
+            {
+                "start_line": 529,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, *obj):\n        if len(obj) == 1:\n            obj = obj[0]\n\n        if isinstance(obj, Number):\n            return obj\n        if isinstance(obj, SYMPY_INTS):\n            return Integer(obj)\n        if isinstance(obj, tuple) and len(obj) == 2:\n            return Rational(*obj)\n        if isinstance(obj, (float, mpmath.mpf, decimal.Decimal)):\n            return Float(obj)\n        if isinstance(obj, string_types):\n            val = sympify(obj)\n            if isinstance(val, Number):\n                return val\n            else:\n                raise ValueError('String \"%s\" does not denote a Number' % obj)\n        msg = \"expected str|int|long|float|Decimal|Number object but got %r\"\n        raise TypeError(msg % type(obj).__name__)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Number.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Number.__new__"
+                    }
+                ],
+                "similarity": 0.17176171574121313,
+                "end_line": 548,
+                "signature": "sympy.core.numbers.Number.__new__(cls)"
+            },
+            {
+                "start_line": 2724,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __add__(self, other):\n        if isinstance(other, Number):\n            if other is S.NegativeInfinity or other is S.NaN:\n                return S.NaN\n            elif other.is_Float:\n                if other == Float('-inf'):\n                    return S.NaN\n                else:\n                    return Float('inf')\n            else:\n                return S.Infinity\n        return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Infinity.__add__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Infinity.__add__"
+                    }
+                ],
+                "similarity": 0.1708798746400524,
+                "end_line": 2735,
+                "signature": "sympy.core.numbers.Infinity.__add__(self, other)"
+            },
+            {
+                "start_line": 169,
+                "file_path": "sympy/core/symbol.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _sanitize(assumptions, obj=None):\n        \"\"\"Remove None, covert values to bool, check commutativity *in place*.\n        \"\"\"\n\n        # be strict about commutativity: cannot be None\n        is_commutative = fuzzy_bool(assumptions.get('commutative', True))\n        if is_commutative is None:\n            whose = '%s ' % obj.__name__ if obj else ''\n            raise ValueError(\n                '%scommutativity must be True or False.' % whose)\n\n        # sanitize other assumptions so 1 -> True and 0 -> False\n        for key in list(assumptions.keys()):\n            from collections import defaultdict\n            from sympy.utilities.exceptions import SymPyDeprecationWarning\n            keymap = defaultdict(lambda: None)\n            keymap.update({'bounded': 'finite', 'unbounded': 'infinite', 'infinitesimal': 'zero'})\n            if keymap[key]:\n                SymPyDeprecationWarning(\n                    feature=\"%s assumption\" % key,\n                    useinstead=\"%s\" % keymap[key],\n                    issue=8071,\n                    deprecated_since_version=\"0.7.6\").warn()\n                assumptions[keymap[key]] = assumptions[key]\n                assumptions.pop(key)\n                key = keymap[key]\n\n            v = assumptions[key]\n            if v is None:\n                assumptions.pop(key)\n                continue\n            assumptions[key] = bool(v)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.symbol.Symbol._sanitize",
+                "documentation": "Remove None, covert values to bool, check commutativity *in place*.\n        ",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/symbol.py"
+                    },
+                    {
+                        "start_node": "sympy/core/symbol.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.symbol.Symbol._sanitize"
+                    }
+                ],
+                "similarity": 0.17006789797886313,
+                "end_line": 200,
+                "signature": "sympy.core.symbol.Symbol._sanitize(assumptions, obj)"
+            },
+            {
+                "start_line": 4225,
+                "file_path": "sympy/polys/polytools.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _unify(f, g):\n        g = sympify(g)\n\n        if not g.is_Poly:\n            try:\n                return f.rep.dom, f.per, f.rep, f.rep.per(f.rep.dom.from_sympy(g))\n            except CoercionFailed:\n                raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        if len(f.gens) != len(g.gens):\n            raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        if not (isinstance(f.rep, DMP) and isinstance(g.rep, DMP)):\n            raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        cls = f.__class__\n        gens = f.gens\n\n        dom = f.rep.dom.unify(g.rep.dom, gens)\n\n        F = f.rep.convert(dom)\n        G = g.rep.convert(dom)\n\n        def per(rep, dom=dom, gens=gens, remove=None):\n            if remove is not None:\n                gens = gens[:remove] + gens[remove + 1:]\n\n                if not gens:\n                    return dom.to_sympy(rep)\n\n            return cls.new(rep, *gens)\n\n        return dom, per, F, G",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.polys.polytools.PurePoly._unify",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/polys/polytools.py"
+                    },
+                    {
+                        "start_node": "sympy/polys/polytools.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.polys.polytools.PurePoly._unify"
+                    }
+                ],
+                "similarity": 0.16980195707197138,
+                "end_line": 4257,
+                "signature": "sympy.polys.polytools.PurePoly._unify(f, g)"
+            },
+            {
+                "start_line": 2046,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __add__(self, other):\n        if global_evaluate[0]:\n            if isinstance(other, integer_types):\n                return Integer(self.p + other)\n            elif isinstance(other, Integer):\n                return Integer(self.p + other.p)\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.q + other.p, other.q, 1)\n            return Rational.__add__(self, other)\n        else:\n            return Add(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Integer.__add__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Integer.__add__"
+                    }
+                ],
+                "similarity": 0.1695863266708019,
+                "end_line": 2056,
+                "signature": "sympy.core.numbers.Integer.__add__(self, other)"
+            },
+            {
+                "start_line": 926,
+                "file_path": "sympy/core/basic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _subs(self, old, new, **hints):\n        \"\"\"Substitutes an expression old -> new.\n\n        If self is not equal to old then _eval_subs is called.\n        If _eval_subs doesn't want to make any special replacement\n        then a None is received which indicates that the fallback\n        should be applied wherein a search for replacements is made\n        amongst the arguments of self.\n\n        >>> from sympy import Add\n        >>> from sympy.abc import x, y, z\n\n        Examples\n        ========\n\n        Add's _eval_subs knows how to target x + y in the following\n        so it makes the change:\n\n            >>> (x + y + z).subs(x + y, 1)\n            z + 1\n\n        Add's _eval_subs doesn't need to know how to find x + y in\n        the following:\n\n            >>> Add._eval_subs(z*(x + y) + 3, x + y, 1) is None\n            True\n\n        The returned None will cause the fallback routine to traverse the args and\n        pass the z*(x + y) arg to Mul where the change will take place and the\n        substitution will succeed:\n\n            >>> (z*(x + y) + 3).subs(x + y, 1)\n            z + 3\n\n        ** Developers Notes **\n\n        An _eval_subs routine for a class should be written if:\n\n            1) any arguments are not instances of Basic (e.g. bool, tuple);\n\n            2) some arguments should not be targeted (as in integration\n               variables);\n\n            3) if there is something other than a literal replacement\n               that should be attempted (as in Piecewise where the condition\n               may be updated without doing a replacement).\n\n        If it is overridden, here are some special cases that might arise:\n\n            1) If it turns out that no special change was made and all\n               the original sub-arguments should be checked for\n               replacements then None should be returned.\n\n            2) If it is necessary to do substitutions on a portion of\n               the expression then _subs should be called. _subs will\n               handle the case of any sub-expression being equal to old\n               (which usually would not be the case) while its fallback\n               will handle the recursion into the sub-arguments. For\n               example, after Add's _eval_subs removes some matching terms\n               it must process the remaining terms so it calls _subs\n               on each of the un-matched terms and then adds them\n               onto the terms previously obtained.\n\n           3) If the initial expression should remain unchanged then\n              the original expression should be returned. (Whenever an\n              expression is returned, modified or not, no further\n              substitution of old -> new is attempted.) Sum's _eval_subs\n              routine uses this strategy when a substitution is attempted\n              on any of its summation variables.\n        \"\"\"\n\n        def fallback(self, old, new):\n            \"\"\"\n            Try to replace old with new in any of self's arguments.\n            \"\"\"\n            hit = False\n            args = list(self.args)\n            for i, arg in enumerate(args):\n                if not hasattr(arg, '_eval_subs'):\n                    continue\n                arg = arg._subs(old, new, **hints)\n                if not _aresame(arg, args[i]):\n                    hit = True\n                    args[i] = arg\n            if hit:\n                rv = self.func(*args)\n                hack2 = hints.get('hack2', False)\n                if hack2 and self.is_Mul and not rv.is_Mul:  # 2-arg hack\n                    coeff = S.One\n                    nonnumber = []\n                    for i in args:\n                        if i.is_Number:\n                            coeff *= i\n                        else:\n                            nonnumber.append(i)\n                    nonnumber = self.func(*nonnumber)\n                    if coeff is S.One:\n                        return nonnumber\n                    else:\n                        return self.func(coeff, nonnumber, evaluate=False)\n                return rv\n            return self\n\n        if _aresame(self, old):\n            return new\n\n        rv = self._eval_subs(old, new)\n        if rv is None:\n            rv = fallback(self, old, new)\n        return rv",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.basic.Basic._subs",
+                "documentation": "Substitutes an expression old -> new.\n\nIf self is not equal to old then _eval_subs is called.\nIf _eval_subs doesn't want to make any special replacement\nthen a None is received which indicates that the fallback\nshould be applied wherein a search for replacements is made\namongst the arguments of self.\n\n>>> from sympy import Add\n>>> from sympy.abc import x, y, z\n\nExamples\n========\n\nAdd's _eval_subs knows how to target x + y in the following\nso it makes the change:\n\n    >>> (x + y + z).subs(x + y, 1)\n    z + 1\n\nAdd's _eval_subs doesn't need to know how to find x + y in\nthe following:\n\n    >>> Add._eval_subs(z*(x + y) + 3, x + y, 1) is None\n    True\n\nThe returned None will cause the fallback routine to traverse the args and\npass the z*(x + y) arg to Mul where the change will take place and the\nsubstitution will succeed:\n\n    >>> (z*(x + y) + 3).subs(x + y, 1)\n    z + 3\n\n** Developers Notes **\n\nAn _eval_subs routine for a class should be written if:\n\n    1) any arguments are not instances of Basic (e.g. bool, tuple);\n\n    2) some arguments should not be targeted (as in integration\n       variables);\n\n    3) if there is something other than a literal replacement\n       that should be attempted (as in Piecewise where the condition\n       may be updated without doing a replacement).\n\nIf it is overridden, here are some special cases that might arise:\n\n    1) If it turns out that no special change was made and all\n       the original sub-arguments should be checked for\n       replacements then None should be returned.\n\n    2) If it is necessary to do substitutions on a portion of\n       the expression then _subs should be called. _subs will\n       handle the case of any sub-expression being equal to old\n       (which usually would not be the case) while its fallback\n       will handle the recursion into the sub-arguments. For\n       example, after Add's _eval_subs removes some matching terms\n       it must process the remaining terms so it calls _subs\n       on each of the un-matched terms and then adds them\n       onto the terms previously obtained.\n\n   3) If the initial expression should remain unchanged then\n      the original expression should be returned. (Whenever an\n      expression is returned, modified or not, no further\n      substitution of old -> new is attempted.) Sum's _eval_subs\n      routine uses this strategy when a substitution is attempted\n      on any of its summation variables.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/basic.py"
+                    },
+                    {
+                        "start_node": "sympy/core/basic.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.basic.Basic._subs"
+                    }
+                ],
+                "similarity": 0.16925306521353267,
+                "end_line": 1035,
+                "signature": "sympy.core.basic.Basic._subs(self, old, new)"
+            },
+            {
+                "start_line": 980,
+                "file_path": "sympy/polys/polytools.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_expr(f, *gens):\n        \"\"\"\n        Convert a Poly instance to an Expr instance.\n\n        Examples\n        ========\n\n        >>> from sympy import Poly\n        >>> from sympy.abc import x, y\n\n        >>> f = Poly(x**2 + 2*x*y**2 - y, x, y)\n\n        >>> f.as_expr()\n        x**2 + 2*x*y**2 - y\n        >>> f.as_expr({x: 5})\n        10*y**2 - y + 25\n        >>> f.as_expr(5, 6)\n        379\n\n        \"\"\"\n        if not gens:\n            gens = f.gens\n        elif len(gens) == 1 and isinstance(gens[0], dict):\n            mapping = gens[0]\n            gens = list(f.gens)\n\n            for gen, value in mapping.items():\n                try:\n                    index = gens.index(gen)\n                except ValueError:\n                    raise GeneratorsError(\n                        \"%s doesn't have %s as generator\" % (f, gen))\n                else:\n                    gens[index] = value\n\n        return basic_from_dict(f.rep.to_sympy_dict(), *gens)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.polys.polytools.Poly.as_expr",
+                "documentation": "Convert a Poly instance to an Expr instance.\n\nExamples\n========\n\n>>> from sympy import Poly\n>>> from sympy.abc import x, y\n\n>>> f = Poly(x**2 + 2*x*y**2 - y, x, y)\n\n>>> f.as_expr()\nx**2 + 2*x*y**2 - y\n>>> f.as_expr({x: 5})\n10*y**2 - y + 25\n>>> f.as_expr(5, 6)\n379",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/polys/polytools.py"
+                    },
+                    {
+                        "start_node": "sympy/polys/polytools.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.polys.polytools.Poly.as_expr"
+                    }
+                ],
+                "similarity": 0.16875103051868937,
+                "end_line": 1015,
+                "signature": "sympy.polys.polytools.Poly.as_expr(f)"
+            },
+            {
+                "start_line": 113,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __abs__(self):\n        from sympy import Abs\n        return Abs(self)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.__abs__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.__abs__"
+                    }
+                ],
+                "similarity": 0.16869759119381164,
+                "end_line": 115,
+                "signature": "sympy.core.expr.Expr.__abs__(self)"
+            },
+            {
+                "start_line": 297,
+                "file_path": "sympy/core/basic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __eq__(self, other):\n        \"\"\"Return a boolean indicating whether a == b on the basis of\n        their symbolic trees.\n\n        This is the same as a.compare(b) == 0 but faster.\n\n        Notes\n        =====\n\n        If a class that overrides __eq__() needs to retain the\n        implementation of __hash__() from a parent class, the\n        interpreter must be told this explicitly by setting __hash__ =\n        <ParentClass>.__hash__. Otherwise the inheritance of __hash__()\n        will be blocked, just as if __hash__ had been explicitly set to\n        None.\n\n        References\n        ==========\n\n        from http://docs.python.org/dev/reference/datamodel.html#object.__hash__\n        \"\"\"\n        from sympy import Pow\n        if self is other:\n            return True\n\n        if type(self) is not type(other):\n            try:\n                other = _sympify(other)\n            except SympifyError:\n                return NotImplemented\n\n            if type(self) != type(other):\n                return False\n\n        return self._hashable_content() == other._hashable_content()",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.basic.Basic.__eq__",
+                "documentation": "Return a boolean indicating whether a == b on the basis of\ntheir symbolic trees.\n\nThis is the same as a.compare(b) == 0 but faster.\n\nNotes\n=====\n\nIf a class that overrides __eq__() needs to retain the\nimplementation of __hash__() from a parent class, the\ninterpreter must be told this explicitly by setting __hash__ =\n<ParentClass>.__hash__. Otherwise the inheritance of __hash__()\nwill be blocked, just as if __hash__ had been explicitly set to\nNone.\n\nReferences\n==========\n\nfrom http://docs.python.org/dev/reference/datamodel.html#object.__hash__",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/basic.py"
+                    },
+                    {
+                        "start_node": "sympy/core/basic.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.basic.Basic.__eq__"
+                    }
+                ],
+                "similarity": 0.16833746155351842,
+                "end_line": 331,
+                "signature": "sympy.core.basic.Basic.__eq__(self, other)"
+            },
+            {
+                "start_line": 1571,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __add__(self, other):\n        if global_evaluate[0]:\n            if isinstance(other, Integer):\n                return Rational(self.p + self.q*other.p, self.q, 1)\n            elif isinstance(other, Rational):\n                #TODO: this can probably be optimized more\n                return Rational(self.p*other.q + self.q*other.p, self.q*other.q)\n            elif isinstance(other, Float):\n                return other + self\n            else:\n                return Number.__add__(self, other)\n        return Number.__add__(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Rational.__add__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Rational.__add__"
+                    }
+                ],
+                "similarity": 0.16831508120089556,
+                "end_line": 1582,
+                "signature": "sympy.core.numbers.Rational.__add__(self, other)"
+            },
+            {
+                "start_line": 1181,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __div__(self, other):\n        if isinstance(other, Number) and other != 0 and global_evaluate[0]:\n            rhs, prec = other._as_mpf_op(self._prec)\n            return Float._new(mlib.mpf_div(self._mpf_, rhs, prec, rnd), prec)\n        return Number.__div__(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Float.__div__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Float.__div__"
+                    }
+                ],
+                "similarity": 0.16817149326055136,
+                "end_line": 1185,
+                "signature": "sympy.core.numbers.Float.__div__(self, other)"
+            },
+            {
+                "start_line": 274,
+                "file_path": "sympy/functions/elementary/complexes.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def eval(cls, arg):\n        # handle what we can\n        if arg.is_Mul:\n            c, args = arg.as_coeff_mul()\n            unk = []\n            s = sign(c)\n            for a in args:\n                if a.is_negative:\n                    s = -s\n                elif a.is_positive:\n                    pass\n                else:\n                    ai = im(a)\n                    if a.is_imaginary and ai.is_comparable:  # i.e. a = I*real\n                        s *= S.ImaginaryUnit\n                        if ai.is_negative:\n                            # can't use sign(ai) here since ai might not be\n                            # a Number\n                            s = -s\n                    else:\n                        unk.append(a)\n            if c is S.One and len(unk) == len(args):\n                return None\n            return s * cls(arg._new_rawargs(*unk))\n        if arg is S.NaN:\n            return S.NaN\n        if arg.is_zero:  # it may be an Expr that is zero\n            return S.Zero\n        if arg.is_positive:\n            return S.One\n        if arg.is_negative:\n            return S.NegativeOne\n        if arg.is_Function:\n            if isinstance(arg, sign):\n                return arg\n        if arg.is_imaginary:\n            if arg.is_Pow and arg.exp is S.Half:\n                # we catch this because non-trivial sqrt args are not expanded\n                # e.g. sqrt(1-sqrt(2)) --x-->  to I*sqrt(sqrt(2) - 1)\n                return S.ImaginaryUnit\n            arg2 = -S.ImaginaryUnit * arg\n            if arg2.is_positive:\n                return S.ImaginaryUnit\n            if arg2.is_negative:\n                return -S.ImaginaryUnit",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.functions.elementary.complexes.sign.eval",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/functions/elementary/complexes.py"
+                    },
+                    {
+                        "start_node": "sympy/functions/elementary/complexes.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.functions.elementary.complexes.sign.eval"
+                    }
+                ],
+                "similarity": 0.16764798810242273,
+                "end_line": 318,
+                "signature": "sympy.functions.elementary.complexes.sign.eval(cls, arg)"
+            },
+            {
+                "start_line": 2773,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __div__(self, other):\n        if isinstance(other, Number):\n            if other is S.Infinity or \\\n                other is S.NegativeInfinity or \\\n                    other is S.NaN:\n                return S.NaN\n            elif other.is_Float:\n                if other == Float('-inf') or \\\n                        other == Float('inf'):\n                    return S.NaN\n                elif other.is_nonnegative:\n                    return Float('inf')\n                else:\n                    return Float('-inf')\n            else:\n                if other >= 0:\n                    return S.Infinity\n                else:\n                    return S.NegativeInfinity\n        return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Infinity.__div__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Infinity.__div__"
+                    }
+                ],
+                "similarity": 0.16646689110226365,
+                "end_line": 2792,
+                "signature": "sympy.core.numbers.Infinity.__div__(self, other)"
+            },
+            {
+                "start_line": 2753,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __mul__(self, other):\n        if isinstance(other, Number):\n            if other is S.Zero or other is S.NaN:\n                return S.NaN\n            elif other.is_Float:\n                if other == 0:\n                    return S.NaN\n                if other > 0:\n                    return Float('inf')\n                else:\n                    return Float('-inf')\n            else:\n                if other > 0:\n                    return S.Infinity\n                else:\n                    return S.NegativeInfinity\n        return NotImplemented",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Infinity.__mul__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Infinity.__mul__"
+                    }
+                ],
+                "similarity": 0.16629191417221786,
+                "end_line": 2769,
+                "signature": "sympy.core.numbers.Infinity.__mul__(self, other)"
+            },
+            {
+                "start_line": 3223,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def cancel(self, *gens, **args):\n        \"\"\"See the cancel function in sympy.polys\"\"\"\n        from sympy.polys import cancel\n        return cancel(self, *gens, **args)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.cancel",
+                "documentation": "See the cancel function in sympy.polys",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.cancel"
+                    }
+                ],
+                "similarity": 0.16535123848221284,
+                "end_line": 3226,
+                "signature": "sympy.core.expr.Expr.cancel(self)"
+            },
+            {
+                "start_line": 2231,
+                "file_path": "sympy/core/expr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def could_extract_minus_sign(self):\n        \"\"\"Return True if self is not in a canonical form with respect\n        to its sign.\n\n        For most expressions, e, there will be a difference in e and -e.\n        When there is, True will be returned for one and False for the\n        other; False will be returned if there is no difference.\n\n        Examples\n        ========\n\n        >>> from sympy.abc import x, y\n        >>> e = x - y\n        >>> {i.could_extract_minus_sign() for i in (e, -e)}\n        {False, True}\n\n        \"\"\"\n        negative_self = -self\n        if self == negative_self:\n            return False  # e.g. zoo*x == -zoo*x\n        self_has_minus = (self.extract_multiplicatively(-1) is not None)\n        negative_self_has_minus = (\n            (negative_self).extract_multiplicatively(-1) is not None)\n        if self_has_minus != negative_self_has_minus:\n            return self_has_minus\n        else:\n            if self.is_Add:\n                # We choose the one with less arguments with minus signs\n                all_args = len(self.args)\n                negative_args = len([False for arg in self.args if arg.could_extract_minus_sign()])\n                positive_args = all_args - negative_args\n                if positive_args > negative_args:\n                    return False\n                elif positive_args < negative_args:\n                    return True\n            elif self.is_Mul:\n                # We choose the one with an odd number of minus signs\n                num, den = self.as_numer_denom()\n                args = Mul.make_args(num) + Mul.make_args(den)\n                arg_signs = [arg.could_extract_minus_sign() for arg in args]\n                negative_args = list(filter(None, arg_signs))\n                return len(negative_args) % 2 == 1\n\n            # As a last resort, we choose the one with greater value of .sort_key()\n            return bool(self.sort_key() < negative_self.sort_key())",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.expr.Expr.could_extract_minus_sign",
+                "documentation": "Return True if self is not in a canonical form with respect\nto its sign.\n\nFor most expressions, e, there will be a difference in e and -e.\nWhen there is, True will be returned for one and False for the\nother; False will be returned if there is no difference.\n\nExamples\n========\n\n>>> from sympy.abc import x, y\n>>> e = x - y\n>>> {i.could_extract_minus_sign() for i in (e, -e)}\n{False, True}",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/expr.py"
+                    },
+                    {
+                        "start_node": "sympy/core/expr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.expr.Expr.could_extract_minus_sign"
+                    }
+                ],
+                "similarity": 0.16534713351856978,
+                "end_line": 2275,
+                "signature": "sympy.core.expr.Expr.could_extract_minus_sign(self)"
+            },
+            {
+                "start_line": 3671,
+                "file_path": "sympy/polys/polytools.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def cancel(f, g, include=False):\n        \"\"\"\n        Cancel common factors in a rational function ``f/g``.\n\n        Examples\n        ========\n\n        >>> from sympy import Poly\n        >>> from sympy.abc import x\n\n        >>> Poly(2*x**2 - 2, x).cancel(Poly(x**2 - 2*x + 1, x))\n        (1, Poly(2*x + 2, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'))\n\n        >>> Poly(2*x**2 - 2, x).cancel(Poly(x**2 - 2*x + 1, x), include=True)\n        (Poly(2*x + 2, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'))\n\n        \"\"\"\n        dom, per, F, G = f._unify(g)\n\n        if hasattr(F, 'cancel'):\n            result = F.cancel(G, include=include)\n        else:  # pragma: no cover\n            raise OperationNotSupported(f, 'cancel')\n\n        if not include:\n            if dom.has_assoc_Ring:\n                dom = dom.get_ring()\n\n            cp, cq, p, q = result\n\n            cp = dom.to_sympy(cp)\n            cq = dom.to_sympy(cq)\n\n            return cp/cq, per(p), per(q)\n        else:\n            return tuple(map(per, result))",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.polys.polytools.Poly.cancel",
+                "documentation": "Cancel common factors in a rational function ``f/g``.\n\nExamples\n========\n\n>>> from sympy import Poly\n>>> from sympy.abc import x\n\n>>> Poly(2*x**2 - 2, x).cancel(Poly(x**2 - 2*x + 1, x))\n(1, Poly(2*x + 2, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'))\n\n>>> Poly(2*x**2 - 2, x).cancel(Poly(x**2 - 2*x + 1, x), include=True)\n(Poly(2*x + 2, x, domain='ZZ'), Poly(x - 1, x, domain='ZZ'))",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/polys/polytools.py"
+                    },
+                    {
+                        "start_node": "sympy/polys/polytools.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.polys.polytools.Poly.cancel"
+                    }
+                ],
+                "similarity": 0.16492542212080286,
+                "end_line": 3706,
+                "signature": "sympy.polys.polytools.Poly.cancel(f, g, include)"
+            },
+            {
+                "start_line": 417,
+                "file_path": "sympy/core/function.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, *args, **options):\n        # Handle calls like Function('f')\n        if cls is Function:\n            return UndefinedFunction(*args, **options)\n\n        n = len(args)\n        if n not in cls.nargs:\n            # XXX: exception message must be in exactly this format to\n            # make it work with NumPy's functions like vectorize(). See,\n            # for example, https://github.com/numpy/numpy/issues/1697.\n            # The ideal solution would be just to attach metadata to\n            # the exception and change NumPy to take advantage of this.\n            temp = ('%(name)s takes %(qual)s %(args)s '\n                   'argument%(plural)s (%(given)s given)')\n            raise TypeError(temp % {\n                'name': cls,\n                'qual': 'exactly' if len(cls.nargs) == 1 else 'at least',\n                'args': min(cls.nargs),\n                'plural': 's'*(min(cls.nargs) != 1),\n                'given': n})\n\n        evaluate = options.get('evaluate', global_evaluate[0])\n        result = super(Function, cls).__new__(cls, *args, **options)\n        if evaluate and isinstance(result, cls) and result.args:\n            pr2 = min(cls._should_evalf(a) for a in result.args)\n            if pr2 > 0:\n                pr = max(cls._should_evalf(a) for a in result.args)\n                result = result.evalf(mlib.libmpf.prec_to_dps(pr))\n\n        return result",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.function.Function.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/function.py"
+                    },
+                    {
+                        "start_node": "sympy/core/function.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.function.Function.__new__"
+                    }
+                ],
+                "similarity": 0.16451425628271887,
+                "end_line": 446,
+                "signature": "sympy.core.function.Function.__new__(cls)"
+            },
+            {
+                "start_line": 2087,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __mul__(self, other):\n        if global_evaluate[0]:\n            if isinstance(other, integer_types):\n                return Integer(self.p*other)\n            elif isinstance(other, Integer):\n                return Integer(self.p*other.p)\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.p, other.q, igcd(self.p, other.q))\n            return Rational.__mul__(self, other)\n        return Rational.__mul__(self, other)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.numbers.Integer.__mul__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Integer.__mul__"
+                    }
+                ],
+                "similarity": 0.16451111673288094,
+                "end_line": 2096,
+                "signature": "sympy.core.numbers.Integer.__mul__(self, other)"
+            }
+        ],
+        "classes": [
+            {
+                "start_line": 27,
+                "file_path": "sympy/core/sympify.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class CantSympify(object):\n    \"\"\"\n    Mix in this trait to a class to disallow sympification of its instances.\n\n    Examples\n    ========\n\n    >>> from sympy.core.sympify import sympify, CantSympify\n\n    >>> class Something(dict):\n    ...     pass\n    ...\n    >>> sympify(Something())\n    {}\n\n    >>> class Something(dict, CantSympify):\n    ...     pass\n    ...\n    >>> sympify(Something())\n    Traceback (most recent call last):\n    ...\n    SympifyError: SympifyError: {}\n\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.sympify.CantSympify",
+                "documentation": "Mix in this trait to a class to disallow sympification of its instances.\n\nExamples\n========\n\n>>> from sympy.core.sympify import sympify, CantSympify\n\n>>> class Something(dict):\n...     pass\n...\n>>> sympify(Something())\n{}\n\n>>> class Something(dict, CantSympify):\n...     pass\n...\n>>> sympify(Something())\nTraceback (most recent call last):\n...\nSympifyError: SympifyError: {}",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/sympify.py"
+                    },
+                    {
+                        "start_node": "sympy/core/sympify.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.sympify.CantSympify"
+                    }
+                ],
+                "similarity": 0.11218623837979741,
+                "end_line": 51,
+                "signature": null
+            },
+            {
+                "start_line": 397,
+                "file_path": "sympy/integrals/transforms.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MellinTransformStripError(ValueError):\n    \"\"\"\n    Exception raised by _rewrite_gamma. Mainly for internal use.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.integrals.transforms.MellinTransformStripError",
+                "documentation": "Exception raised by _rewrite_gamma. Mainly for internal use.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/integrals/transforms.py"
+                    },
+                    {
+                        "start_node": "sympy/integrals/transforms.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.integrals.transforms.MellinTransformStripError"
+                    }
+                ],
+                "similarity": 0.10604187382832551,
+                "end_line": 401,
+                "signature": null
+            },
+            {
+                "start_line": 300,
+                "file_path": "sympy/integrals/meijerint.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class _CoeffExpValueError(ValueError):\n    \"\"\"\n    Exception raised by _get_coeff_exp, for internal use only.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.integrals.meijerint._CoeffExpValueError",
+                "documentation": "Exception raised by _get_coeff_exp, for internal use only.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/integrals/meijerint.py"
+                    },
+                    {
+                        "start_node": "sympy/integrals/meijerint.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.integrals.meijerint._CoeffExpValueError"
+                    }
+                ],
+                "similarity": 0.09622913075525412,
+                "end_line": 304,
+                "signature": null
+            },
+            {
+                "start_line": 362,
+                "file_path": "sympy/core/operations.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ShortCircuit(Exception):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.operations.ShortCircuit",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/operations.py"
+                    },
+                    {
+                        "start_node": "sympy/core/operations.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.operations.ShortCircuit"
+                    }
+                ],
+                "similarity": 0.09480010710615766,
+                "end_line": 363,
+                "signature": null
+            },
+            {
+                "start_line": 1835,
+                "file_path": "sympy/functions/elementary/trigonometric.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InverseTrigonometricFunction(Function):\n    \"\"\"Base class for inverse trigonometric functions.\"\"\"\n\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.functions.elementary.trigonometric.InverseTrigonometricFunction",
+                "documentation": "Base class for inverse trigonometric functions.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/functions/elementary/trigonometric.py"
+                    },
+                    {
+                        "start_node": "sympy/functions/elementary/trigonometric.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.functions.elementary.trigonometric.InverseTrigonometricFunction"
+                    }
+                ],
+                "similarity": 0.09477804088985234,
+                "end_line": 1838,
+                "signature": null
+            },
+            {
+                "start_line": 21,
+                "file_path": "sympy/core/mul.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class NC_Marker:\n    is_Order = False\n    is_Mul = False\n    is_Number = False\n    is_Poly = False\n\n    is_commutative = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.mul.NC_Marker",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/mul.py"
+                    },
+                    {
+                        "start_node": "sympy/core/mul.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.mul.NC_Marker"
+                    }
+                ],
+                "similarity": 0.08239221468648643,
+                "end_line": 27,
+                "signature": null
+            },
+            {
+                "start_line": 190,
+                "file_path": "sympy/core/compatibility.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class NotIterable:\n    \"\"\"\n    Use this as mixin when creating a class which is not supposed to return\n    true when iterable() is called on its instances. I.e. avoid infinite loop\n    when calling e.g. list() on the instance\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.compatibility.NotIterable",
+                "documentation": "Use this as mixin when creating a class which is not supposed to return\ntrue when iterable() is called on its instances. I.e. avoid infinite loop\nwhen calling e.g. list() on the instance",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/compatibility.py"
+                    },
+                    {
+                        "start_node": "sympy/core/compatibility.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.compatibility.NotIterable"
+                    }
+                ],
+                "similarity": 0.08154119970521996,
+                "end_line": 196,
+                "signature": null
+            },
+            {
+                "start_line": 49,
+                "file_path": "sympy/core/evalf.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class PrecisionExhausted(ArithmeticError):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.evalf.PrecisionExhausted",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/evalf.py"
+                    },
+                    {
+                        "start_node": "sympy/core/evalf.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.evalf.PrecisionExhausted"
+                    }
+                ],
+                "similarity": 0.08146024891180638,
+                "end_line": 50,
+                "signature": null
+            },
+            {
+                "start_line": 1826,
+                "file_path": "sympy/integrals/transforms.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InverseHankelTransform(HankelTypeTransform):\n    \"\"\"\n    Class representing unevaluated inverse Hankel transforms.\n\n    For usage of this class, see the :class:`IntegralTransform` docstring.\n\n    For how to compute inverse Hankel transforms, see the\n    :func:`inverse_hankel_transform` docstring.\n    \"\"\"\n\n    _name = 'Inverse Hankel'",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.integrals.transforms.InverseHankelTransform",
+                "documentation": "Class representing unevaluated inverse Hankel transforms.\n\nFor usage of this class, see the :class:`IntegralTransform` docstring.\n\nFor how to compute inverse Hankel transforms, see the\n:func:`inverse_hankel_transform` docstring.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/integrals/transforms.py"
+                    },
+                    {
+                        "start_node": "sympy/integrals/transforms.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.integrals.transforms.InverseHankelTransform"
+                    }
+                ],
+                "similarity": 0.0804249103035383,
+                "end_line": 1836,
+                "signature": null
+            },
+            {
+                "start_line": 329,
+                "file_path": "sympy/physics/quantum/state.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class State(StateBase):\n    \"\"\"General abstract quantum state used as a base class for Ket and Bra.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.physics.quantum.state.State",
+                "documentation": "General abstract quantum state used as a base class for Ket and Bra.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/physics/quantum/state.py"
+                    },
+                    {
+                        "start_node": "sympy/physics/quantum/state.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.physics.quantum.state.State"
+                    }
+                ],
+                "similarity": 0.07903263303767305,
+                "end_line": 331,
+                "signature": null
+            },
+            {
+                "start_line": 1770,
+                "file_path": "sympy/integrals/transforms.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class HankelTransform(HankelTypeTransform):\n    \"\"\"\n    Class representing unevaluated Hankel transforms.\n\n    For usage of this class, see the :class:`IntegralTransform` docstring.\n\n    For how to compute Hankel transforms, see the :func:`hankel_transform`\n    docstring.\n    \"\"\"\n\n    _name = 'Hankel'",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.integrals.transforms.HankelTransform",
+                "documentation": "Class representing unevaluated Hankel transforms.\n\nFor usage of this class, see the :class:`IntegralTransform` docstring.\n\nFor how to compute Hankel transforms, see the :func:`hankel_transform`\ndocstring.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/integrals/transforms.py"
+                    },
+                    {
+                        "start_node": "sympy/integrals/transforms.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.integrals.transforms.HankelTransform"
+                    }
+                ],
+                "similarity": 0.076515471840708,
+                "end_line": 1780,
+                "signature": null
+            },
+            {
+                "start_line": 255,
+                "file_path": "sympy/core/facts.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TautologyDetected(Exception):\n    \"\"\"(internal) Prover uses it for reporting detected tautology\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.facts.TautologyDetected",
+                "documentation": "(internal) Prover uses it for reporting detected tautology",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/facts.py"
+                    },
+                    {
+                        "start_node": "sympy/core/facts.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.facts.TautologyDetected"
+                    }
+                ],
+                "similarity": 0.0637968467061931,
+                "end_line": 257,
+                "signature": null
+            },
+            {
+                "start_line": 87,
+                "file_path": "sympy/core/function.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class PoleError(Exception):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.core.function.PoleError",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/function.py"
+                    },
+                    {
+                        "start_node": "sympy/core/function.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.function.PoleError"
+                    }
+                ],
+                "similarity": 0.05671119283942012,
+                "end_line": 88,
+                "signature": null
+            },
+            {
+                "start_line": 1110,
+                "file_path": "sympy/functions/combinatorial/numbers.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class _MultisetHistogram(tuple):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.functions.combinatorial.numbers._MultisetHistogram",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/functions/combinatorial/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/functions/combinatorial/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.functions.combinatorial.numbers._MultisetHistogram"
+                    }
+                ],
+                "similarity": 0.02684697936431206,
+                "end_line": 1111,
+                "signature": null
+            }
+        ],
+        "issues": [
+            {
+                "content": "Compare:\r\n\r\n```\r\n>>> a = Symbol('a', integer=True, positive=True)\r\n>>> e = (-a)**x * a**(-x)\r\n>>> f = simplify(e)\r\n>>> print(e)\r\na**(-x)*(-a)**x\r\n>>> print(f)\r\n(-1)**x\r\n>>> t = -S(10)/3\r\n>>> n1 = e.subs(x,t)\r\n>>> n2 = f.subs(x,t)\r\n>>> print(N(n1))\r\n-0.5 + 0.866025403784439*I\r\n>>> print(N(n2))\r\n-0.5 + 0.866025403784439*I\r\n```\r\n\r\nvs\r\n\r\n```\r\n>>> a = S(2)\r\n>>> e = (-a)**x * a**(-x)\r\n>>> f = simplify(e)\r\n>>> print(e)\r\n(-2)**x*2**(-x)\r\n>>> print(f)\r\n(-1)**x\r\n>>> t = -S(10)/3\r\n>>> n1 = e.subs(x,t)\r\n>>> n2 = f.subs(x,t)\r\n>>> print(N(n1))\r\n0.5 - 0.866025403784439*I\r\n>>> print(N(n2))\r\n-0.5 + 0.866025403784439*I\r\n```\n",
+                "distance": 0,
+                "title": "Inconsistency when simplifying (-a)**x * a**(-x), a a positive integer",
+                "name": "root",
+                "path": [],
+                "issue_id": "root",
+                "similarity": 2.0,
+                "type": "issue"
+            },
+            {
+                "start_line": null,
+                "file_path": null,
+                "issue_id": "14018",
+                "type": "issue",
+                "content": "Compare:\r\n\r\n```\r\n>>> a = Symbol('a', integer=True, positive=True)\r\n>>> e = (-a)**x * a**(-x)\r\n>>> f = simplify(e)\r\n>>> print(e)\r\na**(-x)*(-a)**x\r\n>>> print(f)\r\n(-1)**x\r\n>>> t = -S(10)/3\r\n>>> n1 = e.subs(x,t)\r\n>>> n2 = f.subs(x,t)\r\n>>> print(N(n1))\r\n-0.5 + 0.866025403784439*I\r\n>>> print(N(n2))\r\n-0.5 + 0.866025403784439*I\r\n```\r\n\r\nvs\r\n\r\n```\r\n>>> a = S(2)\r\n>>> e = (-a)**x * a**(-x)\r\n>>> f = simplify(e)\r\n>>> print(e)\r\n(-2)**x*2**(-x)\r\n>>> print(f)\r\n(-1)**x\r\n>>> t = -S(10)/3\r\n>>> n1 = e.subs(x,t)\r\n>>> n2 = f.subs(x,t)\r\n>>> print(N(n1))\r\n0.5 - 0.866025403784439*I\r\n>>> print(N(n2))\r\n-0.5 + 0.866025403784439*I\r\n```\n\n\nComment by normalhuman:\nMore succinctly, the problem is\r\n```\r\n>>> (-2)**(-S(10)/3)\r\n-(-2)**(2/3)/16\r\n```\r\nPow is supposed to use the principal branch, which means (-2) has complex argument pi, which under exponentiation becomes `-10*pi/3` or equivalently `2*pi/3`. But the result of automatic simplification is different: its argument is -pi/3. \r\n\r\nThe base (-1) is handled correctly, though.\r\n```\r\n>>> (-1)**(-S(10)/3)\r\n(-1)**(2/3)\r\n```\r\nHence the inconsistency, because the simplified form of the product has (-1) in its base.",
+                "source_code": null,
+                "distance": 0.25,
+                "title": "Inconsistency when simplifying (-a)**x * a**(-x), a a positive integer",
+                "name": "issue#14018",
+                "documentation": null,
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "issue#14018"
+                    }
+                ],
+                "similarity": 0.8579659609845252,
+                "end_line": null,
+                "signature": null
+            },
+            {
+                "start_line": null,
+                "file_path": null,
+                "issue_id": "14024",
+                "type": "issue",
+                "content": "#### References to other Issues or PRs\r\n\r\nFixes #14018\r\n\r\n#### Brief description of what is fixed or changed\r\n\r\nGiven `b**expt` where b and expt are negative, SymPy tries to reduce this to positive base and exponent. For integer b and rational expt, it [currently rewrites](https://github.com/sympy/sympy/blob/master/sympy/core/numbers.py#L2225) as\r\n\r\n```\r\n-(-1)**((expt.p % expt.q) / S(expt.q))*Rational(1, -b)**(-expt)\r\n```\r\nwhich is incorrect. The correct formula would be\r\n```\r\n(-1)**m * (-1)**(k / S(expt.q))*Rational(1, -b)**(-expt)\r\n```\r\nwhere `m, k = divmod(p, q)`. For odd m the two formulas agree, and only this case was covered by tests.\r\n\r\nSince the correct logic was already [implemented in NegativeOne class](https://github.com/sympy/sympy/blob/master/sympy/core/numbers.py#L2629), instead of duplicating the code I went with the rewrite\r\n```\r\n(-1)**expt * Rational(1, -b)**(-expt)\r\n```\r\n\r\nSome examples of incorrect evaluation in current master\r\n\r\n```\r\n>>> Pow(-2, -S(10)/3).n()\r\n0.0496062828740062 - 0.0859206023124127*I   # wrong\r\n>>> Pow(-2, -S(10)/3, evaluate=False).n()\r\n-0.0496062828740062 + 0.0859206023124127*I  # correct\r\n>>> (-2)**(-10/3)\r\n(-0.049606282874006216+0.08592060231241266j)  # Python agrees\r\n```\r\n\r\n```\r\n>>> Pow(S(-2)/3), S(-7)/4).n()\r\n-1.43762198455411 - 1.43762198455411*I      # wrong\r\n>>> Pow(S(-2)/3), S(-7)/4, evaluate=False).n()\r\n1.43762198455411 + 1.43762198455411*I       # correct\r\n>>> (-2/3)**(-7/4)\r\n(1.437621984554113+1.4376219845541136j)     # Python agrees\r\n```\r\n \r\n\r\n \r\n\n\n",
+                "source_code": null,
+                "distance": 0.5,
+                "title": "Fix the negative rational powers of negative integers and rationals",
+                "name": "pr#14024",
+                "documentation": null,
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "issue#14018"
+                    },
+                    {
+                        "start_node": "issue#14018",
+                        "description": "referenced by issue",
+                        "type": "RELATED",
+                        "end_node": "pr#14024"
+                    }
+                ],
+                "similarity": 0.5487917039074314,
+                "end_line": null,
+                "signature": null
+            }
+        ]
+    },
+    "artifact_stats": {
+        "skipped_due_to_time": 2,
+        "valid_related_items": 30
+    }
+}

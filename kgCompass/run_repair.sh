@@ -19,6 +19,7 @@ unset all_proxy
 INSTANCE_ID=$1
 MODEL_NAME="gemini" # Hardcoded to deepseek
 TEMPERATURE=${TEMPERATURE:-0.3}
+TRACES_DIR=${TRACES_DIR:-"../mini-swe-agent/outputs/stack-traces"}
 
 if [ -z "$INSTANCE_ID" ]; then
   echo "Usage: $0 <instance_id>"
@@ -115,7 +116,12 @@ if [ -f "$KG_RESULT_FILE" ]; then
     echo "✅ KG location file already exists, skipping."
 else
     # Assumes fl.py writes its output to a JSON file.
-    python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
+    if [ -d "$TRACES_DIR" ]; then
+        python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR" swe-bench "$TRACES_DIR"
+    else
+        echo "⚠️  TRACES_DIR '$TRACES_DIR' not found, running without trace augmentation."
+        python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
+    fi
     echo "✅ KG location saved to $KG_RESULT_FILE"
 fi
 
