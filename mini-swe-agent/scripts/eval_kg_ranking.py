@@ -132,7 +132,8 @@ def main():
     print(f"Instances evaluated : {n}")
     for k, v in skipped.items():
         if v: print(f"  Skipped ({k}): {v}")
-    print(f"\nCoverage (hit anywhere): {hits}/{n}  ({hits/n:.1%})")
+    cov = hits / n if n else 0.0
+    print(f"\nCoverage (hit anywhere): {hits}/{n}  ({cov:.1%})")
     print(f"MRR                    : {mrr(ranks):.4f}")
     for k in RECALL_K:
         print(f"Recall@{k:<3}             : {recall_at_k(ranks, k):.1%}")
@@ -168,7 +169,7 @@ def main():
         elif r <= 25:        buckets["21-25"]      += 1
         else:                buckets[">25"]        += 1
     for label, count in buckets.items():
-        print(f"  {label:>10}: {count:>4}  ({count/n:.1%})")
+        print(f"  {label:>10}: {count:>4}  ({count/n:.1%})" if n else f"  {label:>10}: {count:>4}")
 
     out_path = tests_dir / "kg_ranking_eval.json"
     out_path.write_text(json.dumps(results, indent=2))

@@ -1,0 +1,130 @@
+The `RecursionError` occurs when `expr.is_zero` is called for `cosh(acos(-i + acosh(-g + i)))`. The comments indicate that the root cause is a recursive loop within `Abs.eval` (located in `sympy/functions/elementary/complexes.py`) and `Pow._eval_is_real` (in `sympy/core/power.py`), triggered when trying to compute the imaginary part of the `acos` expression. Specifically, `abs(im(acos(...)))` leads to this recursion.
+
+The provided code segments do not include `sympy/functions/elementary/complexes.py` or `sympy/core/power.py`, meaning the direct fix for `Abs.eval` suggested in the comments cannot be applied.
+
+However, the recursion is triggered when `as_real_imag()` is called on the argument of `cosh`. The `cosh._eval_is_real` and `cosh._eval_is_positive` methods (both present in `sympy/functions/elementary/hyperbolic.py`) both call `arg.as_real_imag()`.
+
+The strategy is to prevent these methods from calling `arg.as_real_imag()` if the real/imaginary properties of `arg` are undetermined (`None`). This acts as a defensive measure to avoid triggering the deep recursion, assuming that `arg.is_real` and `arg.is_imaginary` themselves do not recurse, but `arg.as_real_imag()` does for the problematic expression. By returning `None` earlier, we propagate the uncertainty without hitting the recursion limit.
+
+Here are the proposed changes to `cosh._eval_is_real` and `cosh._eval_is_positive` in `sympy/functions/elementary/hyperbolic.py`:
+
+```python
+### sympy/functions/elementary/hyperbolic.py
+- signature : sympy.functions.elementary.hyperbolic.cosh._eval_is_real(self)
+- start_line : 427
+- end_line : 438
+<<<<<<< SEARCH
+    def _eval_is_real(self):
+        arg = self.args[0]
+
+        # `cosh(x)` is real for real OR purely imaginary `x`
+        if arg.is_real or arg.is_imaginary:
+            return True
+
+        # cosh(a+ib) = cos(b)*cosh(a) + i*sin(b)*sinh(a)
+        # the imaginary part can be an expression like n*pi
+        # if not, check if the imaginary part is a number
+        re, im = arg.as_real_imag()
+        return (im%pi).is_zero
+=======
+    def _eval_is_real(self):
+        arg = self.args[0]
+
+        # `cosh(x)` is real for real OR purely imaginary `x`
+        is_real_arg = arg.is_real
+        is_imaginary_arg = arg.is_imaginary
+
+        if is_real_arg is True or is_imaginary_arg is True:
+            return True
+        if is_real_arg is None or is_imaginary_arg is None:
+            # If we cannot determine if the argument is real or imaginary,
+            # we might not be able to determine if cosh(arg) is real.
+            # Avoid calling as_real_imag() if properties are undetermined,
+            # as this can lead to recursion issues for complex arguments.
+            return None
+
+        # cosh(a+ib) = cos(b)*cosh(a) + i*sin(b)*sinh(a)
+        # the imaginary part can be an expression like n*pi
+        # if not, check if the imaginary part is a number
+        re, im = arg.as_real_imag()
+        return (im%pi).is_zero
+>>>>>>> REPLACE
+```
+
+```python
+### sympy/functions/elementary/hyperbolic.py
+- signature : sympy.functions.elementary.hyperbolic.cosh._eval_is_positive(self)
+- start_line : 440
+- end_line : 469
+<<<<<<< SEARCH
+    def _eval_is_positive(self):
+        # cosh(x+I*y) = cos(y)*cosh(x) + I*sin(y)*sinh(x)
+        # cosh(z) is positive iff it is real and the real part is positive.
+        # So we need sin(y)*sinh(x) = 0 which gives x=0 or y=n*pi
+        # Case 1 (y=n*pi): cosh(z) = (-1)**n * cosh(x) -> positive for n even
+        # Case 2 (x=0): cosh(z) = cos(y) -> positive when cos(y) is positive
+        z = self.args[0]
+
+        x, y = z.as_real_imag()
+        ymod = y % (2*pi)
+
+        yzero = ymod.is_zero
+        # shortcut if ymod is zero
+        if yzero:
+            return True
+
+        xzero = x.is_zero
+        # shortcut x is not zero
+        if xzero is False:
+            return yzero
+
+        return fuzzy_or([
+                # Case 1:
+                yzero,
+                # Case 2:
+                fuzzy_and([
+                    xzero,
+                    fuzzy_or([ymod < pi/2, ymod > 3*pi/2])
+                ])
+            ])
+=======
+    def _eval_is_positive(self):
+        # cosh(x+I*y) = cos(y)*cosh(x) + I*sin(y)*sinh(x)
+        # cosh(z) is positive iff it is real and the real part is positive.
+        # So we need sin(y)*sinh(x) = 0 which gives x=0 or y=n*pi
+        # Case 1 (y=n*pi): cosh(z) = (-1)**n * cosh(x) -> positive for n even
+        # Case 2 (x=0): cosh(z) = cos(y) -> positive when cos(y) is positive
+        z = self.args[0]
+
+        # Check if z is real or imaginary first to avoid calling as_real_imag()
+        # if properties are undetermined and might lead to recursion.
+        is_real_z = z.is_real
+        is_imaginary_z = z.is_imaginary
+
+        if is_real_z is None or is_imaginary_z is None:
+            return None # Cannot determine if z is real/imaginary, so cannot determine if cosh(z) is positive.
+
+        x, y = z.as_real_imag()
+        ymod = y % (2*pi)
+
+        yzero = ymod.is_zero
+        # shortcut if ymod is zero
+        if yzero:
+            return True
+
+        xzero = x.is_zero
+        # shortcut x is not zero
+        if xzero is False:
+            return yzero
+
+        return fuzzy_or([
+                # Case 1:
+                yzero,
+                # Case 2:
+                fuzzy_and([
+                    xzero,
+                    fuzzy_or([ymod < pi/2, ymod > 3*pi/2])
+                ])
+            ])
+>>>>>>> REPLACE
+```

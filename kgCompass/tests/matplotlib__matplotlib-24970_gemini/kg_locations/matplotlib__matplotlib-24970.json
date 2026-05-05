@@ -369,7 +369,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/category.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.category.UnitData.update"
                     }
@@ -667,35 +667,6 @@
                 "similarity": 0.12666393905596332,
                 "end_line": 454,
                 "signature": "lib.matplotlib.backends._backend_tk.FigureManagerTk.__init__(self, canvas, num, window)"
-            },
-            {
-                "start_line": 793,
-                "file_path": "lib/matplotlib/dates.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def format_ticks(self, values):\n        tickdatetime = [num2date(value, tz=self._tz) for value in values]\n        tickdate = np.array([tdt.timetuple()[:6] for tdt in tickdatetime])\n\n        # basic algorithm:\n        # 1) only display a part of the date if it changes over the ticks.\n        # 2) don't display the smaller part of the date if:\n        #    it is always the same or if it is the start of the\n        #    year, month, day etc.\n        # fmt for most ticks at this level\n        fmts = self.formats\n        # format beginnings of days, months, years, etc.\n        zerofmts = self.zero_formats\n        # offset fmt are for the offset in the upper left of the\n        # or lower right of the axis.\n        offsetfmts = self.offset_formats\n        show_offset = self.show_offset\n\n        # determine the level we will label at:\n        # mostly 0: years,  1: months,  2: days,\n        # 3: hours, 4: minutes, 5: seconds, 6: microseconds\n        for level in range(5, -1, -1):\n            unique = np.unique(tickdate[:, level])\n            if len(unique) > 1:\n                # if 1 is included in unique, the year is shown in ticks\n                if level < 2 and np.any(unique == 1):\n                    show_offset = False\n                break\n            elif level == 0:\n                # all tickdate are the same, so only micros might be different\n                # set to the most precise (6: microseconds doesn't exist...)\n                level = 5\n\n        # level is the basic level we will label at.\n        # now loop through and decide the actual ticklabels\n        zerovals = [0, 1, 1, 0, 0, 0, 0]\n        labels = [''] * len(tickdate)\n        for nn in range(len(tickdate)):\n            if level < 5:\n                if tickdate[nn][level] == zerovals[level]:\n                    fmt = zerofmts[level]\n                else:\n                    fmt = fmts[level]\n            else:\n                # special handling for seconds + microseconds\n                if (tickdatetime[nn].second == tickdatetime[nn].microsecond\n                        == 0):\n                    fmt = zerofmts[level]\n                else:\n                    fmt = fmts[level]\n            labels[nn] = tickdatetime[nn].strftime(fmt)\n\n        # special handling of seconds and microseconds:\n        # strip extra zeros and decimal if possible.\n        # this is complicated by two factors.  1) we have some level-4 strings\n        # here (i.e. 03:00, '0.50000', '1.000') 2) we would like to have the\n        # same number of decimals for each string (i.e. 0.5 and 1.0).\n        if level >= 5:\n            trailing_zeros = min(\n                (len(s) - len(s.rstrip('0')) for s in labels if '.' in s),\n                default=None)\n            if trailing_zeros:\n                for nn in range(len(labels)):\n                    if '.' in labels[nn]:\n                        labels[nn] = labels[nn][:-trailing_zeros].rstrip('.')\n\n        if show_offset:\n            # set the offset string:\n            self.offset_string = tickdatetime[-1].strftime(offsetfmts[level])\n            if self._usetex:\n                self.offset_string = _wrap_in_tex(self.offset_string)\n        else:\n            self.offset_string = ''\n\n        if self._usetex:\n            return [_wrap_in_tex(l) for l in labels]\n        else:\n            return labels",
-                "distance": 1.25,
-                "title": null,
-                "name": "lib.matplotlib.dates.ConciseDateFormatter.format_ticks",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "lib/matplotlib/dates.py"
-                    },
-                    {
-                        "start_node": "lib/matplotlib/dates.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "lib.matplotlib.dates.ConciseDateFormatter.format_ticks"
-                    }
-                ],
-                "similarity": 0.12646182406916412,
-                "end_line": 870,
-                "signature": "lib.matplotlib.dates.ConciseDateFormatter.format_ticks(self, values)"
             },
             {
                 "start_line": 508,
@@ -1210,7 +1181,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/__init__.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.__init__.RcParams._set"
                     }
@@ -1450,6 +1421,35 @@
                 "similarity": 0.12142361498761675,
                 "end_line": 4544,
                 "signature": "lib.matplotlib.patches.ConnectionPatch._get_xy(self, xy, s, axes)"
+            },
+            {
+                "start_line": 1028,
+                "file_path": "lib/matplotlib/colorbar.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def remove(self):\n        \"\"\"\n        Remove this colorbar from the figure.\n\n        If the colorbar was created with ``use_gridspec=True`` the previous\n        gridspec is restored.\n        \"\"\"\n        if hasattr(self.ax, '_colorbar_info'):\n            parents = self.ax._colorbar_info['parents']\n            for a in parents:\n                if self.ax in a._colorbars:\n                    a._colorbars.remove(self.ax)\n\n        self.ax.remove()\n\n        self.mappable.callbacks.disconnect(self.mappable.colorbar_cid)\n        self.mappable.colorbar = None\n        self.mappable.colorbar_cid = None\n        # Remove the extension callbacks\n        self.ax.callbacks.disconnect(self._extend_cid1)\n        self.ax.callbacks.disconnect(self._extend_cid2)\n\n        try:\n            ax = self.mappable.axes\n        except AttributeError:\n            return\n        try:\n            gs = ax.get_subplotspec().get_gridspec()\n            subplotspec = gs.get_topmost_subplotspec()\n        except AttributeError:\n            # use_gridspec was False\n            pos = ax.get_position(original=True)\n            ax._set_position(pos)\n        else:\n            # use_gridspec was True\n            ax.set_subplotspec(subplotspec)",
+                "distance": 1.25,
+                "title": null,
+                "name": "lib.matplotlib.colorbar.Colorbar.remove",
+                "documentation": "Remove this colorbar from the figure.\n\nIf the colorbar was created with ``use_gridspec=True`` the previous\ngridspec is restored.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "lib/matplotlib/colorbar.py"
+                    },
+                    {
+                        "start_node": "lib/matplotlib/colorbar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "lib.matplotlib.colorbar.Colorbar.remove"
+                    }
+                ],
+                "similarity": 0.1211709216598355,
+                "end_line": 1063,
+                "signature": "lib.matplotlib.colorbar.Colorbar.remove(self)"
             }
         ],
         "classes": [
@@ -1589,7 +1589,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/_api/deprecation.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib._api.deprecation.MatplotlibDeprecationWarning"
                     }
@@ -1792,7 +1792,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_nbagg.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_nbagg.NavigationIPy"
                     }
@@ -1879,7 +1879,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/__init__.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.__init__.__getattr__"
                     }
@@ -1995,7 +1995,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_nbagg.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_nbagg._BackendNbAgg"
                     }
@@ -2121,35 +2121,6 @@
                 "signature": null
             },
             {
-                "start_line": 206,
-                "file_path": "lib/matplotlib/dates.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class __getattr__:\n    JULIAN_OFFSET = _api.deprecated(\"3.7\")(property(lambda self: 1721424.5))",
-                "distance": 1.25,
-                "title": null,
-                "name": "lib.matplotlib.dates.__getattr__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "lib/matplotlib/dates.py"
-                    },
-                    {
-                        "start_node": "lib/matplotlib/dates.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "lib.matplotlib.dates.__getattr__"
-                    }
-                ],
-                "similarity": 0.07401761515325819,
-                "end_line": 207,
-                "signature": null
-            },
-            {
                 "start_line": 25,
                 "file_path": "lib/matplotlib/backends/backend_tkcairo.py",
                 "issue_id": null,
@@ -2227,7 +2198,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_nbagg.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_nbagg.FigureCanvasNbAgg"
                     }
@@ -2256,7 +2227,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_qtcairo.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_qtcairo._BackendQTCairo"
                     }
@@ -2314,7 +2285,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/rcsetup.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.rcsetup._ignorecase"
                     }
@@ -2517,7 +2488,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_webagg.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_webagg.FigureCanvasWebAgg"
                     }
@@ -2546,7 +2517,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_wxcairo.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_wxcairo._BackendWxCairo"
                     }
@@ -2778,7 +2749,7 @@
                     },
                     {
                         "start_node": "lib/matplotlib/backends/backend_gtk4agg.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "lib.matplotlib.backends.backend_gtk4agg._BackendGTK4Agg"
                     }
@@ -2901,6 +2872,35 @@
                 ],
                 "similarity": 0.05862799523693249,
                 "end_line": 875,
+                "signature": null
+            },
+            {
+                "start_line": 588,
+                "file_path": "lib/mpl_toolkits/mplot3d/axis3d.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class XAxis(Axis):\n    axis_name = \"x\"\n    get_view_interval, set_view_interval = maxis._make_getset_interval(\n        \"view\", \"xy_viewLim\", \"intervalx\")\n    get_data_interval, set_data_interval = maxis._make_getset_interval(\n        \"data\", \"xy_dataLim\", \"intervalx\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "lib.mpl_toolkits.mplot3d.axis3d.XAxis",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "lib/mpl_toolkits/mplot3d/axis3d.py"
+                    },
+                    {
+                        "start_node": "lib/mpl_toolkits/mplot3d/axis3d.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "lib.mpl_toolkits.mplot3d.axis3d.XAxis"
+                    }
+                ],
+                "similarity": 0.058478916378253254,
+                "end_line": 593,
                 "signature": null
             }
         ],

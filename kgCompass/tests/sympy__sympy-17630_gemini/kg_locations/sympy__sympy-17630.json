@@ -176,16 +176,16 @@
                 "signature": "sympy.matrices.common.MatrixArithmetic.__mul__(self, other)"
             },
             {
-                "start_line": 1293,
+                "start_line": 803,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def jordan_form(self, calc_transform=True, **kwargs):\n        \"\"\"Return `(P, J)` where `J` is a Jordan block\n        matrix and `P` is a matrix such that\n\n            `self == P*J*P**-1`\n\n\n        Parameters\n        ==========\n\n        calc_transform : bool\n            If ``False``, then only `J` is returned.\n        chop : bool\n            All matrices are convered to exact types when computing\n            eigenvalues and eigenvectors.  As a result, there may be\n            approximation errors.  If ``chop==True``, these errors\n            will be truncated.\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> m = Matrix([[ 6,  5, -2, -3], [-3, -1,  3,  3], [ 2,  1, -2, -3], [-1,  1,  5,  5]])\n        >>> P, J = m.jordan_form()\n        >>> J\n        Matrix([\n        [2, 1, 0, 0],\n        [0, 2, 0, 0],\n        [0, 0, 2, 1],\n        [0, 0, 0, 2]])\n\n        See Also\n        ========\n\n        jordan_block\n        \"\"\"\n        if not self.is_square:\n            raise NonSquareMatrixError(\"Only square matrices have Jordan forms\")\n\n        chop = kwargs.pop('chop', False)\n        mat = self\n        has_floats = any(v.has(Float) for v in self)\n\n        def restore_floats(*args):\n            \"\"\"If `has_floats` is `True`, cast all `args` as\n            matrices of floats.\"\"\"\n            if has_floats:\n                args = [m.evalf(chop=chop) for m in args]\n            if len(args) == 1:\n                return args[0]\n            return args\n\n        # cache calculations for some speedup\n        mat_cache = {}\n        def eig_mat(val, pow):\n            \"\"\"Cache computations of (self - val*I)**pow for quick\n            retrieval\"\"\"\n            if (val, pow) in mat_cache:\n                return mat_cache[(val, pow)]\n            if (val, pow - 1) in mat_cache:\n                mat_cache[(val, pow)] = mat_cache[(val, pow - 1)] * mat_cache[(val, 1)]\n            else:\n                mat_cache[(val, pow)] = (mat - val*self.eye(self.rows))**pow\n            return mat_cache[(val, pow)]\n\n        # helper functions\n        def nullity_chain(val):\n            \"\"\"Calculate the sequence  [0, nullity(E), nullity(E**2), ...]\n            until it is constant where `E = self - val*I`\"\"\"\n            # mat.rank() is faster than computing the null space,\n            # so use the rank-nullity theorem\n            cols = self.cols\n            ret = [0]\n            nullity = cols - eig_mat(val, 1).rank()\n            i = 2\n            while nullity != ret[-1]:\n                ret.append(nullity)\n                nullity = cols - eig_mat(val, i).rank()\n                i += 1\n            return ret\n\n        def blocks_from_nullity_chain(d):\n            \"\"\"Return a list of the size of each Jordan block.\n            If d_n is the nullity of E**n, then the number\n            of Jordan blocks of size n is\n\n                2*d_n - d_(n-1) - d_(n+1)\"\"\"\n            # d[0] is always the number of columns, so skip past it\n            mid = [2*d[n] - d[n - 1] - d[n + 1] for n in range(1, len(d) - 1)]\n            # d is assumed to plateau with \"d[ len(d) ] == d[-1]\", so\n            # 2*d_n - d_(n-1) - d_(n+1) == d_n - d_(n-1)\n            end = [d[-1] - d[-2]] if len(d) > 1 else [d[0]]\n            return mid + end\n\n        def pick_vec(small_basis, big_basis):\n            \"\"\"Picks a vector from big_basis that isn't in\n            the subspace spanned by small_basis\"\"\"\n            if len(small_basis) == 0:\n                return big_basis[0]\n            for v in big_basis:\n                _, pivots = self.hstack(*(small_basis + [v])).echelon_form(with_pivots=True)\n                if pivots[-1] == len(small_basis):\n                    return v\n\n        # roots doesn't like Floats, so replace them with Rationals\n        if has_floats:\n            mat = mat.applyfunc(lambda x: nsimplify(x, rational=True))\n\n        # first calculate the jordan block structure\n        eigs = mat.eigenvals()\n\n        # make sure that we found all the roots by counting\n        # the algebraic multiplicity\n        if sum(m for m in eigs.values()) != mat.cols:\n            raise MatrixError(\"Could not compute eigenvalues for {}\".format(mat))\n\n        # most matrices have distinct eigenvalues\n        # and so are diagonalizable.  In this case, don't\n        # do extra work!\n        if len(eigs.keys()) == mat.cols:\n            blocks = list(sorted(eigs.keys(), key=default_sort_key))\n            jordan_mat = mat.diag(*blocks)\n            if not calc_transform:\n                return restore_floats(jordan_mat)\n            jordan_basis = [eig_mat(eig, 1).nullspace()[0] for eig in blocks]\n            basis_mat = mat.hstack(*jordan_basis)\n            return restore_floats(basis_mat, jordan_mat)\n\n        block_structure = []\n        for eig in sorted(eigs.keys(), key=default_sort_key):\n            chain = nullity_chain(eig)\n            block_sizes = blocks_from_nullity_chain(chain)\n            # if block_sizes == [a, b, c, ...], then the number of\n            # Jordan blocks of size 1 is a, of size 2 is b, etc.\n            # create an array that has (eig, block_size) with one\n            # entry for each block\n            size_nums = [(i+1, num) for i, num in enumerate(block_sizes)]\n            # we expect larger Jordan blocks to come earlier\n            size_nums.reverse()\n\n            block_structure.extend(\n                (eig, size) for size, num in size_nums for _ in range(num))\n        blocks = (mat.jordan_block(size=size, eigenvalue=eig) for eig, size in block_structure)\n        jordan_mat = mat.diag(*blocks)\n\n        if not calc_transform:\n            return restore_floats(jordan_mat)\n\n        # For each generalized eigenspace, calculate a basis.\n        # We start by looking for a vector in null( (A - eig*I)**n )\n        # which isn't in null( (A - eig*I)**(n-1) ) where n is\n        # the size of the Jordan block\n        #\n        # Ideally we'd just loop through block_structure and\n        # compute each generalized eigenspace.  However, this\n        # causes a lot of unneeded computation.  Instead, we\n        # go through the eigenvalues separately, since we know\n        # their generalized eigenspaces must have bases that\n        # are linearly independent.\n        jordan_basis = []\n\n        for eig in sorted(eigs.keys(), key=default_sort_key):\n            eig_basis = []\n            for block_eig, size in block_structure:\n                if block_eig != eig:\n                    continue\n                null_big = (eig_mat(eig, size)).nullspace()\n                null_small = (eig_mat(eig, size - 1)).nullspace()\n                # we want to pick something that is in the big basis\n                # and not the small, but also something that is independent\n                # of any other generalized eigenvectors from a different\n                # generalized eigenspace sharing the same eigenvalue.\n                vec = pick_vec(null_small + eig_basis, null_big)\n                new_vecs = [(eig_mat(eig, i))*vec for i in range(size)]\n                eig_basis.extend(new_vecs)\n                jordan_basis.extend(reversed(new_vecs))\n\n        basis_mat = mat.hstack(*jordan_basis)\n\n        return restore_floats(basis_mat, jordan_mat)",
+                "source_code": "def _matrix_pow_by_jordan_blocks(self, num):\n        from sympy.matrices import diag, MutableMatrix\n        from sympy import binomial\n\n        def jordan_cell_power(jc, n):\n            N = jc.shape[0]\n            l = jc[0,0]\n            if l.is_zero:\n                if N == 1 and n.is_nonnegative:\n                    jc[0,0] = l**n\n                elif not (n.is_integer and n.is_nonnegative):\n                    raise NonInvertibleMatrixError(\"Non-invertible matrix can only be raised to a nonnegative integer\")\n                else:\n                    for i in range(N):\n                        jc[0,i] = KroneckerDelta(i, n)\n            else:\n                for i in range(N):\n                    bn = binomial(n, i)\n                    if isinstance(bn, binomial):\n                        bn = bn._eval_expand_func()\n                    jc[0,i] = l**(n-i)*bn\n            for i in range(N):\n                for j in range(1, N-i):\n                    jc[j,i+j] = jc [j-1,i+j-1]\n\n        P, J = self.jordan_form()\n        jordan_cells = J.get_diag_blocks()\n        # Make sure jordan_cells matrices are mutable:\n        jordan_cells = [MutableMatrix(j) for j in jordan_cells]\n        for j in jordan_cells:\n            jordan_cell_power(j, num)\n        return self._new(P.multiply(diag(*jordan_cells))\n                .multiply(P.inv()))",
                 "distance": 0.5,
                 "title": null,
-                "name": "sympy.matrices.matrices.MatrixEigen.jordan_form",
-                "documentation": "Return `(P, J)` where `J` is a Jordan block\nmatrix and `P` is a matrix such that\n\n    `self == P*J*P**-1`\n\n\nParameters\n==========\n\ncalc_transform : bool\n    If ``False``, then only `J` is returned.\nchop : bool\n    All matrices are convered to exact types when computing\n    eigenvalues and eigenvectors.  As a result, there may be\n    approximation errors.  If ``chop==True``, these errors\n    will be truncated.\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> m = Matrix([[ 6,  5, -2, -3], [-3, -1,  3,  3], [ 2,  1, -2, -3], [-1,  1,  5,  5]])\n>>> P, J = m.jordan_form()\n>>> J\nMatrix([\n[2, 1, 0, 0],\n[0, 2, 0, 0],\n[0, 0, 2, 1],\n[0, 0, 0, 2]])\n\nSee Also\n========\n\njordan_block",
+                "name": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks",
+                "documentation": "",
                 "path": [
                     {
                         "start_node": "root",
@@ -197,12 +197,12 @@
                         "start_node": "sympy/matrices/matrices.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixEigen.jordan_form"
+                        "end_node": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks"
                     }
                 ],
-                "similarity": 0.19562033478564053,
-                "end_line": 1472,
-                "signature": "sympy.matrices.matrices.MatrixEigen.jordan_form(self, calc_transform)"
+                "similarity": 0.20146605743890844,
+                "end_line": 835,
+                "signature": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks(self, num)"
             },
             {
                 "start_line": 1867,
@@ -292,35 +292,6 @@
                 "signature": "sympy.matrices.matrices.MatrixDeterminant._eval_det_bareiss(self, iszerofunc)"
             },
             {
-                "start_line": 164,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _eval_det_bareiss(self):\n        \"\"\"Compute matrix determinant using Bareiss' fraction-free\n        algorithm which is an extension of the well known Gaussian\n        elimination method. This approach is best suited for dense\n        symbolic matrices and will result in a determinant with\n        minimal number of fractions. It means that less term\n        rewriting is needed on resulting formulae.\n\n        TODO: Implement algorithm for sparse matrices (SFF),\n        http://www.eecis.udel.edu/~saunders/papers/sffge/it5.ps.\n        \"\"\"\n\n        # XXX included as a workaround for issue #12362.  Should use `_find_reasonable_pivot` instead\n        def _find_pivot(l):\n            for pos,val in enumerate(l):\n                if val:\n                    return (pos, val, None, None)\n            return (None, None, None, None)\n\n\n        # Recursively implimented Bareiss' algorithm as per Deanna Richelle Leggett's\n        # thesis http://www.math.usm.edu/perry/Research/Thesis_DRL.pdf\n        def bareiss(mat, cumm=1):\n            if mat.rows == 0:\n                return S.One\n            elif mat.rows == 1:\n                return mat[0, 0]\n\n            # find a pivot and extract the remaining matrix\n            # XXX should use `_find_reasonable_pivot`.  Blocked by issue #12362\n            pivot_pos, pivot_val, _, _ = _find_pivot(mat[:, 0])\n            if pivot_pos == None:\n                return S.Zero\n\n            # if we have a valid pivot, we'll do a \"row swap\", so keep the\n            # sign of the det\n            sign = (-1) ** (pivot_pos % 2)\n\n            # we want every row but the pivot row and every column\n            rows = list(i for i in range(mat.rows) if i != pivot_pos)\n            cols = list(range(mat.cols))\n            tmp_mat = mat.extract(rows, cols)\n\n            def entry(i, j):\n                ret = (pivot_val*tmp_mat[i, j + 1] - mat[pivot_pos, j + 1]*tmp_mat[i, 0]) / cumm\n                if not ret.is_Atom:\n                    cancel(ret)\n                return ret\n\n            return sign*bareiss(self._new(mat.rows - 1, mat.cols - 1, entry), pivot_val)\n\n        return cancel(bareiss(self))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixDeterminant._eval_det_bareiss",
-                "documentation": "Compute matrix determinant using Bareiss' fraction-free\nalgorithm which is an extension of the well known Gaussian\nelimination method. This approach is best suited for dense\nsymbolic matrices and will result in a determinant with\nminimal number of fractions. It means that less term\nrewriting is needed on resulting formulae.\n\nTODO: Implement algorithm for sparse matrices (SFF),\nhttp://www.eecis.udel.edu/~saunders/papers/sffge/it5.ps.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixDeterminant._eval_det_bareiss"
-                    }
-                ],
-                "similarity": 0.19343140160607175,
-                "end_line": 215,
-                "signature": "sympy.matrices.matrices.MatrixDeterminant._eval_det_bareiss(self)"
-            },
-            {
                 "start_line": 31,
                 "file_path": "sympy/matrices/expressions/matmul.py",
                 "issue_id": null,
@@ -350,7 +321,7 @@
                 "signature": "sympy.matrices.expressions.matmul.MatMul.__new__(cls)"
             },
             {
-                "start_line": 3222,
+                "start_line": 1638,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
@@ -375,74 +346,16 @@
                     }
                 ],
                 "similarity": 0.19161093444769747,
-                "end_line": 3259,
+                "end_line": 1675,
                 "signature": "sympy.matrices.matrices.MatrixBase._eval_matrix_log_jblock(self)"
             },
             {
-                "start_line": 2358,
+                "start_line": 2179,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def dot(self, b):\n        \"\"\"Return the dot product of Matrix self and b relaxing the condition\n        of compatible dimensions: if either the number of rows or columns are\n        the same as the length of b then the dot product is returned. If self\n        is a row or column vector, a scalar is returned. Otherwise, a list\n        of results is returned (and in that case the number of columns in self\n        must match the length of b).\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> M = Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n        >>> v = [1, 1, 1]\n        >>> M.row(0).dot(v)\n        6\n        >>> M.col(0).dot(v)\n        12\n        >>> M.dot(v)\n        [6, 15, 24]\n\n        See Also\n        ========\n\n        cross\n        multiply\n        multiply_elementwise\n        \"\"\"\n        from .dense import Matrix\n\n        if not isinstance(b, MatrixBase):\n            if is_sequence(b):\n                if len(b) != self.cols and len(b) != self.rows:\n                    raise ShapeError(\n                        \"Dimensions incorrect for dot product: %s, %s\" % (\n                            self.shape, len(b)))\n                return self.dot(Matrix(b))\n            else:\n                raise TypeError(\n                    \"`b` must be an ordered iterable or Matrix, not %s.\" %\n                    type(b))\n\n        mat = self\n        if mat.cols == b.rows:\n            if b.cols != 1:\n                mat = mat.T\n                b = b.T\n            prod = flatten((mat * b).tolist())\n            if len(prod) == 1:\n                return prod[0]\n            return prod\n        if mat.cols == b.cols:\n            return mat.dot(b.T)\n        elif mat.rows == b.rows:\n            return mat.T.dot(b)\n        else:\n            raise ShapeError(\"Dimensions incorrect for dot product: %s, %s\" % (\n                self.shape, b.shape))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.dot",
-                "documentation": "Return the dot product of Matrix self and b relaxing the condition\nof compatible dimensions: if either the number of rows or columns are\nthe same as the length of b then the dot product is returned. If self\nis a row or column vector, a scalar is returned. Otherwise, a list\nof results is returned (and in that case the number of columns in self\nmust match the length of b).\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> M = Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 9]])\n>>> v = [1, 1, 1]\n>>> M.row(0).dot(v)\n6\n>>> M.col(0).dot(v)\n12\n>>> M.dot(v)\n[6, 15, 24]\n\nSee Also\n========\n\ncross\nmultiply\nmultiply_elementwise",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.dot"
-                    }
-                ],
-                "similarity": 0.1911383085291158,
-                "end_line": 2415,
-                "signature": "sympy.matrices.matrices.MatrixBase.dot(self, b)"
-            },
-            {
-                "start_line": 2456,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def exp(self):\n        \"\"\"Return the exponentiation of a square matrix.\"\"\"\n        if not self.is_square:\n            raise NonSquareMatrixError(\n                \"Exponentiation is valid only for square matrices\")\n        try:\n            P, J = self.jordan_form()\n            cells = J.get_diag_blocks()\n        except MatrixError:\n            raise NotImplementedError(\n                \"Exponentiation is implemented only for matrices for which the Jordan normal form can be computed\")\n\n        def _jblock_exponential(b):\n            # This function computes the matrix exponential for one single Jordan block\n            nr = b.rows\n            l = b[0, 0]\n            if nr == 1:\n                res = exp(l)\n            else:\n                from sympy import eye\n                # extract the diagonal part\n                d = b[0, 0] * eye(nr)\n                # and the nilpotent part\n                n = b - d\n                # compute its exponential\n                nex = eye(nr)\n                for i in range(1, nr):\n                    nex = nex + n ** i / factorial(i)\n                # combine the two parts\n                res = exp(b[0, 0]) * nex\n            return (res)\n\n        blocks = list(map(_jblock_exponential, cells))\n        from sympy.matrices import diag\n        eJ = diag(*blocks)\n        # n = self.rows\n        ret = P * eJ * P.inv()\n        return type(self)(ret)",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.exp",
-                "documentation": "Return the exponentiation of a square matrix.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.exp"
-                    }
-                ],
-                "similarity": 0.18978273445370494,
-                "end_line": 2493,
-                "signature": "sympy.matrices.matrices.MatrixBase.exp(self)"
-            },
-            {
-                "start_line": 1717,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def berkowitz(self):\n        from sympy.matrices import zeros\n        berk = ((1,),)\n        if not self:\n            return berk\n\n        if not self.is_square:\n            raise NonSquareMatrixError()\n\n        A, N = self, self.rows\n        transforms = [0] * (N - 1)\n\n        for n in range(N, 1, -1):\n            T, k = zeros(n + 1, n), n - 1\n\n            R, C = -A[k, :k], A[:k, k]\n            A, a = A[:k, :k], -A[k, k]\n\n            items = [C]\n\n            for i in range(0, n - 2):\n                items.append(A * items[i])\n\n            for i, B in enumerate(items):\n                items[i] = (R * B)[0, 0]\n\n            items = [S.One, a] + items\n\n            for i in range(n):\n                T[i:, i] = items[:n - i + 1]\n\n            transforms[k - 1] = T\n\n        polys = [self._new([S.One, -A[0, 0]])]\n\n        for i, T in enumerate(transforms):\n            polys.append(T * polys[i])\n\n        return berk + tuple(map(tuple, polys))",
+                "source_code": "def berkowitz(self):\n        from sympy.matrices import zeros\n        berk = ((1,),)\n        if not self:\n            return berk\n\n        if not self.is_square:\n            raise NonSquareMatrixError()\n\n        A, N = self, self.rows\n        transforms = [0] * (N - 1)\n\n        for n in range(N, 1, -1):\n            T, k = zeros(n + 1, n), n - 1\n\n            R, C = -A[k, :k], A[:k, k]\n            A, a = A[:k, :k], -A[k, k]\n\n            items = [C]\n\n            for i in range(0, n - 2):\n                items.append(A * items[i])\n\n            for i, B in enumerate(items):\n                items[i] = (R * B)[0, 0]\n\n            items = [self.one, a] + items\n\n            for i in range(n):\n                T[i:, i] = items[:n - i + 1]\n\n            transforms[k - 1] = T\n\n        polys = [self._new([self.one, -A[0, 0]])]\n\n        for i, T in enumerate(transforms):\n            polys.append(T * polys[i])\n\n        return berk + tuple(map(tuple, polys))",
                 "distance": 0.5,
                 "title": null,
                 "name": "sympy.matrices.matrices.MatrixDeprecated.berkowitz",
@@ -461,38 +374,9 @@
                         "end_node": "sympy.matrices.matrices.MatrixDeprecated.berkowitz"
                     }
                 ],
-                "similarity": 0.18845489669363172,
-                "end_line": 1755,
+                "similarity": 0.1886615466023491,
+                "end_line": 2217,
                 "signature": "sympy.matrices.matrices.MatrixDeprecated.berkowitz(self)"
-            },
-            {
-                "start_line": 1874,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _matrix_pow_by_jordan_blocks(self, num):\n        from sympy.matrices import diag, MutableMatrix\n        from sympy import binomial\n\n        def jordan_cell_power(jc, n):\n            N = jc.shape[0]\n            l = jc[0, 0]\n            if l == 0 and (n < N - 1) != False:\n                raise ValueError(\"Matrix det == 0; not invertible\")\n            elif l == 0 and N > 1 and n % 1 != 0:\n                raise ValueError(\"Non-integer power cannot be evaluated\")\n            for i in range(N):\n                for j in range(N-i):\n                    bn = binomial(n, i)\n                    if isinstance(bn, binomial):\n                        bn = bn._eval_expand_func()\n                    jc[j, i+j] = l**(n-i)*bn\n\n        P, J = self.jordan_form()\n        jordan_cells = J.get_diag_blocks()\n        # Make sure jordan_cells matrices are mutable:\n        jordan_cells = [MutableMatrix(j) for j in jordan_cells]\n        for j in jordan_cells:\n            jordan_cell_power(j, num)\n        return self._new(P*diag(*jordan_cells)*P.inv())",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks"
-                    }
-                ],
-                "similarity": 0.1869055737398322,
-                "end_line": 1898,
-                "signature": "sympy.matrices.matrices.MatrixBase._matrix_pow_by_jordan_blocks(self, num)"
             },
             {
                 "start_line": 48,
@@ -524,6 +408,35 @@
                 "signature": "sympy.matrices.expressions.matmul.MatMul._entry(self, i, j, expand)"
             },
             {
+                "start_line": 3186,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def exp(self):\n        \"\"\"Return the exponential of a square matrix\n\n        Examples\n        ========\n\n        >>> from sympy import Symbol, Matrix\n\n        >>> t = Symbol('t')\n        >>> m = Matrix([[0, 1], [-1, 0]]) * t\n        >>> m.exp()\n        Matrix([\n        [    exp(I*t)/2 + exp(-I*t)/2, -I*exp(I*t)/2 + I*exp(-I*t)/2],\n        [I*exp(I*t)/2 - I*exp(-I*t)/2,      exp(I*t)/2 + exp(-I*t)/2]])\n        \"\"\"\n        if not self.is_square:\n            raise NonSquareMatrixError(\n                \"Exponentiation is valid only for square matrices\")\n        try:\n            P, J = self.jordan_form()\n            cells = J.get_diag_blocks()\n        except MatrixError:\n            raise NotImplementedError(\n                \"Exponentiation is implemented only for matrices for which the Jordan normal form can be computed\")\n\n        blocks = [cell._eval_matrix_exp_jblock() for cell in cells]\n        from sympy.matrices import diag\n        from sympy import re\n        eJ = diag(*blocks)\n        # n = self.rows\n        ret = P * eJ * P.inv()\n        if all(value.is_real for value in self.values()):\n            return type(self)(re(ret))\n        else:\n            return type(self)(ret)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixBase.exp",
+                "documentation": "Return the exponential of a square matrix\n\nExamples\n========\n\n>>> from sympy import Symbol, Matrix\n\n>>> t = Symbol('t')\n>>> m = Matrix([[0, 1], [-1, 0]]) * t\n>>> m.exp()\nMatrix([\n[    exp(I*t)/2 + exp(-I*t)/2, -I*exp(I*t)/2 + I*exp(-I*t)/2],\n[I*exp(I*t)/2 - I*exp(-I*t)/2,      exp(I*t)/2 + exp(-I*t)/2]])",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixBase.exp"
+                    }
+                ],
+                "similarity": 0.18620713530056465,
+                "end_line": 3220,
+                "signature": "sympy.matrices.matrices.MatrixBase.exp(self)"
+            },
+            {
                 "start_line": 737,
                 "file_path": "sympy/core/numbers.py",
                 "issue_id": null,
@@ -553,94 +466,7 @@
                 "signature": "sympy.core.numbers.Number.__mul__(self, other)"
             },
             {
-                "start_line": 4249,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(self, rows, cols=None, mat=None):\n        if isinstance(mat, FunctionType):\n            # if we passed in a function, use that to populate the indices\n            mat = list(mat(i, j) for i in range(rows) for j in range(cols))\n        try:\n            if cols is None and mat is None:\n                mat = rows\n            rows, cols = mat.shape\n        except AttributeError:\n            pass\n        try:\n            # if we passed in a list of lists, flatten it and set the size\n            if cols is None and mat is None:\n                mat = rows\n            cols = len(mat[0])\n            rows = len(mat)\n            mat = [x for l in mat for x in l]\n        except (IndexError, TypeError):\n            pass\n        self.mat = tuple(self._sympify(x) for x in mat)\n        self.rows, self.cols = rows, cols\n        if self.rows is None or self.cols is None:\n            raise NotImplementedError(\"Cannot initialize matrix with given parameters\")",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices._MinimalMatrix.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices._MinimalMatrix.__init__"
-                    }
-                ],
-                "similarity": 0.1845714203706829,
-                "end_line": 4271,
-                "signature": "sympy.matrices.matrices._MinimalMatrix.__init__(self, rows, cols, mat)"
-            },
-            {
-                "start_line": 4273,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __getitem__(self, key):\n        def _normalize_slices(row_slice, col_slice):\n            \"\"\"Ensure that row_slice and col_slice don't have\n            `None` in their arguments.  Any integers are converted\n            to slices of length 1\"\"\"\n            if not isinstance(row_slice, slice):\n                row_slice = slice(row_slice, row_slice + 1, None)\n            row_slice = slice(*row_slice.indices(self.rows))\n\n            if not isinstance(col_slice, slice):\n                col_slice = slice(col_slice, col_slice + 1, None)\n            col_slice = slice(*col_slice.indices(self.cols))\n\n            return (row_slice, col_slice)\n\n        def _coord_to_index(i, j):\n            \"\"\"Return the index in _mat corresponding\n            to the (i,j) position in the matrix. \"\"\"\n            return i * self.cols + j\n\n        if isinstance(key, tuple):\n            i, j = key\n            if isinstance(i, slice) or isinstance(j, slice):\n                # if the coordinates are not slices, make them so\n                # and expand the slices so they don't contain `None`\n                i, j = _normalize_slices(i, j)\n\n                rowsList, colsList = list(range(self.rows))[i], \\\n                                     list(range(self.cols))[j]\n                indices = (i * self.cols + j for i in rowsList for j in\n                           colsList)\n                return self._new(len(rowsList), len(colsList),\n                                 list(self.mat[i] for i in indices))\n\n            # if the key is a tuple of ints, change\n            # it to an array index\n            key = _coord_to_index(i, j)\n        return self.mat[key]",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices._MinimalMatrix.__getitem__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices._MinimalMatrix.__getitem__"
-                    }
-                ],
-                "similarity": 0.18400949924246907,
-                "end_line": 4310,
-                "signature": "sympy.matrices.matrices._MinimalMatrix.__getitem__(self, key)"
-            },
-            {
-                "start_line": 3883,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def LUdecomposition(self,\n                        iszerofunc=_iszero,\n                        simpfunc=None,\n                        rankcheck=False):\n        \"\"\"Returns (L, U, perm) where L is a lower triangular matrix with unit\n        diagonal, U is an upper triangular matrix, and perm is a list of row\n        swap index pairs. If A is the original matrix, then\n        A = (L*U).permuteBkwd(perm), and the row permutation matrix P such\n        that P*A = L*U can be computed by P=eye(A.row).permuteFwd(perm).\n\n        See documentation for LUCombined for details about the keyword argument\n        rankcheck, iszerofunc, and simpfunc.\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> a = Matrix([[4, 3], [6, 3]])\n        >>> L, U, _ = a.LUdecomposition()\n        >>> L\n        Matrix([\n        [  1, 0],\n        [3/2, 1]])\n        >>> U\n        Matrix([\n        [4,    3],\n        [0, -3/2]])\n\n        See Also\n        ========\n\n        cholesky\n        LDLdecomposition\n        QRdecomposition\n        LUdecomposition_Simple\n        LUdecompositionFF\n        LUsolve\n        \"\"\"\n\n        combined, p = self.LUdecomposition_Simple(iszerofunc=iszerofunc,\n                                                  simpfunc=simpfunc,\n                                                  rankcheck=rankcheck)\n\n        # L is lower triangular ``self.rows x self.rows``\n        # U is upper triangular ``self.rows x self.cols``\n        # L has unit diagonal. For each column in combined, the subcolumn\n        # below the diagonal of combined is shared by L.\n        # If L has more columns than combined, then the remaining subcolumns\n        # below the diagonal of L are zero.\n        # The upper triangular portion of L and combined are equal.\n        def entry_L(i, j):\n            if i < j:\n                # Super diagonal entry\n                return self.zero\n            elif i == j:\n                return self.one\n            elif j < combined.cols:\n                return combined[i, j]\n            # Subdiagonal entry of L with no corresponding\n            # entry in combined\n            return self.zero\n\n        def entry_U(i, j):\n            return self.zero if i > j else combined[i, j]\n\n        L = self._new(combined.rows, combined.rows, entry_L)\n        U = self._new(combined.rows, combined.cols, entry_U)\n\n        return L, U, p",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.LUdecomposition",
-                "documentation": "Returns (L, U, perm) where L is a lower triangular matrix with unit\ndiagonal, U is an upper triangular matrix, and perm is a list of row\nswap index pairs. If A is the original matrix, then\nA = (L*U).permuteBkwd(perm), and the row permutation matrix P such\nthat P*A = L*U can be computed by P=eye(A.row).permuteFwd(perm).\n\nSee documentation for LUCombined for details about the keyword argument\nrankcheck, iszerofunc, and simpfunc.\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> a = Matrix([[4, 3], [6, 3]])\n>>> L, U, _ = a.LUdecomposition()\n>>> L\nMatrix([\n[  1, 0],\n[3/2, 1]])\n>>> U\nMatrix([\n[4,    3],\n[0, -3/2]])\n\nSee Also\n========\n\ncholesky\nLDLdecomposition\nQRdecomposition\nLUdecomposition_Simple\nLUdecompositionFF\nLUsolve",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.LUdecomposition"
-                    }
-                ],
-                "similarity": 0.18251093323121645,
-                "end_line": 3951,
-                "signature": "sympy.matrices.matrices.MatrixBase.LUdecomposition(self, iszerofunc, simpfunc, rankcheck)"
-            },
-            {
-                "start_line": 3003,
+                "start_line": 1321,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
@@ -665,20 +491,20 @@
                     }
                 ],
                 "similarity": 0.18212648389823907,
-                "end_line": 3106,
+                "end_line": 1424,
                 "signature": "sympy.matrices.matrices.MatrixBase.dot(self, b, hermitian, conjugate_convention)"
             },
             {
-                "start_line": 3640,
+                "start_line": 4209,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def QRdecomposition(self):\n        \"\"\"Return Q, R where A = Q*R, Q is orthogonal and R is upper triangular.\n\n        Examples\n        ========\n\n        This is the example from wikipedia:\n\n        >>> from sympy import Matrix\n        >>> A = Matrix([[12, -51, 4], [6, 167, -68], [-4, 24, -41]])\n        >>> Q, R = A.QRdecomposition()\n        >>> Q\n        Matrix([\n        [ 6/7, -69/175, -58/175],\n        [ 3/7, 158/175,   6/175],\n        [-2/7,    6/35,  -33/35]])\n        >>> R\n        Matrix([\n        [14,  21, -14],\n        [ 0, 175, -70],\n        [ 0,   0,  35]])\n        >>> A == Q*R\n        True\n\n        QR factorization of an identity matrix:\n\n        >>> A = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])\n        >>> Q, R = A.QRdecomposition()\n        >>> Q\n        Matrix([\n        [1, 0, 0],\n        [0, 1, 0],\n        [0, 0, 1]])\n        >>> R\n        Matrix([\n        [1, 0, 0],\n        [0, 1, 0],\n        [0, 0, 1]])\n\n        See Also\n        ========\n\n        cholesky\n        LDLdecomposition\n        LUdecomposition\n        QRsolve\n        \"\"\"\n        cls = self.__class__\n        mat = self.as_mutable()\n\n        if not mat.rows >= mat.cols:\n            raise MatrixError(\n                \"The number of rows must be greater than columns\")\n        n = mat.rows\n        m = mat.cols\n        rank = n\n        row_reduced = mat.rref()[0]\n        for i in range(row_reduced.rows):\n            if row_reduced.row(i).norm() == 0:\n                rank -= 1\n        if not rank == mat.cols:\n            raise MatrixError(\"The rank of the matrix must match the columns\")\n        Q, R = mat.zeros(n, m), mat.zeros(m)\n        for j in range(m):  # for each column vector\n            tmp = mat[:, j]  # take original v\n            for i in range(j):\n                # subtract the project of mat on new vector\n                tmp -= Q[:, i] * mat[:, j].dot(Q[:, i])\n                tmp.expand()\n            # normalize it\n            R[j, j] = tmp.norm()\n            Q[:, j] = tmp / R[j, j]\n            if Q[:, j].norm() != 1:\n                raise NotImplementedError(\n                    \"Could not normalize the vector %d.\" % j)\n            for i in range(j):\n                R[i, j] = Q[:, i].dot(mat[:, j])\n        return cls(Q), cls(R)",
+                "source_code": "def LUsolve(self, rhs, iszerofunc=_iszero):\n        \"\"\"Solve the linear system ``Ax = rhs`` for ``x`` where ``A = self``.\n\n        This is for symbolic matrices, for real or complex ones use\n        mpmath.lu_solve or mpmath.qr_solve.\n\n        See Also\n        ========\n\n        lower_triangular_solve\n        upper_triangular_solve\n        gauss_jordan_solve\n        cholesky_solve\n        diagonal_solve\n        LDLsolve\n        QRsolve\n        pinv_solve\n        LUdecomposition\n        \"\"\"\n        if rhs.rows != self.rows:\n            raise ShapeError(\n                \"``self`` and ``rhs`` must have the same number of rows.\")\n\n        m = self.rows\n        n = self.cols\n        if m < n:\n            raise NotImplementedError(\"Underdetermined systems not supported.\")\n\n        try:\n            A, perm = self.LUdecomposition_Simple(\n                iszerofunc=_iszero, rankcheck=True)\n        except ValueError:\n            raise NotImplementedError(\"Underdetermined systems not supported.\")\n\n        b = rhs.permute_rows(perm).as_mutable()\n        # forward substitution, all diag entries are scaled to 1\n        for i in range(m):\n            for j in range(min(i, n)):\n                scale = A[i, j]\n                b.zip_row_op(i, j, lambda x, y: x - y * scale)\n        # consistency check for overdetermined systems\n        if m > n:\n            for i in range(n, m):\n                for j in range(b.cols):\n                    if not iszerofunc(b[i, j]):\n                        raise ValueError(\"The system is inconsistent.\")\n            b = b[0:n, :]   # truncate zero rows if consistent\n        # backward substitution\n        for i in range(n - 1, -1, -1):\n            for j in range(i + 1, n):\n                scale = A[i, j]\n                b.zip_row_op(i, j, lambda x, y: x - y * scale)\n            scale = A[i, i]\n            b.row_op(i, lambda x, _: x / scale)\n        return rhs.__class__(b)",
                 "distance": 0.5,
                 "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.QRdecomposition",
-                "documentation": "Return Q, R where A = Q*R, Q is orthogonal and R is upper triangular.\n\nExamples\n========\n\nThis is the example from wikipedia:\n\n>>> from sympy import Matrix\n>>> A = Matrix([[12, -51, 4], [6, 167, -68], [-4, 24, -41]])\n>>> Q, R = A.QRdecomposition()\n>>> Q\nMatrix([\n[ 6/7, -69/175, -58/175],\n[ 3/7, 158/175,   6/175],\n[-2/7,    6/35,  -33/35]])\n>>> R\nMatrix([\n[14,  21, -14],\n[ 0, 175, -70],\n[ 0,   0,  35]])\n>>> A == Q*R\nTrue\n\nQR factorization of an identity matrix:\n\n>>> A = Matrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])\n>>> Q, R = A.QRdecomposition()\n>>> Q\nMatrix([\n[1, 0, 0],\n[0, 1, 0],\n[0, 0, 1]])\n>>> R\nMatrix([\n[1, 0, 0],\n[0, 1, 0],\n[0, 0, 1]])\n\nSee Also\n========\n\ncholesky\nLDLdecomposition\nLUdecomposition\nQRsolve",
+                "name": "sympy.matrices.matrices.MatrixBase.LUsolve",
+                "documentation": "Solve the linear system ``Ax = rhs`` for ``x`` where ``A = self``.\n\nThis is for symbolic matrices, for real or complex ones use\nmpmath.lu_solve or mpmath.qr_solve.\n\nSee Also\n========\n\nlower_triangular_solve\nupper_triangular_solve\ngauss_jordan_solve\ncholesky_solve\ndiagonal_solve\nLDLsolve\nQRsolve\npinv_solve\nLUdecomposition",
                 "path": [
                     {
                         "start_node": "root",
@@ -690,12 +516,12 @@
                         "start_node": "sympy/matrices/matrices.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.QRdecomposition"
+                        "end_node": "sympy.matrices.matrices.MatrixBase.LUsolve"
                     }
                 ],
-                "similarity": 0.18078571154514333,
-                "end_line": 3717,
-                "signature": "sympy.matrices.matrices.MatrixBase.QRdecomposition(self)"
+                "similarity": 0.18182102610635825,
+                "end_line": 4263,
+                "signature": "sympy.matrices.matrices.MatrixBase.LUsolve(self, rhs, iszerofunc)"
             },
             {
                 "start_line": 299,
@@ -727,94 +553,7 @@
                 "signature": "sympy.matrices.expressions.blockmatrix.BlockDiagMatrix.blocks(self)"
             },
             {
-                "start_line": 931,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def nullspace(self, simplify=False):\n        \"\"\"Returns list of vectors (Matrix objects) that span nullspace of self\n\n        Examples\n        ========\n\n        >>> from sympy.matrices import Matrix\n        >>> m = Matrix(3, 3, [1, 3, 0, -2, -6, 0, 3, 9, 6])\n        >>> m\n        Matrix([\n        [ 1,  3, 0],\n        [-2, -6, 0],\n        [ 3,  9, 6]])\n        >>> m.nullspace()\n        [Matrix([\n        [-3],\n        [ 1],\n        [ 0]])]\n\n        See Also\n        ========\n\n        columnspace\n        rowspace\n        \"\"\"\n\n        reduced, pivots = self.rref(simplify=simplify)\n\n        free_vars = [i for i in range(self.cols) if i not in pivots]\n\n        basis = []\n        for free_var in free_vars:\n            # for each free variable, we will set it to 1 and all others\n            # to 0.  Then, we will use back substitution to solve the system\n            vec = [S.Zero]*self.cols\n            vec[free_var] = S.One\n            for piv_row, piv_col in enumerate(pivots):\n                for pos in pivots[piv_row+1:] + (free_var,):\n                    vec[piv_col] -= reduced[piv_row, pos]\n            basis.append(vec)\n\n        return [self._new(self.cols, 1, b) for b in basis]",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixSubspaces.nullspace",
-                "documentation": "Returns list of vectors (Matrix objects) that span nullspace of self\n\nExamples\n========\n\n>>> from sympy.matrices import Matrix\n>>> m = Matrix(3, 3, [1, 3, 0, -2, -6, 0, 3, 9, 6])\n>>> m\nMatrix([\n[ 1,  3, 0],\n[-2, -6, 0],\n[ 3,  9, 6]])\n>>> m.nullspace()\n[Matrix([\n[-3],\n[ 1],\n[ 0]])]\n\nSee Also\n========\n\ncolumnspace\nrowspace",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixSubspaces.nullspace"
-                    }
-                ],
-                "similarity": 0.17632033859959872,
-                "end_line": 972,
-                "signature": "sympy.matrices.matrices.MatrixSubspaces.nullspace(self, simplify)"
-            },
-            {
-                "start_line": 982,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def nullspace(self, simplify=False, iszerofunc=_iszero):\n        \"\"\"Returns list of vectors (Matrix objects) that span nullspace of ``self``\n\n        Examples\n        ========\n\n        >>> from sympy.matrices import Matrix\n        >>> m = Matrix(3, 3, [1, 3, 0, -2, -6, 0, 3, 9, 6])\n        >>> m\n        Matrix([\n        [ 1,  3, 0],\n        [-2, -6, 0],\n        [ 3,  9, 6]])\n        >>> m.nullspace()\n        [Matrix([\n        [-3],\n        [ 1],\n        [ 0]])]\n\n        See Also\n        ========\n\n        columnspace\n        rowspace\n        \"\"\"\n\n        reduced, pivots = self.rref(iszerofunc=iszerofunc, simplify=simplify)\n\n        free_vars = [i for i in range(self.cols) if i not in pivots]\n\n        basis = []\n        for free_var in free_vars:\n            # for each free variable, we will set it to 1 and all others\n            # to 0.  Then, we will use back substitution to solve the system\n            vec = [self.zero]*self.cols\n            vec[free_var] = self.one\n            for piv_row, piv_col in enumerate(pivots):\n                vec[piv_col] -= reduced[piv_row, free_var]\n            basis.append(vec)\n\n        return [self._new(self.cols, 1, b) for b in basis]",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixSubspaces.nullspace",
-                "documentation": "Returns list of vectors (Matrix objects) that span nullspace of ``self``\n\nExamples\n========\n\n>>> from sympy.matrices import Matrix\n>>> m = Matrix(3, 3, [1, 3, 0, -2, -6, 0, 3, 9, 6])\n>>> m\nMatrix([\n[ 1,  3, 0],\n[-2, -6, 0],\n[ 3,  9, 6]])\n>>> m.nullspace()\n[Matrix([\n[-3],\n[ 1],\n[ 0]])]\n\nSee Also\n========\n\ncolumnspace\nrowspace",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixSubspaces.nullspace"
-                    }
-                ],
-                "similarity": 0.1760853666615462,
-                "end_line": 1022,
-                "signature": "sympy.matrices.matrices.MatrixSubspaces.nullspace(self, simplify, iszerofunc)"
-            },
-            {
-                "start_line": 3300,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def LUsolve(self, rhs, iszerofunc=_iszero):\n        \"\"\"Solve the linear system Ax = rhs for x where A = self.\n\n        This is for symbolic matrices, for real or complex ones use\n        mpmath.lu_solve or mpmath.qr_solve.\n\n        See Also\n        ========\n\n        lower_triangular_solve\n        upper_triangular_solve\n        gauss_jordan_solve\n        cholesky_solve\n        diagonal_solve\n        LDLsolve\n        QRsolve\n        pinv_solve\n        LUdecomposition\n        \"\"\"\n        if rhs.rows != self.rows:\n            raise ShapeError(\n                \"`self` and `rhs` must have the same number of rows.\")\n\n        A, perm = self.LUdecomposition_Simple(iszerofunc=_iszero)\n        n = self.rows\n        b = rhs.permute_rows(perm).as_mutable()\n        # forward substitution, all diag entries are scaled to 1\n        for i in range(n):\n            for j in range(i):\n                scale = A[i, j]\n                b.zip_row_op(i, j, lambda x, y: x - y * scale)\n        # backward substitution\n        for i in range(n - 1, -1, -1):\n            for j in range(i + 1, n):\n                scale = A[i, j]\n                b.zip_row_op(i, j, lambda x, y: x - y * scale)\n            scale = A[i, i]\n            b.row_op(i, lambda x, _: x / scale)\n        return rhs.__class__(b)",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.LUsolve",
-                "documentation": "Solve the linear system Ax = rhs for x where A = self.\n\nThis is for symbolic matrices, for real or complex ones use\nmpmath.lu_solve or mpmath.qr_solve.\n\nSee Also\n========\n\nlower_triangular_solve\nupper_triangular_solve\ngauss_jordan_solve\ncholesky_solve\ndiagonal_solve\nLDLsolve\nQRsolve\npinv_solve\nLUdecomposition",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.LUsolve"
-                    }
-                ],
-                "similarity": 0.17566587638105732,
-                "end_line": 3338,
-                "signature": "sympy.matrices.matrices.MatrixBase.LUsolve(self, rhs, iszerofunc)"
-            },
-            {
-                "start_line": 2682,
+                "start_line": 1129,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
@@ -839,7 +578,7 @@
                     }
                 ],
                 "similarity": 0.17540436871823067,
-                "end_line": 2750,
+                "end_line": 1197,
                 "signature": "sympy.matrices.matrices.MatrixBase._setitem(self, key, value)"
             },
             {
@@ -870,35 +609,6 @@
                 "similarity": 0.17442707817850966,
                 "end_line": 1415,
                 "signature": "sympy.core.numbers.Float.__eq__(self, other)"
-            },
-            {
-                "start_line": 1592,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def jacobian(self, X):\n        \"\"\"Calculates the Jacobian matrix (derivative of a vector-valued function).\n\n        Parameters\n        ==========\n\n        self : vector of expressions representing functions f_i(x_1, ..., x_n).\n        X : set of x_i's in order, it can be a list or a Matrix\n\n        Both self and X can be a row or a column matrix in any order\n        (i.e., jacobian() should always work).\n\n        Examples\n        ========\n\n        >>> from sympy import sin, cos, Matrix\n        >>> from sympy.abc import rho, phi\n        >>> X = Matrix([rho*cos(phi), rho*sin(phi), rho**2])\n        >>> Y = Matrix([rho, phi])\n        >>> X.jacobian(Y)\n        Matrix([\n        [cos(phi), -rho*sin(phi)],\n        [sin(phi),  rho*cos(phi)],\n        [   2*rho,             0]])\n        >>> X = Matrix([rho*cos(phi), rho*sin(phi)])\n        >>> X.jacobian(Y)\n        Matrix([\n        [cos(phi), -rho*sin(phi)],\n        [sin(phi),  rho*cos(phi)]])\n\n        See Also\n        ========\n\n        hessian\n        wronskian\n        \"\"\"\n        if not isinstance(X, MatrixBase):\n            X = self._new(X)\n        # Both X and self can be a row or a column matrix, so we need to make\n        # sure all valid combinations work, but everything else fails:\n        if self.shape[0] == 1:\n            m = self.shape[1]\n        elif self.shape[1] == 1:\n            m = self.shape[0]\n        else:\n            raise TypeError(\"self must be a row or a column matrix\")\n        if X.shape[0] == 1:\n            n = X.shape[1]\n        elif X.shape[1] == 1:\n            n = X.shape[0]\n        else:\n            raise TypeError(\"X must be a row or a column matrix\")\n\n        # m is the number of functions and n is the number of variables\n        # computing the Jacobian is now easy:\n        return self._new(m, n, lambda j, i: self[j].diff(X[i]))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixCalculus.jacobian",
-                "documentation": "Calculates the Jacobian matrix (derivative of a vector-valued function).\n\nParameters\n==========\n\nself : vector of expressions representing functions f_i(x_1, ..., x_n).\nX : set of x_i's in order, it can be a list or a Matrix\n\nBoth self and X can be a row or a column matrix in any order\n(i.e., jacobian() should always work).\n\nExamples\n========\n\n>>> from sympy import sin, cos, Matrix\n>>> from sympy.abc import rho, phi\n>>> X = Matrix([rho*cos(phi), rho*sin(phi), rho**2])\n>>> Y = Matrix([rho, phi])\n>>> X.jacobian(Y)\nMatrix([\n[cos(phi), -rho*sin(phi)],\n[sin(phi),  rho*cos(phi)],\n[   2*rho,             0]])\n>>> X = Matrix([rho*cos(phi), rho*sin(phi)])\n>>> X.jacobian(Y)\nMatrix([\n[cos(phi), -rho*sin(phi)],\n[sin(phi),  rho*cos(phi)]])\n\nSee Also\n========\n\nhessian\nwronskian",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixCalculus.jacobian"
-                    }
-                ],
-                "similarity": 0.1739194908814895,
-                "end_line": 1647,
-                "signature": "sympy.matrices.matrices.MatrixCalculus.jacobian(self, X)"
             },
             {
                 "start_line": 998,
@@ -988,35 +698,6 @@
                 "signature": "sympy.matrices.matrices.MatrixBase.dual(self)"
             },
             {
-                "start_line": 2495,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def gauss_jordan_solve(self, b, freevar=False):\n        \"\"\"\n        Solves Ax = b using Gauss Jordan elimination.\n\n        There may be zero, one, or infinite solutions.  If one solution\n        exists, it will be returned. If infinite solutions exist, it will\n        be returned parametrically. If no solutions exist, It will throw\n        ValueError.\n\n        Parameters\n        ==========\n\n        b : Matrix\n            The right hand side of the equation to be solved for.  Must have\n            the same number of rows as matrix A.\n\n        freevar : List\n            If the system is underdetermined (e.g. A has more columns than\n            rows), infinite solutions are possible, in terms of arbitrary\n            values of free variables. Then the index of the free variables\n            in the solutions (column Matrix) will be returned by freevar, if\n            the flag `freevar` is set to `True`.\n\n        Returns\n        =======\n\n        x : Matrix\n            The matrix that will satisfy Ax = B.  Will have as many rows as\n            matrix A has columns, and as many columns as matrix B.\n\n        params : Matrix\n            If the system is underdetermined (e.g. A has more columns than\n            rows), infinite solutions are possible, in terms of arbitrary\n            parameters. These arbitrary parameters are returned as params\n            Matrix.\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> A = Matrix([[1, 2, 1, 1], [1, 2, 2, -1], [2, 4, 0, 6]])\n        >>> b = Matrix([7, 12, 4])\n        >>> sol, params = A.gauss_jordan_solve(b)\n        >>> sol\n        Matrix([\n        [-2*tau0 - 3*tau1 + 2],\n        [                 tau0],\n        [           2*tau1 + 5],\n        [                 tau1]])\n        >>> params\n        Matrix([\n        [tau0],\n        [tau1]])\n\n        >>> A = Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 10]])\n        >>> b = Matrix([3, 6, 9])\n        >>> sol, params = A.gauss_jordan_solve(b)\n        >>> sol\n        Matrix([\n        [-1],\n        [ 2],\n        [ 0]])\n        >>> params\n        Matrix(0, 1, [])\n\n        See Also\n        ========\n\n        lower_triangular_solve\n        upper_triangular_solve\n        cholesky_solve\n        diagonal_solve\n        LDLsolve\n        LUsolve\n        QRsolve\n        pinv\n\n        References\n        ==========\n\n        .. [1] http://en.wikipedia.org/wiki/Gaussian_elimination\n\n        \"\"\"\n        from sympy.matrices import Matrix, zeros\n\n        aug = self.hstack(self.copy(), b.copy())\n        row, col = aug[:, :-1].shape\n\n        # solve by reduced row echelon form\n        A, pivots = aug.rref(simplify=True)\n        A, v = A[:, :-1], A[:, -1]\n        pivots = list(filter(lambda p: p < col, pivots))\n        rank = len(pivots)\n\n        # Bring to block form\n        permutation = Matrix(range(col)).T\n        A = A.vstack(A, permutation)\n\n        for i, c in enumerate(pivots):\n            A.col_swap(i, c)\n\n        A, permutation = A[:-1, :], A[-1, :]\n\n        # check for existence of solutions\n        # rank of aug Matrix should be equal to rank of coefficient matrix\n        if not v[rank:, 0].is_zero:\n            raise ValueError(\"Linear system has no solution\")\n\n        # Get index of free symbols (free parameters)\n        free_var_index = permutation[\n                         len(pivots):]  # non-pivots columns are free variables\n\n        # Free parameters\n        # what are current unnumbered free symbol names?\n        name = _uniquely_named_symbol('tau', aug,\n            compare=lambda i: str(i).rstrip('1234567890')).name\n        gen = numbered_symbols(name)\n        tau = Matrix([next(gen) for k in range(col - rank)]).reshape(col - rank, 1)\n\n        # Full parametric solution\n        V = A[:rank, rank:]\n        vt = v[:rank, 0]\n        free_sol = tau.vstack(vt - V * tau, tau)\n\n        # Undo permutation\n        sol = zeros(col, 1)\n        for k, v in enumerate(free_sol):\n            sol[permutation[k], 0] = v\n\n        if freevar:\n            return sol, tau, free_var_index\n        else:\n            return sol, tau",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.gauss_jordan_solve",
-                "documentation": "Solves Ax = b using Gauss Jordan elimination.\n\nThere may be zero, one, or infinite solutions.  If one solution\nexists, it will be returned. If infinite solutions exist, it will\nbe returned parametrically. If no solutions exist, It will throw\nValueError.\n\nParameters\n==========\n\nb : Matrix\n    The right hand side of the equation to be solved for.  Must have\n    the same number of rows as matrix A.\n\nfreevar : List\n    If the system is underdetermined (e.g. A has more columns than\n    rows), infinite solutions are possible, in terms of arbitrary\n    values of free variables. Then the index of the free variables\n    in the solutions (column Matrix) will be returned by freevar, if\n    the flag `freevar` is set to `True`.\n\nReturns\n=======\n\nx : Matrix\n    The matrix that will satisfy Ax = B.  Will have as many rows as\n    matrix A has columns, and as many columns as matrix B.\n\nparams : Matrix\n    If the system is underdetermined (e.g. A has more columns than\n    rows), infinite solutions are possible, in terms of arbitrary\n    parameters. These arbitrary parameters are returned as params\n    Matrix.\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> A = Matrix([[1, 2, 1, 1], [1, 2, 2, -1], [2, 4, 0, 6]])\n>>> b = Matrix([7, 12, 4])\n>>> sol, params = A.gauss_jordan_solve(b)\n>>> sol\nMatrix([\n[-2*tau0 - 3*tau1 + 2],\n[                 tau0],\n[           2*tau1 + 5],\n[                 tau1]])\n>>> params\nMatrix([\n[tau0],\n[tau1]])\n\n>>> A = Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 10]])\n>>> b = Matrix([3, 6, 9])\n>>> sol, params = A.gauss_jordan_solve(b)\n>>> sol\nMatrix([\n[-1],\n[ 2],\n[ 0]])\n>>> params\nMatrix(0, 1, [])\n\nSee Also\n========\n\nlower_triangular_solve\nupper_triangular_solve\ncholesky_solve\ndiagonal_solve\nLDLsolve\nLUsolve\nQRsolve\npinv\n\nReferences\n==========\n\n.. [1] http://en.wikipedia.org/wiki/Gaussian_elimination",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.gauss_jordan_solve"
-                    }
-                ],
-                "similarity": 0.1708658942420997,
-                "end_line": 2627,
-                "signature": "sympy.matrices.matrices.MatrixBase.gauss_jordan_solve(self, b, freevar)"
-            },
-            {
                 "start_line": 3343,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
@@ -1046,7 +727,36 @@
                 "signature": "sympy.matrices.matrices.MatrixBase.gauss_jordan_solve(self, B, freevar)"
             },
             {
-                "start_line": 2419,
+                "start_line": 503,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def jacobian(self, X):\n        \"\"\"Calculates the Jacobian matrix (derivative of a vector-valued function).\n\n        Parameters\n        ==========\n\n        ``self`` : vector of expressions representing functions f_i(x_1, ..., x_n).\n        X : set of x_i's in order, it can be a list or a Matrix\n\n        Both ``self`` and X can be a row or a column matrix in any order\n        (i.e., jacobian() should always work).\n\n        Examples\n        ========\n\n        >>> from sympy import sin, cos, Matrix\n        >>> from sympy.abc import rho, phi\n        >>> X = Matrix([rho*cos(phi), rho*sin(phi), rho**2])\n        >>> Y = Matrix([rho, phi])\n        >>> X.jacobian(Y)\n        Matrix([\n        [cos(phi), -rho*sin(phi)],\n        [sin(phi),  rho*cos(phi)],\n        [   2*rho,             0]])\n        >>> X = Matrix([rho*cos(phi), rho*sin(phi)])\n        >>> X.jacobian(Y)\n        Matrix([\n        [cos(phi), -rho*sin(phi)],\n        [sin(phi),  rho*cos(phi)]])\n\n        See Also\n        ========\n\n        hessian\n        wronskian\n        \"\"\"\n        if not isinstance(X, MatrixBase):\n            X = self._new(X)\n        # Both X and ``self`` can be a row or a column matrix, so we need to make\n        # sure all valid combinations work, but everything else fails:\n        if self.shape[0] == 1:\n            m = self.shape[1]\n        elif self.shape[1] == 1:\n            m = self.shape[0]\n        else:\n            raise TypeError(\"``self`` must be a row or a column matrix\")\n        if X.shape[0] == 1:\n            n = X.shape[1]\n        elif X.shape[1] == 1:\n            n = X.shape[0]\n        else:\n            raise TypeError(\"X must be a row or a column matrix\")\n\n        # m is the number of functions and n is the number of variables\n        # computing the Jacobian is now easy:\n        return self._new(m, n, lambda j, i: self[j].diff(X[i]))",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixCalculus.jacobian",
+                "documentation": "Calculates the Jacobian matrix (derivative of a vector-valued function).\n\nParameters\n==========\n\n``self`` : vector of expressions representing functions f_i(x_1, ..., x_n).\nX : set of x_i's in order, it can be a list or a Matrix\n\nBoth ``self`` and X can be a row or a column matrix in any order\n(i.e., jacobian() should always work).\n\nExamples\n========\n\n>>> from sympy import sin, cos, Matrix\n>>> from sympy.abc import rho, phi\n>>> X = Matrix([rho*cos(phi), rho*sin(phi), rho**2])\n>>> Y = Matrix([rho, phi])\n>>> X.jacobian(Y)\nMatrix([\n[cos(phi), -rho*sin(phi)],\n[sin(phi),  rho*cos(phi)],\n[   2*rho,             0]])\n>>> X = Matrix([rho*cos(phi), rho*sin(phi)])\n>>> X.jacobian(Y)\nMatrix([\n[cos(phi), -rho*sin(phi)],\n[sin(phi),  rho*cos(phi)]])\n\nSee Also\n========\n\nhessian\nwronskian",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixCalculus.jacobian"
+                    }
+                ],
+                "similarity": 0.17015212993949133,
+                "end_line": 558,
+                "signature": "sympy.matrices.matrices.MatrixCalculus.jacobian(self, X)"
+            },
+            {
+                "start_line": 854,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
@@ -1071,11 +781,11 @@
                     }
                 ],
                 "similarity": 0.16998591140325495,
-                "end_line": 2459,
+                "end_line": 894,
                 "signature": "sympy.matrices.matrices.MatrixBase.irregular(cls, ntop)"
             },
             {
-                "start_line": 3261,
+                "start_line": 1677,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
                 "type": "method",
@@ -1100,37 +810,8 @@
                     }
                 ],
                 "similarity": 0.16968476103798866,
-                "end_line": 3341,
+                "end_line": 1757,
                 "signature": "sympy.matrices.matrices.MatrixBase.log(self, simplify)"
-            },
-            {
-                "start_line": 4769,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def QRsolve(self, b):\n        \"\"\"Solve the linear system ``Ax = b``.\n\n        ``self`` is the matrix ``A``, the method argument is the vector\n        ``b``.  The method returns the solution vector ``x``.  If ``b`` is a\n        matrix, the system is solved for each column of ``b`` and the\n        return value is a matrix of the same shape as ``b``.\n\n        This method is slower (approximately by a factor of 2) but\n        more stable for floating-point arithmetic than the LUsolve method.\n        However, LUsolve usually uses an exact arithmetic, so you don't need\n        to use QRsolve.\n\n        This is mainly for educational purposes and symbolic matrices, for real\n        (or complex) matrices use mpmath.qr_solve.\n\n        See Also\n        ========\n\n        lower_triangular_solve\n        upper_triangular_solve\n        gauss_jordan_solve\n        cholesky_solve\n        diagonal_solve\n        LDLsolve\n        LUsolve\n        pinv_solve\n        QRdecomposition\n        \"\"\"\n\n        Q, R = self.as_mutable().QRdecomposition()\n        y = Q.T * b\n\n        # back substitution to solve R*x = y:\n        # We build up the result \"backwards\" in the vector 'x' and reverse it\n        # only in the end.\n        x = []\n        n = R.rows\n        for j in range(n - 1, -1, -1):\n            tmp = y[j, :]\n            for k in range(j + 1, n):\n                tmp -= R[j, k] * x[n - 1 - k]\n            x.append(tmp / R[j, j])\n        return self._new([row._mat for row in reversed(x)])",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.QRsolve",
-                "documentation": "Solve the linear system ``Ax = b``.\n\n``self`` is the matrix ``A``, the method argument is the vector\n``b``.  The method returns the solution vector ``x``.  If ``b`` is a\nmatrix, the system is solved for each column of ``b`` and the\nreturn value is a matrix of the same shape as ``b``.\n\nThis method is slower (approximately by a factor of 2) but\nmore stable for floating-point arithmetic than the LUsolve method.\nHowever, LUsolve usually uses an exact arithmetic, so you don't need\nto use QRsolve.\n\nThis is mainly for educational purposes and symbolic matrices, for real\n(or complex) matrices use mpmath.qr_solve.\n\nSee Also\n========\n\nlower_triangular_solve\nupper_triangular_solve\ngauss_jordan_solve\ncholesky_solve\ndiagonal_solve\nLDLsolve\nLUsolve\npinv_solve\nQRdecomposition",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.QRsolve"
-                    }
-                ],
-                "similarity": 0.16939862133211428,
-                "end_line": 4812,
-                "signature": "sympy.matrices.matrices.MatrixBase.QRsolve(self, b)"
             },
             {
                 "start_line": 948,
@@ -1394,35 +1075,6 @@
                 "signature": "sympy.matrices.matrices.MatrixDeprecated._legacy_array_dot(self, b)"
             },
             {
-                "start_line": 3764,
-                "file_path": "sympy/matrices/matrices.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def solve_least_squares(self, rhs, method='CH'):\n        \"\"\"Return the least-square fit to the data.\n\n        By default the cholesky_solve routine is used (method='CH'); other\n        methods of matrix inversion can be used. To find out which are\n        available, see the docstring of the .inv() method.\n\n        Examples\n        ========\n\n        >>> from sympy.matrices import Matrix, ones\n        >>> A = Matrix([1, 2, 3])\n        >>> B = Matrix([2, 3, 4])\n        >>> S = Matrix(A.row_join(B))\n        >>> S\n        Matrix([\n        [1, 2],\n        [2, 3],\n        [3, 4]])\n\n        If each line of S represent coefficients of Ax + By\n        and x and y are [2, 3] then S*xy is:\n\n        >>> r = S*Matrix([2, 3]); r\n        Matrix([\n        [ 8],\n        [13],\n        [18]])\n\n        But let's add 1 to the middle value and then solve for the\n        least-squares value of xy:\n\n        >>> xy = S.solve_least_squares(Matrix([8, 14, 18])); xy\n        Matrix([\n        [ 5/3],\n        [10/3]])\n\n        The error is given by S*xy - r:\n\n        >>> S*xy - r\n        Matrix([\n        [1/3],\n        [1/3],\n        [1/3]])\n        >>> _.norm().n(2)\n        0.58\n\n        If a different xy is used, the norm will be higher:\n\n        >>> xy += ones(2, 1)/10\n        >>> (S*xy - r).norm().n(2)\n        1.5\n\n        \"\"\"\n        if method == 'CH':\n            return self.cholesky_solve(rhs)\n        t = self.T\n        return (t * self).inv(method=method) * t * rhs",
-                "distance": 0.5,
-                "title": null,
-                "name": "sympy.matrices.matrices.MatrixBase.solve_least_squares",
-                "documentation": "Return the least-square fit to the data.\n\nBy default the cholesky_solve routine is used (method='CH'); other\nmethods of matrix inversion can be used. To find out which are\navailable, see the docstring of the .inv() method.\n\nExamples\n========\n\n>>> from sympy.matrices import Matrix, ones\n>>> A = Matrix([1, 2, 3])\n>>> B = Matrix([2, 3, 4])\n>>> S = Matrix(A.row_join(B))\n>>> S\nMatrix([\n[1, 2],\n[2, 3],\n[3, 4]])\n\nIf each line of S represent coefficients of Ax + By\nand x and y are [2, 3] then S*xy is:\n\n>>> r = S*Matrix([2, 3]); r\nMatrix([\n[ 8],\n[13],\n[18]])\n\nBut let's add 1 to the middle value and then solve for the\nleast-squares value of xy:\n\n>>> xy = S.solve_least_squares(Matrix([8, 14, 18])); xy\nMatrix([\n[ 5/3],\n[10/3]])\n\nThe error is given by S*xy - r:\n\n>>> S*xy - r\nMatrix([\n[1/3],\n[1/3],\n[1/3]])\n>>> _.norm().n(2)\n0.58\n\nIf a different xy is used, the norm will be higher:\n\n>>> xy += ones(2, 1)/10\n>>> (S*xy - r).norm().n(2)\n1.5",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/matrices/matrices.py"
-                    },
-                    {
-                        "start_node": "sympy/matrices/matrices.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.matrices.matrices.MatrixBase.solve_least_squares"
-                    }
-                ],
-                "similarity": 0.16445214244384235,
-                "end_line": 3821,
-                "signature": "sympy.matrices.matrices.MatrixBase.solve_least_squares(self, rhs, method)"
-            },
-            {
                 "start_line": 224,
                 "file_path": "sympy/matrices/matrices.py",
                 "issue_id": null,
@@ -1450,6 +1102,354 @@
                 "similarity": 0.16444236839635523,
                 "end_line": 269,
                 "signature": "sympy.matrices.matrices.MatrixDeterminant._eval_det_lu(self, iszerofunc, simpfunc)"
+            },
+            {
+                "start_line": 770,
+                "file_path": "sympy/matrices/expressions/matexpr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, name, n, m):\n        n, m = _sympify(n), _sympify(m)\n\n        cls._check_dim(m)\n        cls._check_dim(n)\n\n        if isinstance(name, string_types):\n            name = Symbol(name)\n        obj = Basic.__new__(cls, name, n, m)\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.matrices.expressions.matexpr.MatrixSymbol.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "expressions/matexpr.py"
+                    },
+                    {
+                        "start_node": "expressions/matexpr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.expressions.matexpr.MatrixSymbol.__new__"
+                    }
+                ],
+                "similarity": 0.16423457456796228,
+                "end_line": 779,
+                "signature": "sympy.matrices.expressions.matexpr.MatrixSymbol.__new__(cls, name, n, m)"
+            },
+            {
+                "start_line": 75,
+                "file_path": "sympy/matrices/expressions/matmul.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_coeff_matrices(self):\n        scalars = [x for x in self.args if not x.is_Matrix]\n        matrices = [x for x in self.args if x.is_Matrix]\n        coeff = Mul(*scalars)\n\n        return coeff, matrices",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.expressions.matmul.MatMul.as_coeff_matrices",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/expressions/matmul.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/expressions/matmul.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.expressions.matmul.MatMul.as_coeff_matrices"
+                    }
+                ],
+                "similarity": 0.16390461783780916,
+                "end_line": 80,
+                "signature": "sympy.matrices.expressions.matmul.MatMul.as_coeff_matrices(self)"
+            },
+            {
+                "start_line": 4416,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def pinv_solve(self, B, arbitrary_matrix=None):\n        \"\"\"Solve ``Ax = B`` using the Moore-Penrose pseudoinverse.\n\n        There may be zero, one, or infinite solutions.  If one solution\n        exists, it will be returned.  If infinite solutions exist, one will\n        be returned based on the value of arbitrary_matrix.  If no solutions\n        exist, the least-squares solution is returned.\n\n        Parameters\n        ==========\n\n        B : Matrix\n            The right hand side of the equation to be solved for.  Must have\n            the same number of rows as matrix A.\n        arbitrary_matrix : Matrix\n            If the system is underdetermined (e.g. A has more columns than\n            rows), infinite solutions are possible, in terms of an arbitrary\n            matrix.  This parameter may be set to a specific matrix to use\n            for that purpose; if so, it must be the same shape as x, with as\n            many rows as matrix A has columns, and as many columns as matrix\n            B.  If left as None, an appropriate matrix containing dummy\n            symbols in the form of ``wn_m`` will be used, with n and m being\n            row and column position of each symbol.\n\n        Returns\n        =======\n\n        x : Matrix\n            The matrix that will satisfy ``Ax = B``.  Will have as many rows as\n            matrix A has columns, and as many columns as matrix B.\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> A = Matrix([[1, 2, 3], [4, 5, 6]])\n        >>> B = Matrix([7, 8])\n        >>> A.pinv_solve(B)\n        Matrix([\n        [ _w0_0/6 - _w1_0/3 + _w2_0/6 - 55/18],\n        [-_w0_0/3 + 2*_w1_0/3 - _w2_0/3 + 1/9],\n        [ _w0_0/6 - _w1_0/3 + _w2_0/6 + 59/18]])\n        >>> A.pinv_solve(B, arbitrary_matrix=Matrix([0, 0, 0]))\n        Matrix([\n        [-55/18],\n        [   1/9],\n        [ 59/18]])\n\n        See Also\n        ========\n\n        lower_triangular_solve\n        upper_triangular_solve\n        gauss_jordan_solve\n        cholesky_solve\n        diagonal_solve\n        LDLsolve\n        LUsolve\n        QRsolve\n        pinv\n\n        Notes\n        =====\n\n        This may return either exact solutions or least squares solutions.\n        To determine which, check ``A * A.pinv() * B == B``.  It will be\n        True if exact solutions exist, and False if only a least-squares\n        solution exists.  Be aware that the left hand side of that equation\n        may need to be simplified to correctly compare to the right hand\n        side.\n\n        References\n        ==========\n\n        .. [1] https://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#Obtaining_all_solutions_of_a_linear_system\n\n        \"\"\"\n        from sympy.matrices import eye\n        A = self\n        A_pinv = self.pinv()\n        if arbitrary_matrix is None:\n            rows, cols = A.cols, B.cols\n            w = symbols('w:{0}_:{1}'.format(rows, cols), cls=Dummy)\n            arbitrary_matrix = self.__class__(cols, rows, w).T\n        return A_pinv * B + (eye(A.cols) - A_pinv * A) * arbitrary_matrix",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixBase.pinv_solve",
+                "documentation": "Solve ``Ax = B`` using the Moore-Penrose pseudoinverse.\n\nThere may be zero, one, or infinite solutions.  If one solution\nexists, it will be returned.  If infinite solutions exist, one will\nbe returned based on the value of arbitrary_matrix.  If no solutions\nexist, the least-squares solution is returned.\n\nParameters\n==========\n\nB : Matrix\n    The right hand side of the equation to be solved for.  Must have\n    the same number of rows as matrix A.\narbitrary_matrix : Matrix\n    If the system is underdetermined (e.g. A has more columns than\n    rows), infinite solutions are possible, in terms of an arbitrary\n    matrix.  This parameter may be set to a specific matrix to use\n    for that purpose; if so, it must be the same shape as x, with as\n    many rows as matrix A has columns, and as many columns as matrix\n    B.  If left as None, an appropriate matrix containing dummy\n    symbols in the form of ``wn_m`` will be used, with n and m being\n    row and column position of each symbol.\n\nReturns\n=======\n\nx : Matrix\n    The matrix that will satisfy ``Ax = B``.  Will have as many rows as\n    matrix A has columns, and as many columns as matrix B.\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> A = Matrix([[1, 2, 3], [4, 5, 6]])\n>>> B = Matrix([7, 8])\n>>> A.pinv_solve(B)\nMatrix([\n[ _w0_0/6 - _w1_0/3 + _w2_0/6 - 55/18],\n[-_w0_0/3 + 2*_w1_0/3 - _w2_0/3 + 1/9],\n[ _w0_0/6 - _w1_0/3 + _w2_0/6 + 59/18]])\n>>> A.pinv_solve(B, arbitrary_matrix=Matrix([0, 0, 0]))\nMatrix([\n[-55/18],\n[   1/9],\n[ 59/18]])\n\nSee Also\n========\n\nlower_triangular_solve\nupper_triangular_solve\ngauss_jordan_solve\ncholesky_solve\ndiagonal_solve\nLDLsolve\nLUsolve\nQRsolve\npinv\n\nNotes\n=====\n\nThis may return either exact solutions or least squares solutions.\nTo determine which, check ``A * A.pinv() * B == B``.  It will be\nTrue if exact solutions exist, and False if only a least-squares\nsolution exists.  Be aware that the left hand side of that equation\nmay need to be simplified to correctly compare to the right hand\nside.\n\nReferences\n==========\n\n.. [1] https://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#Obtaining_all_solutions_of_a_linear_system",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixBase.pinv_solve"
+                    }
+                ],
+                "similarity": 0.16359553026123813,
+                "end_line": 4500,
+                "signature": "sympy.matrices.matrices.MatrixBase.pinv_solve(self, B, arbitrary_matrix)"
+            },
+            {
+                "start_line": 3752,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def LDLdecomposition(self, hermitian=True):\n        \"\"\"Returns the LDL Decomposition (L, D) of matrix A,\n        such that L * D * L.H == A if hermitian flag is True, or\n        L * D * L.T == A if hermitian is False.\n        This method eliminates the use of square root.\n        Further this ensures that all the diagonal entries of L are 1.\n        A must be a Hermitian positive-definite matrix if hermitian is True,\n        or a symmetric matrix otherwise.\n\n        Examples\n        ========\n\n        >>> from sympy.matrices import Matrix, eye\n        >>> A = Matrix(((25, 15, -5), (15, 18, 0), (-5, 0, 11)))\n        >>> L, D = A.LDLdecomposition()\n        >>> L\n        Matrix([\n        [   1,   0, 0],\n        [ 3/5,   1, 0],\n        [-1/5, 1/3, 1]])\n        >>> D\n        Matrix([\n        [25, 0, 0],\n        [ 0, 9, 0],\n        [ 0, 0, 9]])\n        >>> L * D * L.T * A.inv() == eye(A.rows)\n        True\n\n        The matrix can have complex entries:\n\n        >>> from sympy import I\n        >>> A = Matrix(((9, 3*I), (-3*I, 5)))\n        >>> L, D = A.LDLdecomposition()\n        >>> L\n        Matrix([\n        [   1, 0],\n        [-I/3, 1]])\n        >>> D\n        Matrix([\n        [9, 0],\n        [0, 4]])\n        >>> L*D*L.H == A\n        True\n\n        See Also\n        ========\n\n        cholesky\n        LUdecomposition\n        QRdecomposition\n        \"\"\"\n        if not self.is_square:\n            raise NonSquareMatrixError(\"Matrix must be square.\")\n        if hermitian and not self.is_hermitian:\n            raise ValueError(\"Matrix must be Hermitian.\")\n        if not hermitian and not self.is_symmetric():\n            raise ValueError(\"Matrix must be symmetric.\")\n        return self._LDLdecomposition(hermitian=hermitian)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixBase.LDLdecomposition",
+                "documentation": "Returns the LDL Decomposition (L, D) of matrix A,\nsuch that L * D * L.H == A if hermitian flag is True, or\nL * D * L.T == A if hermitian is False.\nThis method eliminates the use of square root.\nFurther this ensures that all the diagonal entries of L are 1.\nA must be a Hermitian positive-definite matrix if hermitian is True,\nor a symmetric matrix otherwise.\n\nExamples\n========\n\n>>> from sympy.matrices import Matrix, eye\n>>> A = Matrix(((25, 15, -5), (15, 18, 0), (-5, 0, 11)))\n>>> L, D = A.LDLdecomposition()\n>>> L\nMatrix([\n[   1,   0, 0],\n[ 3/5,   1, 0],\n[-1/5, 1/3, 1]])\n>>> D\nMatrix([\n[25, 0, 0],\n[ 0, 9, 0],\n[ 0, 0, 9]])\n>>> L * D * L.T * A.inv() == eye(A.rows)\nTrue\n\nThe matrix can have complex entries:\n\n>>> from sympy import I\n>>> A = Matrix(((9, 3*I), (-3*I, 5)))\n>>> L, D = A.LDLdecomposition()\n>>> L\nMatrix([\n[   1, 0],\n[-I/3, 1]])\n>>> D\nMatrix([\n[9, 0],\n[0, 4]])\n>>> L*D*L.H == A\nTrue\n\nSee Also\n========\n\ncholesky\nLUdecomposition\nQRdecomposition",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixBase.LDLdecomposition"
+                    }
+                ],
+                "similarity": 0.1635264667041526,
+                "end_line": 3809,
+                "signature": "sympy.matrices.matrices.MatrixBase.LDLdecomposition(self, hermitian)"
+            },
+            {
+                "start_line": 59,
+                "file_path": "sympy/matrices/dense.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __getitem__(self, key):\n        \"\"\"Return portion of self defined by key. If the key involves a slice\n        then a list will be returned (if key is a single slice) or a matrix\n        (if key was a tuple involving a slice).\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix, I\n        >>> m = Matrix([\n        ... [1, 2 + I],\n        ... [3, 4    ]])\n\n        If the key is a tuple that doesn't involve a slice then that element\n        is returned:\n\n        >>> m[1, 0]\n        3\n\n        When a tuple key involves a slice, a matrix is returned. Here, the\n        first column is selected (all rows, column 0):\n\n        >>> m[:, 0]\n        Matrix([\n        [1],\n        [3]])\n\n        If the slice is not a tuple then it selects from the underlying\n        list of elements that are arranged in row order and a list is\n        returned if a slice is involved:\n\n        >>> m[0]\n        1\n        >>> m[::2]\n        [1, 3]\n        \"\"\"\n        if isinstance(key, tuple):\n            i, j = key\n            try:\n                i, j = self.key2ij(key)\n                return self._mat[i*self.cols + j]\n            except (TypeError, IndexError):\n                if (isinstance(i, Expr) and not i.is_number) or (isinstance(j, Expr) and not j.is_number):\n                    if ((j < 0) is True) or ((j >= self.shape[1]) is True) or\\\n                       ((i < 0) is True) or ((i >= self.shape[0]) is True):\n                        raise ValueError(\"index out of boundary\")\n                    from sympy.matrices.expressions.matexpr import MatrixElement\n                    return MatrixElement(self, i, j)\n\n                if isinstance(i, slice):\n                    # XXX remove list() when PY2 support is dropped\n                    i = list(range(self.rows))[i]\n                elif is_sequence(i):\n                    pass\n                else:\n                    i = [i]\n                if isinstance(j, slice):\n                    # XXX remove list() when PY2 support is dropped\n                    j = list(range(self.cols))[j]\n                elif is_sequence(j):\n                    pass\n                else:\n                    j = [j]\n                return self.extract(i, j)\n        else:\n            # row-wise decomposition of matrix\n            if isinstance(key, slice):\n                return self._mat[key]\n            return self._mat[a2idx(key)]",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.matrices.dense.DenseMatrix.__getitem__",
+                "documentation": "Return portion of self defined by key. If the key involves a slice\nthen a list will be returned (if key is a single slice) or a matrix\n(if key was a tuple involving a slice).\n\nExamples\n========\n\n>>> from sympy import Matrix, I\n>>> m = Matrix([\n... [1, 2 + I],\n... [3, 4    ]])\n\nIf the key is a tuple that doesn't involve a slice then that element\nis returned:\n\n>>> m[1, 0]\n3\n\nWhen a tuple key involves a slice, a matrix is returned. Here, the\nfirst column is selected (all rows, column 0):\n\n>>> m[:, 0]\nMatrix([\n[1],\n[3]])\n\nIf the slice is not a tuple then it selects from the underlying\nlist of elements that are arranged in row order and a list is\nreturned if a slice is involved:\n\n>>> m[0]\n1\n>>> m[::2]\n[1, 3]",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/dense.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/dense.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.dense.DenseMatrix.__getitem__"
+                    }
+                ],
+                "similarity": 0.16179047894211848,
+                "end_line": 127,
+                "signature": "sympy.matrices.dense.DenseMatrix.__getitem__(self, key)"
+            },
+            {
+                "start_line": 74,
+                "file_path": "sympy/matrices/expressions/matexpr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, *args, **kwargs):\n        args = map(_sympify, args)\n        return Basic.__new__(cls, *args, **kwargs)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.matrices.expressions.matexpr.MatrixExpr.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "expressions/matexpr.py"
+                    },
+                    {
+                        "start_node": "expressions/matexpr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.expressions.matexpr.MatrixExpr.__new__"
+                    }
+                ],
+                "similarity": 0.16100760713935142,
+                "end_line": 76,
+                "signature": "sympy.matrices.expressions.matexpr.MatrixExpr.__new__(cls)"
+            },
+            {
+                "start_line": 1759,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def is_nilpotent(self):\n        \"\"\"Checks if a matrix is nilpotent.\n\n        A matrix B is nilpotent if for some integer k, B**k is\n        a zero matrix.\n\n        Examples\n        ========\n\n        >>> from sympy import Matrix\n        >>> a = Matrix([[0, 0, 0], [1, 0, 0], [1, 1, 0]])\n        >>> a.is_nilpotent()\n        True\n\n        >>> a = Matrix([[1, 0, 1], [1, 0, 0], [1, 1, 0]])\n        >>> a.is_nilpotent()\n        False\n        \"\"\"\n        if not self:\n            return True\n        if not self.is_square:\n            raise NonSquareMatrixError(\n                \"Nilpotency is valid only for square matrices\")\n        x = uniquely_named_symbol('x', self, modify=lambda s: '_' + s)\n        p = self.charpoly(x)\n        if p.args[0] == x ** self.rows:\n            return True\n        return False",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixBase.is_nilpotent",
+                "documentation": "Checks if a matrix is nilpotent.\n\nA matrix B is nilpotent if for some integer k, B**k is\na zero matrix.\n\nExamples\n========\n\n>>> from sympy import Matrix\n>>> a = Matrix([[0, 0, 0], [1, 0, 0], [1, 1, 0]])\n>>> a.is_nilpotent()\nTrue\n\n>>> a = Matrix([[1, 0, 1], [1, 0, 0], [1, 1, 0]])\n>>> a.is_nilpotent()\nFalse",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixBase.is_nilpotent"
+                    }
+                ],
+                "similarity": 0.16065474865124627,
+                "end_line": 1786,
+                "signature": "sympy.matrices.matrices.MatrixBase.is_nilpotent(self)"
+            },
+            {
+                "start_line": 1348,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _eval_power(self, expt):\n        \"\"\"\n        expt is symbolic object but not equal to 0, 1\n\n        (-p)**r -> exp(r*log(-p)) -> exp(r*(log(p) + I*Pi)) ->\n                  -> p**r*(sin(Pi*r) + cos(Pi*r)*I)\n        \"\"\"\n        if self == 0:\n            if expt.is_positive:\n                return S.Zero\n            if expt.is_negative:\n                return S.Infinity\n        if isinstance(expt, Number):\n            if isinstance(expt, Integer):\n                prec = self._prec\n                return Float._new(\n                    mlib.mpf_pow_int(self._mpf_, expt.p, prec, rnd), prec)\n            elif isinstance(expt, Rational) and \\\n                    expt.p == 1 and expt.q % 2 and self.is_negative:\n                return Pow(S.NegativeOne, expt, evaluate=False)*(\n                    -self)._eval_power(expt)\n            expt, prec = expt._as_mpf_op(self._prec)\n            mpfself = self._mpf_\n            try:\n                y = mpf_pow(mpfself, expt, prec, rnd)\n                return Float._new(y, prec)\n            except mlib.ComplexResult:\n                re, im = mlib.mpc_pow(\n                    (mpfself, fzero), (expt, fzero), prec, rnd)\n                return Float._new(re, prec) + \\\n                    Float._new(im, prec)*S.ImaginaryUnit",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.core.numbers.Float._eval_power",
+                "documentation": "expt is symbolic object but not equal to 0, 1\n\n(-p)**r -> exp(r*log(-p)) -> exp(r*(log(p) + I*Pi)) ->\n          -> p**r*(sin(Pi*r) + cos(Pi*r)*I)",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Float._eval_power"
+                    }
+                ],
+                "similarity": 0.16004406669832896,
+                "end_line": 1378,
+                "signature": "sympy.core.numbers.Float._eval_power(self, expt)"
+            },
+            {
+                "start_line": 845,
+                "file_path": "sympy/matrices/matrices.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def rank(self, iszerofunc=_iszero, simplify=False):\n        \"\"\"\n        Returns the rank of a matrix\n\n        >>> from sympy import Matrix\n        >>> from sympy.abc import x\n        >>> m = Matrix([[1, 2], [x, 1 - 1/x]])\n        >>> m.rank()\n        2\n        >>> n = Matrix(3, 3, range(1, 10))\n        >>> n.rank()\n        2\n        \"\"\"\n        simpfunc = simplify if isinstance(\n            simplify, FunctionType) else _simplify\n\n        # for small matrices, we compute the rank explicitly\n        # if is_zero on elements doesn't answer the question\n        # for small matrices, we fall back to the full routine.\n        if self.rows <= 0 or self.cols <= 0:\n            return 0\n        if self.rows <= 1 or self.cols <= 1:\n            zeros = [iszerofunc(x) for x in self]\n            if False in zeros:\n                return 1\n        if self.rows == 2 and self.cols == 2:\n            zeros = [iszerofunc(x) for x in self]\n            if not False in zeros and not None in zeros:\n                return 0\n            det = self.det()\n            if iszerofunc(det) and False in zeros:\n                return 1\n            if iszerofunc(det) is False:\n                return 2\n\n        mat, _ = self._permute_complexity_right(iszerofunc=iszerofunc)\n        echelon_form, pivots, swaps = mat._eval_echelon_form(iszerofunc=iszerofunc, simpfunc=simpfunc)\n        return len(pivots)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.matrices.matrices.MatrixReductions.rank",
+                "documentation": "Returns the rank of a matrix\n\n>>> from sympy import Matrix\n>>> from sympy.abc import x\n>>> m = Matrix([[1, 2], [x, 1 - 1/x]])\n>>> m.rank()\n2\n>>> n = Matrix(3, 3, range(1, 10))\n>>> n.rank()\n2",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/matrices/matrices.py"
+                    },
+                    {
+                        "start_node": "sympy/matrices/matrices.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.matrices.MatrixReductions.rank"
+                    }
+                ],
+                "similarity": 0.1595012833530033,
+                "end_line": 882,
+                "signature": "sympy.matrices.matrices.MatrixReductions.rank(self, iszerofunc, simplify)"
+            },
+            {
+                "start_line": 3291,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __hash__(self):\n        return super(NaN, self).__hash__()",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.core.numbers.NaN.__hash__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.NaN.__hash__"
+                    }
+                ],
+                "similarity": 0.15828150627908522,
+                "end_line": 3292,
+                "signature": "sympy.core.numbers.NaN.__hash__(self)"
+            },
+            {
+                "start_line": 1030,
+                "file_path": "sympy/matrices/expressions/matexpr.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(cls, m, n):\n        m, n = _sympify(m), _sympify(n)\n        cls._check_dim(m)\n        cls._check_dim(n)\n\n        obj = super(OneMatrix, cls).__new__(cls, m, n)\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.matrices.expressions.matexpr.OneMatrix.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "expressions/matexpr.py"
+                    },
+                    {
+                        "start_node": "expressions/matexpr.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.matrices.expressions.matexpr.OneMatrix.__new__"
+                    }
+                ],
+                "similarity": 0.15783286041535238,
+                "end_line": 1036,
+                "signature": "sympy.matrices.expressions.matexpr.OneMatrix.__new__(cls, m, n)"
+            },
+            {
+                "start_line": 1739,
+                "file_path": "sympy/core/numbers.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __mul__(self, other):\n        if global_evaluate[0]:\n            if isinstance(other, Integer):\n                return Rational(self.p*other.p, self.q, igcd(other.p, self.q))\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.p, self.q*other.q, igcd(self.p, other.q)*igcd(self.q, other.p))\n            elif isinstance(other, Float):\n                return other*self\n            else:\n                return Number.__mul__(self, other)\n        return Number.__mul__(self, other)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sympy.core.numbers.Rational.__mul__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/core/numbers.py"
+                    },
+                    {
+                        "start_node": "sympy/core/numbers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.core.numbers.Rational.__mul__"
+                    }
+                ],
+                "similarity": 0.15636701032452627,
+                "end_line": 1749,
+                "signature": "sympy.core.numbers.Rational.__mul__(self, other)"
             }
         ],
         "classes": [
@@ -1850,7 +1850,7 @@
                     },
                     {
                         "start_node": "sympy/integrals/meijerint.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sympy.integrals.meijerint._CoeffExpValueError"
                     }
@@ -1937,7 +1937,7 @@
                     },
                     {
                         "start_node": "sympy/core/sympify.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sympy.core.sympify.CantSympify"
                     }
@@ -2111,7 +2111,7 @@
                     },
                     {
                         "start_node": "sympy/core/compatibility.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.core.compatibility.NotIterable"
                     }
@@ -2256,7 +2256,7 @@
                     },
                     {
                         "start_node": "sympy/core/evalf.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.core.evalf.PrecisionExhausted"
                     }
@@ -2314,7 +2314,7 @@
                     },
                     {
                         "start_node": "sympy/utilities/misc.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.utilities.misc.Undecidable"
                     }

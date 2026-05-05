@@ -1,0 +1,2924 @@
+{
+    "related_entities": {
+        "methods": [
+            {
+                "start_line": 249,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __str__(self):\n        \"\"\"\n        Return the query as a string of SQL with the parameter values\n        substituted in (use sql_with_params() to see the unsubstituted string).\n\n        Parameter values won't necessarily be quoted correctly, since that is\n        done by the database interface at execution time.\n        \"\"\"\n        sql, params = self.sql_with_params()\n        return sql % params",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.__str__",
+                "documentation": "Return the query as a string of SQL with the parameter values\nsubstituted in (use sql_with_params() to see the unsubstituted string).\n\nParameter values won't necessarily be quoted correctly, since that is\ndone by the database interface at execution time.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.__str__"
+                    }
+                ],
+                "similarity": 0.19751301727022502,
+                "end_line": 258,
+                "signature": "django.db.models.sql.query.Query.__str__(self)"
+            },
+            {
+                "start_line": 204,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def query(self):\n        if self._deferred_filter:\n            negate, args, kwargs = self._deferred_filter\n            self._filter_or_exclude_inplace(negate, *args, **kwargs)\n            self._deferred_filter = None\n        return self._query",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.QuerySet.query",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.QuerySet.query"
+                    }
+                ],
+                "similarity": 0.19659671986351657,
+                "end_line": 209,
+                "signature": "django.db.models.query.QuerySet.query(self)"
+            },
+            {
+                "start_line": 265,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_order_by(self):\n        \"\"\"\n        Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\n        ORDER BY clause.\n\n        The order_by clause can alter the select clause (for example it\n        can add aliases to clauses that do not yet have one, or it can\n        add totally new select clauses).\n        \"\"\"\n        if self.query.extra_order_by:\n            ordering = self.query.extra_order_by\n        elif not self.query.default_ordering:\n            ordering = self.query.order_by\n        elif self.query.order_by:\n            ordering = self.query.order_by\n        elif self.query.get_meta().ordering:\n            ordering = self.query.get_meta().ordering\n            self._meta_ordering = ordering\n        else:\n            ordering = []\n        if self.query.standard_ordering:\n            asc, desc = ORDER_DIR['ASC']\n        else:\n            asc, desc = ORDER_DIR['DESC']\n\n        order_by = []\n        for field in ordering:\n            if hasattr(field, 'resolve_expression'):\n                if isinstance(field, Value):\n                    # output_field must be resolved for constants.\n                    field = Cast(field, field.output_field)\n                if not isinstance(field, OrderBy):\n                    field = field.asc()\n                if not self.query.standard_ordering:\n                    field = field.copy()\n                    field.reverse_ordering()\n                order_by.append((field, False))\n                continue\n            if field == '?':  # random\n                order_by.append((OrderBy(Random()), False))\n                continue\n\n            col, order = get_order_dir(field, asc)\n            descending = order == 'DESC'\n\n            if col in self.query.annotation_select:\n                # Reference to expression in SELECT clause\n                order_by.append((\n                    OrderBy(Ref(col, self.query.annotation_select[col]), descending=descending),\n                    True))\n                continue\n            if col in self.query.annotations:\n                # References to an expression which is masked out of the SELECT\n                # clause.\n                expr = self.query.annotations[col]\n                if isinstance(expr, Value):\n                    # output_field must be resolved for constants.\n                    expr = Cast(expr, expr.output_field)\n                order_by.append((OrderBy(expr, descending=descending), False))\n                continue\n\n            if '.' in field:\n                # This came in through an extra(order_by=...) addition. Pass it\n                # on verbatim.\n                table, col = col.split('.', 1)\n                order_by.append((\n                    OrderBy(\n                        RawSQL('%s.%s' % (self.quote_name_unless_alias(table), col), []),\n                        descending=descending\n                    ), False))\n                continue\n\n            if not self.query.extra or col not in self.query.extra:\n                # 'col' is of the form 'field' or 'field1__field2' or\n                # '-field1__field2__field', etc.\n                order_by.extend(self.find_ordering_name(\n                    field, self.query.get_meta(), default_order=asc))\n            else:\n                if col not in self.query.extra_select:\n                    order_by.append((\n                        OrderBy(RawSQL(*self.query.extra[col]), descending=descending),\n                        False))\n                else:\n                    order_by.append((\n                        OrderBy(Ref(col, RawSQL(*self.query.extra[col])), descending=descending),\n                        True))\n        result = []\n        seen = set()\n\n        for expr, is_ref in order_by:\n            resolved = expr.resolve_expression(self.query, allow_joins=True, reuse=None)\n            if self.query.combinator:\n                src = resolved.get_source_expressions()[0]\n                # Relabel order by columns to raw numbers if this is a combined\n                # query; necessary since the columns can't be referenced by the\n                # fully qualified name and the simple column names may collide.\n                for idx, (sel_expr, _, col_alias) in enumerate(self.select):\n                    if is_ref and col_alias == src.refs:\n                        src = src.source\n                    elif col_alias:\n                        continue\n                    if src == sel_expr:\n                        resolved.set_source_expressions([RawSQL('%d' % (idx + 1), ())])\n                        break\n                else:\n                    if col_alias:\n                        raise DatabaseError('ORDER BY term does not match any column in the result set.')\n                    # Add column used in ORDER BY clause without an alias to\n                    # the selected columns.\n                    self.query.add_select_col(src)\n                    resolved.set_source_expressions([RawSQL('%d' % len(self.query.select), ())])\n            sql, params = self.compile(resolved)\n            # Don't add the same column twice, but the order direction is\n            # not taken into account so we strip it. When this entire method\n            # is refactored into expressions, then we can check each part as we\n            # generate it.\n            without_ordering = self.ordering_parts.search(sql).group(1)\n            params_hash = make_hashable(params)\n            if (without_ordering, params_hash) in seen:\n                continue\n            seen.add((without_ordering, params_hash))\n            result.append((resolved, (sql, params, is_ref)))\n        return result",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.get_order_by",
+                "documentation": "Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\nORDER BY clause.\n\nThe order_by clause can alter the select clause (for example it\ncan add aliases to clauses that do not yet have one, or it can\nadd totally new select clauses).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.get_order_by"
+                    }
+                ],
+                "similarity": 0.1912198790650816,
+                "end_line": 387,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.get_order_by(self)"
+            },
+            {
+                "start_line": 44,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        Do any necessary class setup immediately prior to producing SQL. This\n        is for things that can't necessarily be done in __init__ because we\n        might not have all the pieces in place at that time.\n        \"\"\"\n        self.setup_query()\n        order_by = self.get_order_by()\n        self.where, self.having = self.query.where.split_having()\n        extra_select = self.get_extra_select(order_by, self.select)\n        self.has_extra_select = bool(extra_select)\n        group_by = self.get_group_by(self.select + extra_select, order_by)\n        return extra_select, order_by, group_by",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup",
+                "documentation": "Do any necessary class setup immediately prior to producing SQL. This\nis for things that can't necessarily be done in __init__ because we\nmight not have all the pieces in place at that time.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup"
+                    }
+                ],
+                "similarity": 0.17993452393755688,
+                "end_line": 56,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup(self)"
+            },
+            {
+                "start_line": 40,
+                "file_path": "django/utils/functional.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __get__(self, instance, cls=None):\n        \"\"\"\n        Call the function and put the return value in instance.__dict__ so that\n        subsequent attribute access on the instance returns the cached value\n        instead of calling cached_property.__get__().\n        \"\"\"\n        if instance is None:\n            return self\n        res = instance.__dict__[self.name] = self.func(instance)\n        return res",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.utils.functional.cached_property.__get__",
+                "documentation": "Call the function and put the return value in instance.__dict__ so that\nsubsequent attribute access on the instance returns the cached value\ninstead of calling cached_property.__get__().",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/utils/functional.py"
+                    },
+                    {
+                        "start_node": "django/utils/functional.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.utils.functional.cached_property.__get__"
+                    }
+                ],
+                "similarity": 0.17764900512676754,
+                "end_line": 49,
+                "signature": "django.utils.functional.cached_property.__get__(self, instance, cls)"
+            },
+            {
+                "start_line": 333,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def swapped(self):\n        \"\"\"\n        Has this model been swapped out for another? If so, return the model\n        name of the replacement; otherwise, return None.\n\n        For historical reasons, model name lookups using get_model() are\n        case insensitive, so we make sure we are case insensitive here.\n        \"\"\"\n        if self.swappable:\n            swapped_for = getattr(settings, self.swappable, None)\n            if swapped_for:\n                try:\n                    swapped_label, swapped_object = swapped_for.split('.')\n                except ValueError:\n                    # setting not in the format app_label.model_name\n                    # raising ImproperlyConfigured here causes problems with\n                    # test cleanup code - instead it is raised in get_user_model\n                    # or as part of validation.\n                    return swapped_for\n\n                if '%s.%s' % (swapped_label, swapped_object.lower()) != self.label_lower:\n                    return swapped_for\n        return None",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.swapped",
+                "documentation": "Has this model been swapped out for another? If so, return the model\nname of the replacement; otherwise, return None.\n\nFor historical reasons, model name lookups using get_model() are\ncase insensitive, so we make sure we are case insensitive here.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.swapped"
+                    }
+                ],
+                "similarity": 0.17739669990569973,
+                "end_line": 355,
+                "signature": "django.db.models.options.Options.swapped(self)"
+            },
+            {
+                "start_line": 1387,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, raw_query, model=None, query=None, params=None,\n                 translations=None, using=None, hints=None):\n        self.raw_query = raw_query\n        self.model = model\n        self._db = using\n        self._hints = hints or {}\n        self.query = query or sql.RawQuery(sql=raw_query, using=self.db, params=params)\n        self.params = params or ()\n        self.translations = translations or {}\n        self._result_cache = None\n        self._prefetch_related_lookups = ()\n        self._prefetch_done = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.RawQuerySet.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.RawQuerySet.__init__"
+                    }
+                ],
+                "similarity": 0.17588070764706748,
+                "end_line": 1398,
+                "signature": "django.db.models.query.RawQuerySet.__init__(self, raw_query, model, query, params, translations, using, hints)"
+            },
+            {
+                "start_line": 22,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, query, connection, using):\n        self.query = query\n        self.connection = connection\n        self.using = using\n        self.quote_cache = {'*': '*'}\n        # The select, klass_info, and annotations are needed by QuerySet.iterator()\n        # these are set as a side-effect of executing the query. Note that we calculate\n        # separately a list of extra select columns needed for grammatical correctness\n        # of the query, but these columns are not included in self.select.\n        self.select = None\n        self.annotation_col_map = None\n        self.klass_info = None\n        # Multiline ordering SQL clause may appear from RawSQL.\n        self.ordering_parts = re.compile(r'^(.*)\\s(ASC|DESC)(.*)', re.MULTILINE | re.DOTALL)\n        self._meta_ordering = None",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.__init__"
+                    }
+                ],
+                "similarity": 0.17537025413591933,
+                "end_line": 36,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.__init__(self, query, connection, using)"
+            },
+            {
+                "start_line": 1513,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        If the update depends on results from other tables, munge the \"where\"\n        conditions to match the format required for (portable) SQL updates.\n\n        If multiple updates are required, pull out the id values to update at\n        this point so that they don't change as a result of the progressive\n        updates.\n        \"\"\"\n        refcounts_before = self.query.alias_refcount.copy()\n        # Ensure base table is in the query\n        self.query.get_initial_alias()\n        count = self.query.count_active_tables()\n        if not self.query.related_updates and count == 1:\n            return\n        query = self.query.chain(klass=Query)\n        query.select_related = False\n        query.clear_ordering(True)\n        query.extra = {}\n        query.select = []\n        query.add_fields([query.get_meta().pk.name])\n        super().pre_sql_setup()\n\n        must_pre_select = count > 1 and not self.connection.features.update_can_self_select\n\n        # Now we adjust the current query: reset the where clause and get rid\n        # of all the tables we don't need (since they're in the sub-select).\n        self.query.where = self.query.where_class()\n        if self.query.related_updates or must_pre_select:\n            # Either we're using the idents in multiple update queries (so\n            # don't want them to change), or the db backend doesn't support\n            # selecting from the updating table (e.g. MySQL).\n            idents = []\n            for rows in query.get_compiler(self.using).execute_sql(MULTI):\n                idents.extend(r[0] for r in rows)\n            self.query.add_filter(('pk__in', idents))\n            self.query.related_ids = idents\n        else:\n            # The fast path. Filters and updates in one query.\n            self.query.add_filter(('pk__in', query))\n        self.query.reset_refcounts(refcounts_before)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup",
+                "documentation": "If the update depends on results from other tables, munge the \"where\"\nconditions to match the format required for (portable) SQL updates.\n\nIf multiple updates are required, pull out the id values to update at\nthis point so that they don't change as a result of the progressive\nupdates.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup"
+                    }
+                ],
+                "similarity": 0.17252893245076573,
+                "end_line": 1553,
+                "signature": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup(self)"
+            },
+            {
+                "start_line": 73,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, sql, using, params=None):\n        self.params = params or ()\n        self.sql = sql\n        self.using = using\n        self.cursor = None\n\n        # Mirror some properties of a normal query so that\n        # the compiler can be used to process results.\n        self.low_mark, self.high_mark = 0, None  # Used for offset/limit\n        self.extra_select = {}\n        self.annotation_select = {}",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.RawQuery.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.RawQuery.__init__"
+                    }
+                ],
+                "similarity": 0.16976052424746219,
+                "end_line": 83,
+                "signature": "django.db.models.sql.query.RawQuery.__init__(self, sql, using, params)"
+            },
+            {
+                "start_line": 1535,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, lookup, queryset=None, to_attr=None):\n        # `prefetch_through` is the path we traverse to perform the prefetch.\n        self.prefetch_through = lookup\n        # `prefetch_to` is the path to the attribute that stores the result.\n        self.prefetch_to = lookup\n        if queryset is not None and (\n            isinstance(queryset, RawQuerySet) or (\n                hasattr(queryset, '_iterable_class') and\n                not issubclass(queryset._iterable_class, ModelIterable)\n            )\n        ):\n            raise ValueError(\n                'Prefetch querysets cannot use raw(), values(), and '\n                'values_list().'\n            )\n        if to_attr:\n            self.prefetch_to = LOOKUP_SEP.join(lookup.split(LOOKUP_SEP)[:-1] + [to_attr])\n\n        self.queryset = queryset\n        self.to_attr = to_attr",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.Prefetch.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.Prefetch.__init__"
+                    }
+                ],
+                "similarity": 0.16625088977928687,
+                "end_line": 1554,
+                "signature": "django.db.models.query.Prefetch.__init__(self, lookup, queryset, to_attr)"
+            },
+            {
+                "start_line": 260,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def sql_with_params(self):\n        \"\"\"\n        Return the query as an SQL string and the parameters that will be\n        substituted into the query.\n        \"\"\"\n        return self.get_compiler(DEFAULT_DB_ALIAS).as_sql()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.sql_with_params",
+                "documentation": "Return the query as an SQL string and the parameters that will be\nsubstituted into the query.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.sql_with_params"
+                    }
+                ],
+                "similarity": 0.16614421456551445,
+                "end_line": 265,
+                "signature": "django.db.models.sql.query.Query.sql_with_params(self)"
+            },
+            {
+                "start_line": 1893,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, klass_info, select, db):\n        self.db = db\n        # Pre-compute needed attributes. The attributes are:\n        #  - model_cls: the possibly deferred model class to instantiate\n        #  - either:\n        #    - cols_start, cols_end: usually the columns in the row are\n        #      in the same order model_cls.__init__ expects them, so we\n        #      can instantiate by model_cls(*row[cols_start:cols_end])\n        #    - reorder_for_init: When select_related descends to a child\n        #      class, then we want to reuse the already selected parent\n        #      data. However, in this case the parent data isn't necessarily\n        #      in the same order that Model.__init__ expects it to be, so\n        #      we have to reorder the parent data. The reorder_for_init\n        #      attribute contains a function used to reorder the field data\n        #      in the order __init__ expects it.\n        #  - pk_idx: the index of the primary key field in the reordered\n        #    model data. Used to check if a related object exists at all.\n        #  - init_list: the field attnames fetched from the database. For\n        #    deferred models this isn't the same as all attnames of the\n        #    model's fields.\n        #  - related_populators: a list of RelatedPopulator instances if\n        #    select_related() descends to related models from this model.\n        #  - local_setter, remote_setter: Methods to set cached values on\n        #    the object being populated and on the remote object. Usually\n        #    these are Field.set_cached_value() methods.\n        select_fields = klass_info['select_fields']\n        from_parent = klass_info['from_parent']\n        if not from_parent:\n            self.cols_start = select_fields[0]\n            self.cols_end = select_fields[-1] + 1\n            self.init_list = [\n                f[0].target.attname for f in select[self.cols_start:self.cols_end]\n            ]\n            self.reorder_for_init = None\n        else:\n            attname_indexes = {select[idx][0].target.attname: idx for idx in select_fields}\n            model_init_attnames = (f.attname for f in klass_info['model']._meta.concrete_fields)\n            self.init_list = [attname for attname in model_init_attnames if attname in attname_indexes]\n            self.reorder_for_init = operator.itemgetter(*[attname_indexes[attname] for attname in self.init_list])\n\n        self.model_cls = klass_info['model']\n        self.pk_idx = self.init_list.index(self.model_cls._meta.pk.attname)\n        self.related_populators = get_related_populators(klass_info, select, self.db)\n        self.local_setter = klass_info['local_setter']\n        self.remote_setter = klass_info['remote_setter']",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.RelatedPopulator.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.RelatedPopulator.__init__"
+                    }
+                ],
+                "similarity": 0.16570528514405033,
+                "end_line": 1937,
+                "signature": "django.db.models.query.RelatedPopulator.__init__(self, klass_info, select, db)"
+            },
+            {
+                "start_line": 187,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, model=None, query=None, using=None, hints=None):\n        self.model = model\n        self._db = using\n        self._hints = hints or {}\n        self._query = query or sql.Query(self.model)\n        self._result_cache = None\n        self._sticky_filter = False\n        self._for_write = False\n        self._prefetch_related_lookups = ()\n        self._prefetch_done = False\n        self._known_related_objects = {}  # {rel_field: {pk: rel_obj}}\n        self._iterable_class = ModelIterable\n        self._fields = None\n        self._defer_next_filter = False\n        self._deferred_filter = None",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.QuerySet.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.QuerySet.__init__"
+                    }
+                ],
+                "similarity": 0.1654095342807304,
+                "end_line": 201,
+                "signature": "django.db.models.query.QuerySet.__init__(self, model, query, using, hints)"
+            },
+            {
+                "start_line": 2295,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, connector, num_children, negated):\n        self.connector = connector\n        self.negated = negated\n        if self.negated:\n            if connector == AND:\n                self.effective_connector = OR\n            else:\n                self.effective_connector = AND\n        else:\n            self.effective_connector = self.connector\n        self.num_children = num_children\n        # Maps of table alias to how many times it is seen as required for\n        # inner and/or outer joins.\n        self.votes = Counter()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.JoinPromoter.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.JoinPromoter.__init__"
+                    }
+                ],
+                "similarity": 0.16307014626469363,
+                "end_line": 2308,
+                "signature": "django.db.models.sql.query.JoinPromoter.__init__(self, connector, num_children, negated)"
+            },
+            {
+                "start_line": 117,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __str__(self):\n        return self.sql % self.params_type(self.params)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.RawQuery.__str__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.RawQuery.__str__"
+                    }
+                ],
+                "similarity": 0.16221701595822718,
+                "end_line": 118,
+                "signature": "django.db.models.sql.query.RawQuery.__str__(self)"
+            },
+            {
+                "start_line": 38,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, queryset, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE):\n        self.queryset = queryset\n        self.chunked_fetch = chunked_fetch\n        self.chunk_size = chunk_size",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.BaseIterable.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.BaseIterable.__init__"
+                    }
+                ],
+                "similarity": 0.16164374457498276,
+                "end_line": 41,
+                "signature": "django.db.models.query.BaseIterable.__init__(self, queryset, chunked_fetch, chunk_size)"
+            },
+            {
+                "start_line": 257,
+                "file_path": "django/contrib/admin/views/main.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _get_default_ordering(self):\n        ordering = []\n        if self.model_admin.ordering:\n            ordering = self.model_admin.ordering\n        elif self.lookup_opts.ordering:\n            ordering = self.lookup_opts.ordering\n        return ordering",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.views.main.ChangeList._get_default_ordering",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/views/main.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/views/main.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.views.main.ChangeList._get_default_ordering"
+                    }
+                ],
+                "similarity": 0.15931173190635078,
+                "end_line": 263,
+                "signature": "django.contrib.admin.views.main.ChangeList._get_default_ordering(self)"
+            },
+            {
+                "start_line": 389,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_extra_select(self, order_by, select):\n        extra_select = []\n        if self.query.distinct and not self.query.distinct_fields:\n            select_sql = [t[1] for t in select]\n            for expr, (sql, params, is_ref) in order_by:\n                without_ordering = self.ordering_parts.search(sql).group(1)\n                if not is_ref and (without_ordering, params) not in select_sql:\n                    extra_select.append((expr, (without_ordering, params), None))\n        return extra_select",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.get_extra_select",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.get_extra_select"
+                    }
+                ],
+                "similarity": 0.15806483786074593,
+                "end_line": 397,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.get_extra_select(self, order_by, select)"
+            },
+            {
+                "start_line": 699,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def find_ordering_name(self, name, opts, alias=None, default_order='ASC',\n                           already_seen=None):\n        \"\"\"\n        Return the table alias (the name might be ambiguous, the alias will\n        not be) and column name for ordering by the given 'name' parameter.\n        The 'name' is of the form 'field1__field2__...__fieldN'.\n        \"\"\"\n        name, order = get_order_dir(name, default_order)\n        descending = order == 'DESC'\n        pieces = name.split(LOOKUP_SEP)\n        field, targets, alias, joins, path, opts, transform_function = self._setup_joins(pieces, opts, alias)\n\n        # If we get to this point and the field is a relation to another model,\n        # append the default ordering for that model unless the attribute name\n        # of the field is specified.\n        if field.is_relation and opts.ordering and getattr(field, 'attname', None) != name:\n            # Firstly, avoid infinite loops.\n            already_seen = already_seen or set()\n            join_tuple = tuple(getattr(self.query.alias_map[j], 'join_cols', None) for j in joins)\n            if join_tuple in already_seen:\n                raise FieldError('Infinite loop caused by ordering.')\n            already_seen.add(join_tuple)\n\n            results = []\n            for item in opts.ordering:\n                if hasattr(item, 'resolve_expression') and not isinstance(item, OrderBy):\n                    item = item.desc() if descending else item.asc()\n                if isinstance(item, OrderBy):\n                    results.append((item, False))\n                    continue\n                results.extend(self.find_ordering_name(item, opts, alias,\n                                                       order, already_seen))\n            return results\n        targets, alias, _ = self.query.trim_joins(targets, joins, path)\n        return [(OrderBy(transform_function(t, alias), descending=descending), False) for t in targets]",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.find_ordering_name",
+                "documentation": "Return the table alias (the name might be ambiguous, the alias will\nnot be) and column name for ordering by the given 'name' parameter.\nThe 'name' is of the form 'field1__field2__...__fieldN'.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.find_ordering_name"
+                    }
+                ],
+                "similarity": 0.15802775773562505,
+                "end_line": 733,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.find_ordering_name(self, name, opts, alias, default_order, already_seen)"
+            },
+            {
+                "start_line": 1115,
+                "file_path": "django/db/models/expressions.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self, compiler, connection, template=None, **extra_context):\n        template = template or self.template\n        if connection.features.supports_order_by_nulls_modifier:\n            if self.nulls_last:\n                template = '%s NULLS LAST' % template\n            elif self.nulls_first:\n                template = '%s NULLS FIRST' % template\n        else:\n            if self.nulls_last and not (\n                self.descending and connection.features.order_by_nulls_first\n            ):\n                template = '%%(expression)s IS NULL, %s' % template\n            elif self.nulls_first and not (\n                not self.descending and connection.features.order_by_nulls_first\n            ):\n                template = '%%(expression)s IS NOT NULL, %s' % template\n        connection.ops.check_expression_support(self)\n        expression_sql, params = compiler.compile(self.expression)\n        placeholders = {\n            'expression': expression_sql,\n            'ordering': 'DESC' if self.descending else 'ASC',\n            **extra_context,\n        }\n        template = template or self.template\n        params *= template.count('%(expression)s')\n        return (template % placeholders).rstrip(), params",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.expressions.OrderBy.as_sql",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/expressions.py"
+                    },
+                    {
+                        "start_node": "django/db/models/expressions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.expressions.OrderBy.as_sql"
+                    }
+                ],
+                "similarity": 0.15726084250178013,
+                "end_line": 1140,
+                "signature": "django.db.models.expressions.OrderBy.as_sql(self, compiler, connection, template)"
+            },
+            {
+                "start_line": 1557,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self):\n        \"\"\"\n        Create the SQL for this query. Return the SQL string and list of\n        parameters.\n        \"\"\"\n        sql, params = [], []\n        for annotation in self.query.annotation_select.values():\n            ann_sql, ann_params = self.compile(annotation)\n            ann_sql, ann_params = annotation.select_format(self, ann_sql, ann_params)\n            sql.append(ann_sql)\n            params.extend(ann_params)\n        self.col_count = len(self.query.annotation_select)\n        sql = ', '.join(sql)\n        params = tuple(params)\n\n        sql = 'SELECT %s FROM (%s) subquery' % (sql, self.query.subquery)\n        params = params + self.query.sub_params\n        return sql, params",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLAggregateCompiler.as_sql",
+                "documentation": "Create the SQL for this query. Return the SQL string and list of\nparameters.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLAggregateCompiler.as_sql"
+                    }
+                ],
+                "similarity": 0.15366501621946388,
+                "end_line": 1574,
+                "signature": "django.db.models.sql.compiler.SQLAggregateCompiler.as_sql(self)"
+            },
+            {
+                "start_line": 1408,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self):\n        \"\"\"\n        Create the SQL for this query. Return the SQL string and list of\n        parameters.\n        \"\"\"\n        if self.single_alias:\n            return self._as_sql(self.query)\n        innerq = self.query.clone()\n        innerq.__class__ = Query\n        innerq.clear_select_clause()\n        pk = self.query.model._meta.pk\n        innerq.select = [\n            pk.get_col(self.query.get_initial_alias())\n        ]\n        outerq = Query(self.query.model)\n        outerq.where = self.query.where_class()\n        outerq.add_q(Q(pk__in=innerq))\n        return self._as_sql(outerq)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLDeleteCompiler.as_sql",
+                "documentation": "Create the SQL for this query. Return the SQL string and list of\nparameters.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLDeleteCompiler.as_sql"
+                    }
+                ],
+                "similarity": 0.1536092047643219,
+                "end_line": 1425,
+                "signature": "django.db.models.sql.compiler.SQLDeleteCompiler.as_sql(self)"
+            },
+            {
+                "start_line": 1137,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def reverse(self):\n        \"\"\"Reverse the ordering of the QuerySet.\"\"\"\n        if self.query.is_sliced:\n            raise TypeError('Cannot reverse a query once a slice has been taken.')\n        clone = self._chain()\n        clone.query.standard_ordering = not clone.query.standard_ordering\n        return clone",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.QuerySet.reverse",
+                "documentation": "Reverse the ordering of the QuerySet.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.QuerySet.reverse"
+                    }
+                ],
+                "similarity": 0.15351454296177508,
+                "end_line": 1143,
+                "signature": "django.db.models.query.QuerySet.reverse(self)"
+            },
+            {
+                "start_line": 596,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_parent_list(self):\n        \"\"\"\n        Return all the ancestors of this model as a list ordered by MRO.\n        Useful for determining if something is an ancestor, regardless of lineage.\n        \"\"\"\n        result = OrderedSet(self.parents)\n        for parent in self.parents:\n            for ancestor in parent._meta.get_parent_list():\n                result.add(ancestor)\n        return list(result)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_parent_list",
+                "documentation": "Return all the ancestors of this model as a list ordered by MRO.\nUseful for determining if something is an ancestor, regardless of lineage.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_parent_list"
+                    }
+                ],
+                "similarity": 0.15342776283637422,
+                "end_line": 605,
+                "signature": "django.db.models.options.Options.get_parent_list(self)"
+            },
+            {
+                "start_line": 1161,
+                "file_path": "django/db/models/expressions.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def reverse_ordering(self):\n        self.descending = not self.descending\n        if self.nulls_first or self.nulls_last:\n            self.nulls_first = not self.nulls_first\n            self.nulls_last = not self.nulls_last\n        return self",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.expressions.OrderBy.reverse_ordering",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/expressions.py"
+                    },
+                    {
+                        "start_node": "django/db/models/expressions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.expressions.OrderBy.reverse_ordering"
+                    }
+                ],
+                "similarity": 0.1530128929264711,
+                "end_line": 1166,
+                "signature": "django.db.models.expressions.OrderBy.reverse_ordering(self)"
+            },
+            {
+                "start_line": 280,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_meta(self):\n        \"\"\"\n        Return the Options instance (the model._meta) from which to start\n        processing. Normally, this is self.model._meta, but it can be changed\n        by subclasses.\n        \"\"\"\n        return self.model._meta",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.get_meta",
+                "documentation": "Return the Options instance (the model._meta) from which to start\nprocessing. Normally, this is self.model._meta, but it can be changed\nby subclasses.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.get_meta"
+                    }
+                ],
+                "similarity": 0.15299167884053827,
+                "end_line": 286,
+                "signature": "django.db.models.sql.query.Query.get_meta(self)"
+            },
+            {
+                "start_line": 1194,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def ordered(self):\n        \"\"\"\n        Return True if the QuerySet is ordered -- i.e. has an order_by()\n        clause or a default ordering on the model (or is empty).\n        \"\"\"\n        if isinstance(self, EmptyQuerySet):\n            return True\n        if self.query.extra_order_by or self.query.order_by:\n            return True\n        elif self.query.default_ordering and self.query.get_meta().ordering:\n            return True\n        else:\n            return False",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.QuerySet.ordered",
+                "documentation": "Return True if the QuerySet is ordered -- i.e. has an order_by()\nclause or a default ordering on the model (or is empty).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.QuerySet.ordered"
+                    }
+                ],
+                "similarity": 0.15186433219779752,
+                "end_line": 1206,
+                "signature": "django.db.models.query.QuerySet.ordered(self)"
+            },
+            {
+                "start_line": 21,
+                "file_path": "django/utils/tree.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, children=None, connector=None, negated=False):\n        \"\"\"Construct a new Node. If no connector is given, use the default.\"\"\"\n        self.children = children[:] if children else []\n        self.connector = connector or self.default\n        self.negated = negated",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.utils.tree.Node.__init__",
+                "documentation": "Construct a new Node. If no connector is given, use the default.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/utils/tree.py"
+                    },
+                    {
+                        "start_node": "django/utils/tree.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.utils.tree.Node.__init__"
+                    }
+                ],
+                "similarity": 0.15112301374107331,
+                "end_line": 25,
+                "signature": "django.utils.tree.Node.__init__(self, children, connector, negated)"
+            },
+            {
+                "start_line": 1911,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def clear_ordering(self, force_empty):\n        \"\"\"\n        Remove any ordering settings. If 'force_empty' is True, there will be\n        no ordering in the resulting query (not even the model's default).\n        \"\"\"\n        self.order_by = ()\n        self.extra_order_by = ()\n        if force_empty:\n            self.default_ordering = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.clear_ordering",
+                "documentation": "Remove any ordering settings. If 'force_empty' is True, there will be\nno ordering in the resulting query (not even the model's default).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.clear_ordering"
+                    }
+                ],
+                "similarity": 0.15032039640025247,
+                "end_line": 1919,
+                "signature": "django.db.models.sql.query.Query.clear_ordering(self, force_empty)"
+            },
+            {
+                "start_line": 146,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, model, where=WhereNode, alias_cols=True):\n        self.model = model\n        self.alias_refcount = {}\n        # alias_map is the most important data structure regarding joins.\n        # It's used for recording which joins exist in the query and what\n        # types they are. The key is the alias of the joined table (possibly\n        # the table name) and the value is a Join-like object (see\n        # sql.datastructures.Join for more information).\n        self.alias_map = {}\n        # Whether to provide alias to columns during reference resolving.\n        self.alias_cols = alias_cols\n        # Sometimes the query contains references to aliases in outer queries (as\n        # a result of split_exclude). Correct alias quoting needs to know these\n        # aliases too.\n        # Map external tables to whether they are aliased.\n        self.external_aliases = {}\n        self.table_map = {}     # Maps table names to list of aliases.\n        self.default_cols = True\n        self.default_ordering = True\n        self.standard_ordering = True\n        self.used_aliases = set()\n        self.filter_is_sticky = False\n        self.subquery = False\n\n        # SQL-related attributes\n        # Select and related select clauses are expressions to use in the\n        # SELECT clause of the query.\n        # The select is used for cases where we want to set up the select\n        # clause to contain other than default fields (values(), subqueries...)\n        # Note that annotations go to annotations dictionary.\n        self.select = ()\n        self.where = where()\n        self.where_class = where\n        # The group_by attribute can have one of the following forms:\n        #  - None: no group by at all in the query\n        #  - A tuple of expressions: group by (at least) those expressions.\n        #    String refs are also allowed for now.\n        #  - True: group by all select fields of the model\n        # See compiler.get_group_by() for details.\n        self.group_by = None\n        self.order_by = ()\n        self.low_mark, self.high_mark = 0, None  # Used for offset/limit\n        self.distinct = False\n        self.distinct_fields = ()\n        self.select_for_update = False\n        self.select_for_update_nowait = False\n        self.select_for_update_skip_locked = False\n        self.select_for_update_of = ()\n\n        self.select_related = False\n        # Arbitrary limit for select_related to prevents infinite recursion.\n        self.max_depth = 5\n\n        # Holds the selects defined by a call to values() or values_list()\n        # excluding annotation_select and extra_select.\n        self.values_select = ()\n\n        # SQL annotation-related attributes\n        self.annotations = {}  # Maps alias -> Annotation Expression\n        self.annotation_select_mask = None\n        self._annotation_select_cache = None\n\n        # Set combination attributes\n        self.combinator = None\n        self.combinator_all = False\n        self.combined_queries = ()\n\n        # These are for extensions. The contents are more or less appended\n        # verbatim to the appropriate clause.\n        self.extra = {}  # Maps col_alias -> (col_sql, params).\n        self.extra_select_mask = None\n        self._extra_select_cache = None\n\n        self.extra_tables = ()\n        self.extra_order_by = ()\n\n        # A tuple that is a set of model field names and either True, if these\n        # are the fields to defer, or False if these are the only fields to\n        # load.\n        self.deferred_loading = (frozenset(), True)\n\n        self._filtered_relations = {}\n\n        self.explain_query = False\n        self.explain_format = None\n        self.explain_options = {}",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.__init__"
+                    }
+                ],
+                "similarity": 0.15012593288014087,
+                "end_line": 231,
+                "signature": "django.db.models.sql.query.Query.__init__(self, model, where, alias_cols)"
+            },
+            {
+                "start_line": 916,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_initial_alias(self):\n        \"\"\"\n        Return the first alias for this query, after increasing its reference\n        count.\n        \"\"\"\n        if self.alias_map:\n            alias = self.base_table\n            self.ref_alias(alias)\n        else:\n            alias = self.join(BaseTable(self.get_meta().db_table, None))\n        return alias",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.get_initial_alias",
+                "documentation": "Return the first alias for this query, after increasing its reference\ncount.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.get_initial_alias"
+                    }
+                ],
+                "similarity": 0.14990988450941417,
+                "end_line": 926,
+                "signature": "django.db.models.sql.query.Query.get_initial_alias(self)"
+            },
+            {
+                "start_line": 196,
+                "file_path": "django/contrib/admin/filters.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def field_admin_ordering(self, field, request, model_admin):\n        \"\"\"\n        Return the model admin's ordering for related field, if provided.\n        \"\"\"\n        related_admin = model_admin.admin_site._registry.get(field.remote_field.model)\n        if related_admin is not None:\n            return related_admin.get_ordering(request)\n        return ()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.filters.RelatedFieldListFilter.field_admin_ordering",
+                "documentation": "Return the model admin's ordering for related field, if provided.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/filters.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/filters.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.filters.RelatedFieldListFilter.field_admin_ordering"
+                    }
+                ],
+                "similarity": 0.14959792442169226,
+                "end_line": 203,
+                "signature": "django.contrib.admin.filters.RelatedFieldListFilter.field_admin_ordering(self, field, request, model_admin)"
+            },
+            {
+                "start_line": 361,
+                "file_path": "django/db/models/deletion.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def sort(self):\n        sorted_models = []\n        concrete_models = set()\n        models = list(self.data)\n        while len(sorted_models) < len(models):\n            found = False\n            for model in models:\n                if model in sorted_models:\n                    continue\n                dependencies = self.dependencies.get(model._meta.concrete_model)\n                if not (dependencies and dependencies.difference(concrete_models)):\n                    sorted_models.append(model)\n                    concrete_models.add(model._meta.concrete_model)\n                    found = True\n            if not found:\n                return\n        self.data = {model: self.data[model] for model in sorted_models}",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.deletion.Collector.sort",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/deletion.py"
+                    },
+                    {
+                        "start_node": "django/db/models/deletion.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.deletion.Collector.sort"
+                    }
+                ],
+                "similarity": 0.14881678042973767,
+                "end_line": 377,
+                "signature": "django.db.models.deletion.Collector.sort(self)"
+            },
+            {
+                "start_line": 1108,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def order_by(self, *field_names):\n        \"\"\"Return a new QuerySet instance with the ordering changed.\"\"\"\n        assert not self.query.is_sliced, \\\n            \"Cannot reorder a query once a slice has been taken.\"\n        obj = self._chain()\n        obj.query.clear_ordering(force_empty=False)\n        obj.query.add_ordering(*field_names)\n        return obj",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.QuerySet.order_by",
+                "documentation": "Return a new QuerySet instance with the ordering changed.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.QuerySet.order_by"
+                    }
+                ],
+                "similarity": 0.1482720675737483,
+                "end_line": 1115,
+                "signature": "django.db.models.query.QuerySet.order_by(self)"
+            },
+            {
+                "start_line": 149,
+                "file_path": "django/db/backends/mysql/operations.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def force_no_ordering(self):\n        \"\"\"\n        \"ORDER BY NULL\" prevents MySQL from implicitly ordering by grouped\n        columns. If no ordering would otherwise be applied, we don't want any\n        implicit sorting going on.\n        \"\"\"\n        return [(None, (\"NULL\", [], False))]",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.backends.mysql.operations.DatabaseOperations.force_no_ordering",
+                "documentation": "\"ORDER BY NULL\" prevents MySQL from implicitly ordering by grouped\ncolumns. If no ordering would otherwise be applied, we don't want any\nimplicit sorting going on.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/backends/mysql/operations.py"
+                    },
+                    {
+                        "start_node": "django/db/backends/mysql/operations.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.backends.mysql.operations.DatabaseOperations.force_no_ordering"
+                    }
+                ],
+                "similarity": 0.1462713964748032,
+                "end_line": 155,
+                "signature": "django.db.backends.mysql.operations.DatabaseOperations.force_no_ordering(self)"
+            },
+            {
+                "start_line": 1886,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def add_ordering(self, *ordering):\n        \"\"\"\n        Add items from the 'ordering' sequence to the query's \"order by\"\n        clause. These items are either field names (not column names) --\n        possibly with a direction prefix ('-' or '?') -- or OrderBy\n        expressions.\n\n        If 'ordering' is empty, clear all ordering from the query.\n        \"\"\"\n        errors = []\n        for item in ordering:\n            if not hasattr(item, 'resolve_expression') and not ORDER_PATTERN.match(item):\n                errors.append(item)\n            if getattr(item, 'contains_aggregate', False):\n                raise FieldError(\n                    'Using an aggregate in order_by() without also including '\n                    'it in annotate() is not allowed: %s' % item\n                )\n        if errors:\n            raise FieldError('Invalid order_by arguments: %s' % errors)\n        if ordering:\n            self.order_by += ordering\n        else:\n            self.default_ordering = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.add_ordering",
+                "documentation": "Add items from the 'ordering' sequence to the query's \"order by\"\nclause. These items are either field names (not column names) --\npossibly with a direction prefix ('-' or '?') -- or OrderBy\nexpressions.\n\nIf 'ordering' is empty, clear all ordering from the query.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.add_ordering"
+                    }
+                ],
+                "similarity": 0.14625303802288922,
+                "end_line": 1909,
+                "signature": "django.db.models.sql.query.Query.add_ordering(self)"
+            },
+            {
+                "start_line": 38,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def setup_query(self):\n        if all(self.query.alias_refcount[a] == 0 for a in self.query.alias_map):\n            self.query.get_initial_alias()\n        self.select, self.klass_info, self.annotation_col_map = self.get_select()\n        self.col_count = len(self.select)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.setup_query",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.setup_query"
+                    }
+                ],
+                "similarity": 0.1460696538582839,
+                "end_line": 42,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.setup_query(self)"
+            },
+            {
+                "start_line": 984,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def join_parent_model(self, opts, model, alias, seen):\n        \"\"\"\n        Make sure the given 'model' is joined in the query. If 'model' isn't\n        a parent of 'opts' or if it is None this method is a no-op.\n\n        The 'alias' is the root alias for starting the join, 'seen' is a dict\n        of model -> alias of existing joins. It must also contain a mapping\n        of None -> some alias. This will be returned in the no-op case.\n        \"\"\"\n        if model in seen:\n            return seen[model]\n        chain = opts.get_base_chain(model)\n        if not chain:\n            return alias\n        curr_opts = opts\n        for int_model in chain:\n            if int_model in seen:\n                curr_opts = int_model._meta\n                alias = seen[int_model]\n                continue\n            # Proxy model have elements in base chain\n            # with no parents, assign the new options\n            # object and skip to the next base in that\n            # case\n            if not curr_opts.parents[int_model]:\n                curr_opts = int_model._meta\n                continue\n            link_field = curr_opts.get_ancestor_link(int_model)\n            join_info = self.setup_joins([link_field.name], curr_opts, alias)\n            curr_opts = int_model._meta\n            alias = seen[int_model] = join_info.joins[-1]\n        return alias or seen[None]",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.join_parent_model",
+                "documentation": "Make sure the given 'model' is joined in the query. If 'model' isn't\na parent of 'opts' or if it is None this method is a no-op.\n\nThe 'alias' is the root alias for starting the join, 'seen' is a dict\nof model -> alias of existing joins. It must also contain a mapping\nof None -> some alias. This will be returned in the no-op case.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.join_parent_model"
+                    }
+                ],
+                "similarity": 0.14520864051863114,
+                "end_line": 1015,
+                "signature": "django.db.models.sql.query.Query.join_parent_model(self, opts, model, alias, seen)"
+            },
+            {
+                "start_line": 579,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_base_chain(self, model):\n        \"\"\"\n        Return a list of parent classes leading to `model` (ordered from\n        closest to most distant ancestor). This has to handle the case where\n        `model` is a grandparent or even more distant relation.\n        \"\"\"\n        if not self.parents:\n            return []\n        if model in self.parents:\n            return [model]\n        for parent in self.parents:\n            res = parent._meta.get_base_chain(model)\n            if res:\n                res.insert(0, parent)\n                return res\n        return []",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_base_chain",
+                "documentation": "Return a list of parent classes leading to `model` (ordered from\nclosest to most distant ancestor). This has to handle the case where\n`model` is a grandparent or even more distant relation.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_base_chain"
+                    }
+                ],
+                "similarity": 0.14509917749518297,
+                "end_line": 594,
+                "signature": "django.db.models.options.Options.get_base_chain(self, model)"
+            },
+            {
+                "start_line": 111,
+                "file_path": "django/forms/forms.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def order_fields(self, field_order):\n        \"\"\"\n        Rearrange the fields according to field_order.\n\n        field_order is a list of field names specifying the order. Append fields\n        not included in the list in the default order for backward compatibility\n        with subclasses not overriding field_order. If field_order is None,\n        keep all fields in the order defined in the class. Ignore unknown\n        fields in field_order to allow disabling fields in form subclasses\n        without redefining ordering.\n        \"\"\"\n        if field_order is None:\n            return\n        fields = {}\n        for key in field_order:\n            try:\n                fields[key] = self.fields.pop(key)\n            except KeyError:  # ignore unknown fields\n                pass\n        fields.update(self.fields)  # add remaining fields in original order\n        self.fields = fields",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.forms.BaseForm.order_fields",
+                "documentation": "Rearrange the fields according to field_order.\n\nfield_order is a list of field names specifying the order. Append fields\nnot included in the list in the default order for backward compatibility\nwith subclasses not overriding field_order. If field_order is None,\nkeep all fields in the order defined in the class. Ignore unknown\nfields in field_order to allow disabling fields in form subclasses\nwithout redefining ordering.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/forms.py"
+                    },
+                    {
+                        "start_node": "django/forms/forms.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.forms.BaseForm.order_fields"
+                    }
+                ],
+                "similarity": 0.14461882635414847,
+                "end_line": 131,
+                "signature": "django.forms.forms.BaseForm.order_fields(self, field_order)"
+            },
+            {
+                "start_line": 1378,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, *args, **kwargs):\n        raise TypeError(\"EmptyQuerySet can't be instantiated\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.EmptyQuerySet.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.EmptyQuerySet.__init__"
+                    }
+                ],
+                "similarity": 0.14420415787151458,
+                "end_line": 1379,
+                "signature": "django.db.models.query.EmptyQuerySet.__init__(self)"
+            },
+            {
+                "start_line": 6,
+                "file_path": "django/contrib/postgres/aggregates/mixins.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, *expressions, ordering=(), **extra):\n        if not isinstance(ordering, (list, tuple)):\n            ordering = [ordering]\n        ordering = ordering or []\n        # Transform minus sign prefixed strings into an OrderBy() expression.\n        ordering = (\n            (OrderBy(F(o[1:]), descending=True) if isinstance(o, str) and o[0] == '-' else o)\n            for o in ordering\n        )\n        super().__init__(*expressions, **extra)\n        self.ordering = self._parse_expressions(*ordering)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.postgres.aggregates.mixins.OrderableAggMixin.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/postgres/aggregates/mixins.py"
+                    },
+                    {
+                        "start_node": "django/contrib/postgres/aggregates/mixins.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.postgres.aggregates.mixins.OrderableAggMixin.__init__"
+                    }
+                ],
+                "similarity": 0.1433862917295246,
+                "end_line": 16,
+                "signature": "django.contrib.postgres.aggregates.mixins.OrderableAggMixin.__init__(self)"
+            },
+            {
+                "start_line": 155,
+                "file_path": "django/db/models/sql/datastructures.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self, compiler, connection):\n        alias_str = '' if self.table_alias == self.table_name else (' %s' % self.table_alias)\n        base_sql = compiler.quote_name_unless_alias(self.table_name)\n        return base_sql + alias_str, []",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.datastructures.BaseTable.as_sql",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/datastructures.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/datastructures.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.datastructures.BaseTable.as_sql"
+                    }
+                ],
+                "similarity": 0.14250560055963926,
+                "end_line": 158,
+                "signature": "django.db.models.sql.datastructures.BaseTable.as_sql(self, compiler, connection)"
+            },
+            {
+                "start_line": 819,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def reset_refcounts(self, to_counts):\n        \"\"\"\n        Reset reference counts for aliases so that they match the value passed\n        in `to_counts`.\n        \"\"\"\n        for alias, cur_refcount in self.alias_refcount.copy().items():\n            unref_amount = cur_refcount - to_counts.get(alias, 0)\n            self.unref_alias(alias, unref_amount)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.reset_refcounts",
+                "documentation": "Reset reference counts for aliases so that they match the value passed\nin `to_counts`.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.reset_refcounts"
+                    }
+                ],
+                "similarity": 0.14159181701657034,
+                "end_line": 826,
+                "signature": "django.db.models.sql.query.Query.reset_refcounts(self, to_counts)"
+            },
+            {
+                "start_line": 1312,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self):\n        # We don't need quote_name_unless_alias() here, since these are all\n        # going to be column names (so we can avoid the extra overhead).\n        qn = self.connection.ops.quote_name\n        opts = self.query.get_meta()\n        insert_statement = self.connection.ops.insert_statement(ignore_conflicts=self.query.ignore_conflicts)\n        result = ['%s %s' % (insert_statement, qn(opts.db_table))]\n        fields = self.query.fields or [opts.pk]\n        result.append('(%s)' % ', '.join(qn(f.column) for f in fields))\n\n        if self.query.fields:\n            value_rows = [\n                [self.prepare_value(field, self.pre_save_val(field, obj)) for field in fields]\n                for obj in self.query.objs\n            ]\n        else:\n            # An empty object.\n            value_rows = [[self.connection.ops.pk_default_value()] for _ in self.query.objs]\n            fields = [None]\n\n        # Currently the backends just accept values when generating bulk\n        # queries and generate their own placeholders. Doing that isn't\n        # necessary and it should be possible to use placeholders and\n        # expressions in bulk inserts too.\n        can_bulk = (not self.returning_fields and self.connection.features.has_bulk_insert)\n\n        placeholder_rows, param_rows = self.assemble_as_sql(fields, value_rows)\n\n        ignore_conflicts_suffix_sql = self.connection.ops.ignore_conflicts_suffix_sql(\n            ignore_conflicts=self.query.ignore_conflicts\n        )\n        if self.returning_fields and self.connection.features.can_return_columns_from_insert:\n            if self.connection.features.can_return_rows_from_bulk_insert:\n                result.append(self.connection.ops.bulk_insert_sql(fields, placeholder_rows))\n                params = param_rows\n            else:\n                result.append(\"VALUES (%s)\" % \", \".join(placeholder_rows[0]))\n                params = [param_rows[0]]\n            if ignore_conflicts_suffix_sql:\n                result.append(ignore_conflicts_suffix_sql)\n            # Skip empty r_sql to allow subclasses to customize behavior for\n            # 3rd party backends. Refs #19096.\n            r_sql, self.returning_params = self.connection.ops.return_insert_columns(self.returning_fields)\n            if r_sql:\n                result.append(r_sql)\n                params += [self.returning_params]\n            return [(\" \".join(result), tuple(chain.from_iterable(params)))]\n\n        if can_bulk:\n            result.append(self.connection.ops.bulk_insert_sql(fields, placeholder_rows))\n            if ignore_conflicts_suffix_sql:\n                result.append(ignore_conflicts_suffix_sql)\n            return [(\" \".join(result), tuple(p for ps in param_rows for p in ps))]\n        else:\n            if ignore_conflicts_suffix_sql:\n                result.append(ignore_conflicts_suffix_sql)\n            return [\n                (\" \".join(result + [\"VALUES (%s)\" % \", \".join(p)]), vals)\n                for p, vals in zip(placeholder_rows, param_rows)\n            ]",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLInsertCompiler.as_sql",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLInsertCompiler.as_sql"
+                    }
+                ],
+                "similarity": 0.14151065133030905,
+                "end_line": 1371,
+                "signature": "django.db.models.sql.compiler.SQLInsertCompiler.as_sql(self)"
+            },
+            {
+                "start_line": 273,
+                "file_path": "django/db/models/sql/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_compiler(self, using=None, connection=None):\n        if using is None and connection is None:\n            raise ValueError(\"Need either using or connection\")\n        if using:\n            connection = connections[using]\n        return connection.ops.compiler(self.compiler)(self, connection, using)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.query.Query.get_compiler",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.query.Query.get_compiler"
+                    }
+                ],
+                "similarity": 0.13985600080036353,
+                "end_line": 278,
+                "signature": "django.db.models.sql.query.Query.get_compiler(self, using, connection)"
+            },
+            {
+                "start_line": 657,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_path_from_parent(self, parent):\n        \"\"\"\n        Return a list of PathInfos containing the path from the parent\n        model to the current model, or an empty list if parent is not a\n        parent of the current model.\n        \"\"\"\n        if self.model is parent:\n            return []\n        model = self.concrete_model\n        # Get a reversed base chain including both the current and parent\n        # models.\n        chain = model._meta.get_base_chain(parent)\n        chain.reverse()\n        chain.append(model)\n        # Construct a list of the PathInfos between models in chain.\n        path = []\n        for i, ancestor in enumerate(chain[:-1]):\n            child = chain[i + 1]\n            link = child._meta.get_ancestor_link(ancestor)\n            path.extend(link.get_reverse_path_info())\n        return path",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_path_from_parent",
+                "documentation": "Return a list of PathInfos containing the path from the parent\nmodel to the current model, or an empty list if parent is not a\nparent of the current model.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_path_from_parent"
+                    }
+                ],
+                "similarity": 0.1396703440842117,
+                "end_line": 677,
+                "signature": "django.db.models.options.Options.get_path_from_parent(self, parent)"
+            },
+            {
+                "start_line": 607,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_ancestor_link(self, ancestor):\n        \"\"\"\n        Return the field on the current model which points to the given\n        \"ancestor\". This is possible an indirect link (a pointer to a parent\n        model, which points, eventually, to the ancestor). Used when\n        constructing table joins for model inheritance.\n\n        Return None if the model isn't an ancestor of this one.\n        \"\"\"\n        if ancestor in self.parents:\n            return self.parents[ancestor]\n        for parent in self.parents:\n            # Tries to get a link field from the immediate parent\n            parent_link = parent._meta.get_ancestor_link(ancestor)\n            if parent_link:\n                # In case of a proxied model, the first link\n                # of the chain to the ancestor is that parent\n                # links\n                return self.parents[parent] or parent_link",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_ancestor_link",
+                "documentation": "Return the field on the current model which points to the given\n\"ancestor\". This is possible an indirect link (a pointer to a parent\nmodel, which points, eventually, to the ancestor). Used when\nconstructing table joins for model inheritance.\n\nReturn None if the model isn't an ancestor of this one.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_ancestor_link"
+                    }
+                ],
+                "similarity": 0.139653085593775,
+                "end_line": 625,
+                "signature": "django.db.models.options.Options.get_ancestor_link(self, ancestor)"
+            },
+            {
+                "start_line": 56,
+                "file_path": "django/utils/functional.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __get__(self, instance, cls=None):\n        return self.fget(cls)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.utils.functional.classproperty.__get__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/utils/functional.py"
+                    },
+                    {
+                        "start_node": "django/utils/functional.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.utils.functional.classproperty.__get__"
+                    }
+                ],
+                "similarity": 0.1383885027285255,
+                "end_line": 57,
+                "signature": "django.utils.functional.classproperty.__get__(self, instance, cls)"
+            }
+        ],
+        "classes": [
+            {
+                "start_line": 393,
+                "file_path": "django/db/models/base.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ModelState:\n    \"\"\"Store model instance state.\"\"\"\n    db = None\n    # If true, uniqueness validation checks will consider this a new, unsaved\n    # object. Necessary for correct validation of new instances of objects with\n    # explicit (non-auto) PKs. This impacts validation only; it has no effect\n    # on the actual save.\n    adding = True\n    fields_cache = ModelStateFieldsCacheDescriptor()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.base.ModelState",
+                "documentation": "Store model instance state.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/base.py"
+                    },
+                    {
+                        "start_node": "django/db/models/base.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.base.ModelState"
+                    }
+                ],
+                "similarity": 0.11204238438317324,
+                "end_line": 401,
+                "signature": null
+            },
+            {
+                "start_line": 1043,
+                "file_path": "django/db/models/fields/__init__.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class CommaSeparatedIntegerField(CharField):\n    default_validators = [validators.validate_comma_separated_integer_list]\n    description = _(\"Comma-separated integers\")\n    system_check_removed_details = {\n        'msg': (\n            'CommaSeparatedIntegerField is removed except for support in '\n            'historical migrations.'\n        ),\n        'hint': (\n            'Use CharField(validators=[validate_comma_separated_integer_list]) '\n            'instead.'\n        ),\n        'id': 'fields.E901',\n    }",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.fields.__init__.CommaSeparatedIntegerField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/fields/__init__.py"
+                    },
+                    {
+                        "start_node": "django/db/models/fields/__init__.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.fields.__init__.CommaSeparatedIntegerField"
+                    }
+                ],
+                "similarity": 0.0976654694667705,
+                "end_line": 1056,
+                "signature": null
+            },
+            {
+                "start_line": 154,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class StrictlyAboveLookup(GISLookup):\n    \"\"\"\n    The 'strictly_above' operator returns true if A's bounding box is strictly above B's\n    bounding box.\n    \"\"\"\n    lookup_name = 'strictly_above'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.StrictlyAboveLookup",
+                "documentation": "The 'strictly_above' operator returns true if A's bounding box is strictly above B's\nbounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.StrictlyAboveLookup"
+                    }
+                ],
+                "similarity": 0.09762886396998505,
+                "end_line": 159,
+                "signature": null
+            },
+            {
+                "start_line": 17,
+                "file_path": "django/core/management/base.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class CommandError(Exception):\n    \"\"\"\n    Exception class indicating a problem while executing a management\n    command.\n\n    If this exception is raised during the execution of a management\n    command, it will be caught and turned into a nicely-printed error\n    message to the appropriate output stream (i.e., stderr); as a\n    result, raising this exception (with a sensible description of the\n    error) is the preferred way to indicate that something has gone\n    wrong in the execution of a command.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.management.base.CommandError",
+                "documentation": "Exception class indicating a problem while executing a management\ncommand.\n\nIf this exception is raised during the execution of a management\ncommand, it will be caught and turned into a nicely-printed error\nmessage to the appropriate output stream (i.e., stderr); as a\nresult, raising this exception (with a sensible description of the\nerror) is the preferred way to indicate that something has gone\nwrong in the execution of a command.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/management/base.py"
+                    },
+                    {
+                        "start_node": "django/core/management/base.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.management.base.CommandError"
+                    }
+                ],
+                "similarity": 0.09701021409230927,
+                "end_line": 29,
+                "signature": null
+            },
+            {
+                "start_line": 127,
+                "file_path": "django/contrib/gis/admin/options.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OSMGeoAdmin(GeoModelAdmin):\n    map_template = 'gis/admin/osm.html'\n    num_zoom = 20\n    map_srid = spherical_mercator_srid\n    max_extent = '-20037508,-20037508,20037508,20037508'\n    max_resolution = '156543.0339'\n    point_zoom = num_zoom - 6\n    units = 'm'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.admin.options.OSMGeoAdmin",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/admin/options.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/admin/options.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.admin.options.OSMGeoAdmin"
+                    }
+                ],
+                "similarity": 0.09570036551402278,
+                "end_line": 134,
+                "signature": null
+            },
+            {
+                "start_line": 383,
+                "file_path": "django/contrib/auth/models.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class User(AbstractUser):\n    \"\"\"\n    Users within the Django authentication system are represented by this\n    model.\n\n    Username and password are required. Other fields are optional.\n    \"\"\"\n    class Meta(AbstractUser.Meta):\n        swappable = 'AUTH_USER_MODEL'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.auth.models.User",
+                "documentation": "Users within the Django authentication system are represented by this\nmodel.\n\nUsername and password are required. Other fields are optional.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/auth/models.py"
+                    },
+                    {
+                        "start_node": "django/contrib/auth/models.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.auth.models.User"
+                    }
+                ],
+                "similarity": 0.09474843804448504,
+                "end_line": 391,
+                "signature": null
+            },
+            {
+                "start_line": 118,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OverlapsAboveLookup(GISLookup):\n    \"\"\"\n    The 'overlaps_above' operator returns true if A's bounding box overlaps or is above\n    B's bounding box.\n    \"\"\"\n    lookup_name = 'overlaps_above'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.OverlapsAboveLookup",
+                "documentation": "The 'overlaps_above' operator returns true if A's bounding box overlaps or is above\nB's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.OverlapsAboveLookup"
+                    }
+                ],
+                "similarity": 0.09467294297847237,
+                "end_line": 123,
+                "signature": null
+            },
+            {
+                "start_line": 145,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class StrictlyBelowLookup(GISLookup):\n    \"\"\"\n    The 'strictly_below' operator returns true if A's bounding box is strictly below B's\n    bounding box.\n    \"\"\"\n    lookup_name = 'strictly_below'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.StrictlyBelowLookup",
+                "documentation": "The 'strictly_below' operator returns true if A's bounding box is strictly below B's\nbounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.StrictlyBelowLookup"
+                    }
+                ],
+                "similarity": 0.09252609269603329,
+                "end_line": 150,
+                "signature": null
+            },
+            {
+                "start_line": 64,
+                "file_path": "django/utils/functional.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Promise:\n    \"\"\"\n    Base class for the proxy class created in the closure of the lazy function.\n    It's used to recognize promises in code.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.utils.functional.Promise",
+                "documentation": "Base class for the proxy class created in the closure of the lazy function.\nIt's used to recognize promises in code.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/utils/functional.py"
+                    },
+                    {
+                        "start_node": "django/utils/functional.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.utils.functional.Promise"
+                    }
+                ],
+                "similarity": 0.0918177726701482,
+                "end_line": 69,
+                "signature": null
+            },
+            {
+                "start_line": 412,
+                "file_path": "django/db/models/expressions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Expression(BaseExpression, Combinable):\n    \"\"\"An expression that can be combined with other expressions.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.expressions.Expression",
+                "documentation": "An expression that can be combined with other expressions.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/expressions.py"
+                    },
+                    {
+                        "start_node": "django/db/models/expressions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.expressions.Expression"
+                    }
+                ],
+                "similarity": 0.09099860609323263,
+                "end_line": 414,
+                "signature": null
+            },
+            {
+                "start_line": 109,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OverlapsBelowLookup(GISLookup):\n    \"\"\"\n    The 'overlaps_below' operator returns true if A's bounding box overlaps or is below\n    B's bounding box.\n    \"\"\"\n    lookup_name = 'overlaps_below'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.OverlapsBelowLookup",
+                "documentation": "The 'overlaps_below' operator returns true if A's bounding box overlaps or is below\nB's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.OverlapsBelowLookup"
+                    }
+                ],
+                "similarity": 0.09011588641219756,
+                "end_line": 114,
+                "signature": null
+            },
+            {
+                "start_line": 323,
+                "file_path": "django/contrib/gis/db/models/fields.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class GeometryCollectionField(GeometryField):\n    geom_type = 'GEOMETRYCOLLECTION'\n    geom_class = GeometryCollection\n    form_class = forms.GeometryCollectionField\n    description = _(\"Geometry collection\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.fields.GeometryCollectionField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/fields.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.fields.GeometryCollectionField"
+                    }
+                ],
+                "similarity": 0.08919892064278152,
+                "end_line": 327,
+                "signature": null
+            },
+            {
+                "start_line": 6,
+                "file_path": "django/core/checks/registry.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Tags:\n    \"\"\"\n    Built-in tags for internal checks.\n    \"\"\"\n    admin = 'admin'\n    caches = 'caches'\n    compatibility = 'compatibility'\n    database = 'database'\n    models = 'models'\n    security = 'security'\n    signals = 'signals'\n    templates = 'templates'\n    translation = 'translation'\n    urls = 'urls'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.checks.registry.Tags",
+                "documentation": "Built-in tags for internal checks.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/checks/registry.py"
+                    },
+                    {
+                        "start_node": "django/core/checks/registry.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "django.core.checks.registry.Tags"
+                    }
+                ],
+                "similarity": 0.08914262730920991,
+                "end_line": 19,
+                "signature": null
+            },
+            {
+                "start_line": 7,
+                "file_path": "django/contrib/gis/db/backends/spatialite/introspection.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class GeoFlexibleFieldLookupDict(FlexibleFieldLookupDict):\n    \"\"\"\n    Subclass that includes updates the `base_data_types_reverse` dict\n    for geometry field types.\n    \"\"\"\n    base_data_types_reverse = {\n        **FlexibleFieldLookupDict.base_data_types_reverse,\n        'point': 'GeometryField',\n        'linestring': 'GeometryField',\n        'polygon': 'GeometryField',\n        'multipoint': 'GeometryField',\n        'multilinestring': 'GeometryField',\n        'multipolygon': 'GeometryField',\n        'geometrycollection': 'GeometryField',\n    }",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.backends.spatialite.introspection.GeoFlexibleFieldLookupDict",
+                "documentation": "Subclass that includes updates the `base_data_types_reverse` dict\nfor geometry field types.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/backends/spatialite/introspection.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/backends/spatialite/introspection.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.backends.spatialite.introspection.GeoFlexibleFieldLookupDict"
+                    }
+                ],
+                "similarity": 0.08908277971226716,
+                "end_line": 21,
+                "signature": null
+            },
+            {
+                "start_line": 302,
+                "file_path": "django/contrib/gis/db/models/fields.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MultiPointField(GeometryField):\n    geom_type = 'MULTIPOINT'\n    geom_class = MultiPoint\n    form_class = forms.MultiPointField\n    description = _(\"Multi-point\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.fields.MultiPointField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/fields.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.fields.MultiPointField"
+                    }
+                ],
+                "similarity": 0.08840628719671663,
+                "end_line": 306,
+                "signature": null
+            },
+            {
+                "start_line": 91,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OverlapsLeftLookup(GISLookup):\n    \"\"\"\n    The overlaps_left operator returns true if A's bounding box overlaps or is to the\n    left of B's bounding box.\n    \"\"\"\n    lookup_name = 'overlaps_left'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.OverlapsLeftLookup",
+                "documentation": "The overlaps_left operator returns true if A's bounding box overlaps or is to the\nleft of B's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.OverlapsLeftLookup"
+                    }
+                ],
+                "similarity": 0.0879173398559048,
+                "end_line": 96,
+                "signature": null
+            },
+            {
+                "start_line": 11,
+                "file_path": "django/core/paginator.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class UnorderedObjectListWarning(RuntimeWarning):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.paginator.UnorderedObjectListWarning",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/paginator.py"
+                    },
+                    {
+                        "start_node": "django/core/paginator.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.paginator.UnorderedObjectListWarning"
+                    }
+                ],
+                "similarity": 0.08711576449597795,
+                "end_line": 12,
+                "signature": null
+            },
+            {
+                "start_line": 163,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class SameAsLookup(GISLookup):\n    \"\"\"\n    The \"~=\" operator is the \"same as\" operator. It tests actual geometric\n    equality of two features. So if A and B are the same feature,\n    vertex-by-vertex, the operator returns true.\n    \"\"\"\n    lookup_name = 'same_as'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.SameAsLookup",
+                "documentation": "The \"~=\" operator is the \"same as\" operator. It tests actual geometric\nequality of two features. So if A and B are the same feature,\nvertex-by-vertex, the operator returns true.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.SameAsLookup"
+                    }
+                ],
+                "similarity": 0.08709868888027107,
+                "end_line": 169,
+                "signature": null
+            },
+            {
+                "start_line": 127,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class LeftLookup(GISLookup):\n    \"\"\"\n    The 'left' operator returns true if A's bounding box is strictly to the left\n    of B's bounding box.\n    \"\"\"\n    lookup_name = 'left'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.LeftLookup",
+                "documentation": "The 'left' operator returns true if A's bounding box is strictly to the left\nof B's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.LeftLookup"
+                    }
+                ],
+                "similarity": 0.08701222302638721,
+                "end_line": 132,
+                "signature": null
+            },
+            {
+                "start_line": 281,
+                "file_path": "django/contrib/gis/db/models/fields.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class PointField(GeometryField):\n    geom_type = 'POINT'\n    geom_class = Point\n    form_class = forms.PointField\n    description = _(\"Point\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.fields.PointField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/fields.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.fields.PointField"
+                    }
+                ],
+                "similarity": 0.08607103599577189,
+                "end_line": 285,
+                "signature": null
+            },
+            {
+                "start_line": 128,
+                "file_path": "django/contrib/contenttypes/admin.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class GenericTabularInline(GenericInlineModelAdmin):\n    template = 'admin/edit_inline/tabular.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.contenttypes.admin.GenericTabularInline",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/contenttypes/admin.py"
+                    },
+                    {
+                        "start_node": "django/contrib/contenttypes/admin.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.contenttypes.admin.GenericTabularInline"
+                    }
+                ],
+                "similarity": 0.08504716320520984,
+                "end_line": 129,
+                "signature": null
+            },
+            {
+                "start_line": 309,
+                "file_path": "django/contrib/gis/db/models/fields.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MultiLineStringField(GeometryField):\n    geom_type = 'MULTILINESTRING'\n    geom_class = MultiLineString\n    form_class = forms.MultiLineStringField\n    description = _(\"Multi-line string\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.fields.MultiLineStringField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/fields.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.fields.MultiLineStringField"
+                    }
+                ],
+                "similarity": 0.08461717450672149,
+                "end_line": 313,
+                "signature": null
+            },
+            {
+                "start_line": 288,
+                "file_path": "django/contrib/gis/db/models/fields.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class LineStringField(GeometryField):\n    geom_type = 'LINESTRING'\n    geom_class = LineString\n    form_class = forms.LineStringField\n    description = _(\"Line string\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.fields.LineStringField",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/fields.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.fields.LineStringField"
+                    }
+                ],
+                "similarity": 0.0832958821876096,
+                "end_line": 292,
+                "signature": null
+            },
+            {
+                "start_line": 124,
+                "file_path": "django/contrib/contenttypes/admin.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class GenericStackedInline(GenericInlineModelAdmin):\n    template = 'admin/edit_inline/stacked.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.contenttypes.admin.GenericStackedInline",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/contenttypes/admin.py"
+                    },
+                    {
+                        "start_node": "django/contrib/contenttypes/admin.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.contenttypes.admin.GenericStackedInline"
+                    }
+                ],
+                "similarity": 0.08280902184799155,
+                "end_line": 125,
+                "signature": null
+            },
+            {
+                "start_line": 191,
+                "file_path": "django/core/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class SynchronousOnlyOperation(Exception):\n    \"\"\"The user tried to call a sync-only function from an async context.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.exceptions.SynchronousOnlyOperation",
+                "documentation": "The user tried to call a sync-only function from an async context.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/exceptions.py"
+                    },
+                    {
+                        "start_node": "django/core/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.exceptions.SynchronousOnlyOperation"
+                    }
+                ],
+                "similarity": 0.08236513834814078,
+                "end_line": 193,
+                "signature": null
+            },
+            {
+                "start_line": 20,
+                "file_path": "django/contrib/admin/helpers.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ActionForm(forms.Form):\n    action = forms.ChoiceField(label=_('Action:'))\n    select_across = forms.BooleanField(\n        label='',\n        required=False,\n        initial=0,\n        widget=forms.HiddenInput({'class': 'select-across'}),\n    )",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.helpers.ActionForm",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/helpers.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/helpers.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.helpers.ActionForm"
+                    }
+                ],
+                "similarity": 0.0821622160788054,
+                "end_line": 27,
+                "signature": null
+            },
+            {
+                "start_line": 757,
+                "file_path": "django/forms/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class RadioSelect(ChoiceWidget):\n    input_type = 'radio'\n    template_name = 'django/forms/widgets/radio.html'\n    option_template_name = 'django/forms/widgets/radio_option.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.widgets.RadioSelect",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/widgets.py"
+                    },
+                    {
+                        "start_node": "django/forms/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.widgets.RadioSelect"
+                    }
+                ],
+                "similarity": 0.08156083279533861,
+                "end_line": 760,
+                "signature": null
+            },
+            {
+                "start_line": 57,
+                "file_path": "django/core/signing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class SignatureExpired(BadSignature):\n    \"\"\"Signature timestamp is older than required max_age.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.signing.SignatureExpired",
+                "documentation": "Signature timestamp is older than required max_age.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/signing.py"
+                    },
+                    {
+                        "start_node": "django/core/signing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.signing.SignatureExpired"
+                    }
+                ],
+                "similarity": 0.08089298419650569,
+                "end_line": 59,
+                "signature": null
+            },
+            {
+                "start_line": 2183,
+                "file_path": "django/contrib/admin/options.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TabularInline(InlineModelAdmin):\n    template = 'admin/edit_inline/tabular.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.options.TabularInline",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/options.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.options.TabularInline"
+                    }
+                ],
+                "similarity": 0.07997485918361387,
+                "end_line": 2184,
+                "signature": null
+            },
+            {
+                "start_line": 100,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OverlapsRightLookup(GISLookup):\n    \"\"\"\n    The 'overlaps_right' operator returns true if A's bounding box overlaps or is to the\n    right of B's bounding box.\n    \"\"\"\n    lookup_name = 'overlaps_right'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.OverlapsRightLookup",
+                "documentation": "The 'overlaps_right' operator returns true if A's bounding box overlaps or is to the\nright of B's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.OverlapsRightLookup"
+                    }
+                ],
+                "similarity": 0.07977218082971696,
+                "end_line": 105,
+                "signature": null
+            },
+            {
+                "start_line": 492,
+                "file_path": "django/forms/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class DateTimeInput(DateTimeBaseInput):\n    format_key = 'DATETIME_INPUT_FORMATS'\n    template_name = 'django/forms/widgets/datetime.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.widgets.DateTimeInput",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/widgets.py"
+                    },
+                    {
+                        "start_node": "django/forms/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.widgets.DateTimeInput"
+                    }
+                ],
+                "similarity": 0.07969288309273988,
+                "end_line": 494,
+                "signature": null
+            },
+            {
+                "start_line": 359,
+                "file_path": "django/contrib/admin/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class AdminBigIntegerFieldWidget(AdminIntegerFieldWidget):\n    class_name = 'vBigIntegerField'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.widgets.AdminBigIntegerFieldWidget",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/widgets.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.widgets.AdminBigIntegerFieldWidget"
+                    }
+                ],
+                "similarity": 0.07949928828798032,
+                "end_line": 360,
+                "signature": null
+            },
+            {
+                "start_line": 66,
+                "file_path": "django/core/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class RequestAborted(Exception):\n    \"\"\"The request was closed before it was completed, or timed out.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.exceptions.RequestAborted",
+                "documentation": "The request was closed before it was completed, or timed out.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/exceptions.py"
+                    },
+                    {
+                        "start_node": "django/core/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.exceptions.RequestAborted"
+                    }
+                ],
+                "similarity": 0.07939251460954631,
+                "end_line": 68,
+                "signature": null
+            },
+            {
+                "start_line": 320,
+                "file_path": "django/contrib/gis/db/models/functions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class GeometryDistance(GeoFunc):\n    output_field = FloatField()\n    arity = 2\n    function = ''\n    arg_joiner = ' <-> '\n    geom_param_pos = (0, 1)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.functions.GeometryDistance",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/functions.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/functions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.functions.GeometryDistance"
+                    }
+                ],
+                "similarity": 0.07923797824043896,
+                "end_line": 325,
+                "signature": null
+            },
+            {
+                "start_line": 21,
+                "file_path": "django/core/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MultipleObjectsReturned(Exception):\n    \"\"\"The query returned multiple objects when only one was expected.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.exceptions.MultipleObjectsReturned",
+                "documentation": "The query returned multiple objects when only one was expected.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/exceptions.py"
+                    },
+                    {
+                        "start_node": "django/core/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.exceptions.MultipleObjectsReturned"
+                    }
+                ],
+                "similarity": 0.07864512477932473,
+                "end_line": 23,
+                "signature": null
+            },
+            {
+                "start_line": 351,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class DistanceLTLookup(DistanceLookupFromFunction):\n    lookup_name = 'distance_lt'\n    op = '<'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.DistanceLTLookup",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.DistanceLTLookup"
+                    }
+                ],
+                "similarity": 0.07844812180835319,
+                "end_line": 353,
+                "signature": null
+            },
+            {
+                "start_line": 112,
+                "file_path": "django/db/models/functions/datetime.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ExtractWeekDay(Extract):\n    \"\"\"\n    Return Sunday=1 through Saturday=7.\n\n    To replicate this in Python: (mydatetime.isoweekday() % 7) + 1\n    \"\"\"\n    lookup_name = 'week_day'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.datetime.ExtractWeekDay",
+                "documentation": "Return Sunday=1 through Saturday=7.\n\nTo replicate this in Python: (mydatetime.isoweekday() % 7) + 1",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/datetime.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/datetime.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.datetime.ExtractWeekDay"
+                    }
+                ],
+                "similarity": 0.07811942392953354,
+                "end_line": 118,
+                "signature": null
+            },
+            {
+                "start_line": 2179,
+                "file_path": "django/contrib/admin/options.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class StackedInline(InlineModelAdmin):\n    template = 'admin/edit_inline/stacked.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.options.StackedInline",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/options.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.options.StackedInline"
+                    }
+                ],
+                "similarity": 0.07752818254770609,
+                "end_line": 2180,
+                "signature": null
+            },
+            {
+                "start_line": 332,
+                "file_path": "django/forms/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class HiddenInput(Input):\n    input_type = 'hidden'\n    template_name = 'django/forms/widgets/hidden.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.widgets.HiddenInput",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/widgets.py"
+                    },
+                    {
+                        "start_node": "django/forms/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.widgets.HiddenInput"
+                    }
+                ],
+                "similarity": 0.07692938919969151,
+                "end_line": 334,
+                "signature": null
+            },
+            {
+                "start_line": 136,
+                "file_path": "django/contrib/gis/db/models/lookups.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class RightLookup(GISLookup):\n    \"\"\"\n    The 'right' operator returns true if A's bounding box is strictly to the right\n    of B's bounding box.\n    \"\"\"\n    lookup_name = 'right'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.db.models.lookups.RightLookup",
+                "documentation": "The 'right' operator returns true if A's bounding box is strictly to the right\nof B's bounding box.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/db/models/lookups.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/db/models/lookups.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.db.models.lookups.RightLookup"
+                    }
+                ],
+                "similarity": 0.07681779868781648,
+                "end_line": 141,
+                "signature": null
+            },
+            {
+                "start_line": 35,
+                "file_path": "django/http/request.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class RawPostDataException(Exception):\n    \"\"\"\n    You cannot access raw_post_data from a request that has\n    multipart/* POST data if it has been accessed via POST,\n    FILES, etc..\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.http.request.RawPostDataException",
+                "documentation": "You cannot access raw_post_data from a request that has\nmultipart/* POST data if it has been accessed via POST,\nFILES, etc..",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/http/request.py"
+                    },
+                    {
+                        "start_node": "django/http/request.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.http.request.RawPostDataException"
+                    }
+                ],
+                "similarity": 0.0762372210973029,
+                "end_line": 41,
+                "signature": null
+            },
+            {
+                "start_line": 10,
+                "file_path": "django/core/management/commands/dumpdata.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ProxyModelWarning(Warning):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.management.commands.dumpdata.ProxyModelWarning",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/management/commands/dumpdata.py"
+                    },
+                    {
+                        "start_node": "django/core/management/commands/dumpdata.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.management.commands.dumpdata.ProxyModelWarning"
+                    }
+                ],
+                "similarity": 0.07541473371435879,
+                "end_line": 11,
+                "signature": null
+            },
+            {
+                "start_line": 22,
+                "file_path": "django/contrib/admin/utils.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class FieldIsAForeignKeyColumnName(Exception):\n    \"\"\"A field is a foreign key attname, i.e. <FK>_id.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.utils.FieldIsAForeignKeyColumnName",
+                "documentation": "A field is a foreign key attname, i.e. <FK>_id.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/utils.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/utils.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.utils.FieldIsAForeignKeyColumnName"
+                    }
+                ],
+                "similarity": 0.07505355890978979,
+                "end_line": 24,
+                "signature": null
+            },
+            {
+                "start_line": 112,
+                "file_path": "django/contrib/auth/middleware.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class PersistentRemoteUserMiddleware(RemoteUserMiddleware):\n    \"\"\"\n    Middleware for Web-server provided authentication on logon pages.\n\n    Like RemoteUserMiddleware but keeps the user authenticated even if\n    the header (``REMOTE_USER``) is not found in the request. Useful\n    for setups when the external authentication via ``REMOTE_USER``\n    is only expected to happen on some \"logon\" URL and the rest of\n    the application wants to use Django's authentication mechanism.\n    \"\"\"\n    force_logout_if_no_header = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.auth.middleware.PersistentRemoteUserMiddleware",
+                "documentation": "Middleware for Web-server provided authentication on logon pages.\n\nLike RemoteUserMiddleware but keeps the user authenticated even if\nthe header (``REMOTE_USER``) is not found in the request. Useful\nfor setups when the external authentication via ``REMOTE_USER``\nis only expected to happen on some \"logon\" URL and the rest of\nthe application wants to use Django's authentication mechanism.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/auth/middleware.py"
+                    },
+                    {
+                        "start_node": "django/contrib/auth/middleware.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.auth.middleware.PersistentRemoteUserMiddleware"
+                    }
+                ],
+                "similarity": 0.07496714418421584,
+                "end_line": 122,
+                "signature": null
+            },
+            {
+                "start_line": 291,
+                "file_path": "django/contrib/postgres/search.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TrigramDistance(TrigramBase):\n    function = ''\n    arg_joiner = ' <-> '",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.postgres.search.TrigramDistance",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/postgres/search.py"
+                    },
+                    {
+                        "start_node": "django/contrib/postgres/search.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.postgres.search.TrigramDistance"
+                    }
+                ],
+                "similarity": 0.0744162842908352,
+                "end_line": 293,
+                "signature": null
+            },
+            {
+                "start_line": 487,
+                "file_path": "django/forms/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class DateInput(DateTimeBaseInput):\n    format_key = 'DATE_INPUT_FORMATS'\n    template_name = 'django/forms/widgets/date.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.widgets.DateInput",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/widgets.py"
+                    },
+                    {
+                        "start_node": "django/forms/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.widgets.DateInput"
+                    }
+                ],
+                "similarity": 0.0744111676006355,
+                "end_line": 489,
+                "signature": null
+            },
+            {
+                "start_line": 493,
+                "file_path": "django/forms/forms.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Form(BaseForm, metaclass=DeclarativeFieldsMetaclass):\n    \"A collection of Fields, plus their associated data.\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.forms.Form",
+                "documentation": "A collection of Fields, plus their associated data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/forms.py"
+                    },
+                    {
+                        "start_node": "django/forms/forms.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.forms.Form"
+                    }
+                ],
+                "similarity": 0.07427279871208836,
+                "end_line": 494,
+                "signature": null
+            },
+            {
+                "start_line": 169,
+                "file_path": "django/db/models/functions/text.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Lower(Transform):\n    function = 'LOWER'\n    lookup_name = 'lower'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.text.Lower",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/text.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/text.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.text.Lower"
+                    }
+                ],
+                "similarity": 0.07402286758419532,
+                "end_line": 171,
+                "signature": null
+            },
+            {
+                "start_line": 303,
+                "file_path": "django/forms/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class NumberInput(Input):\n    input_type = 'number'\n    template_name = 'django/forms/widgets/number.html'",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.forms.widgets.NumberInput",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/forms/widgets.py"
+                    },
+                    {
+                        "start_node": "django/forms/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.forms.widgets.NumberInput"
+                    }
+                ],
+                "similarity": 0.07382485411511477,
+                "end_line": 305,
+                "signature": null
+            },
+            {
+                "start_line": 67,
+                "file_path": "django/contrib/gis/geos/prototypes/io.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class WKBReadFunc(GEOSFuncFactory):\n    # Although the function definitions take `const unsigned char *`\n    # as their parameter, we use c_char_p here so the function may\n    # take Python strings directly as parameters.  Inside Python there\n    # is not a difference between signed and unsigned characters, so\n    # it is not a problem.\n    argtypes = [WKB_READ_PTR, c_char_p, c_size_t]\n    restype = GEOM_PTR\n    errcheck = staticmethod(check_geom)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.gis.geos.prototypes.io.WKBReadFunc",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/gis/geos/prototypes/io.py"
+                    },
+                    {
+                        "start_node": "django/contrib/gis/geos/prototypes/io.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.gis.geos.prototypes.io.WKBReadFunc"
+                    }
+                ],
+                "similarity": 0.073598198707681,
+                "end_line": 75,
+                "signature": null
+            }
+        ],
+        "issues": [
+            {
+                "content": "Description\n\t\nGiven the following model definition:\nfrom django.db import models\nclass Parent(models.Model):\n\tclass Meta:\n\t\tordering = [\"-pk\"]\nclass Child(Parent):\n\tpass\nQuerying the Child class results in the following:\n>>> print(Child.objects.all().query)\nSELECT \"myapp_parent\".\"id\", \"myapp_child\".\"parent_ptr_id\" FROM \"myapp_child\" INNER JOIN \"myapp_parent\" ON (\"myapp_child\".\"parent_ptr_id\" = \"myapp_parent\".\"id\") ORDER BY \"myapp_parent\".\"id\" ASC\nThe query is ordered ASC but I expect the order to be DESC.\n",
+                "distance": 0,
+                "title": "Inherited model doesn't correctly order by \"-pk\" when specified on Parent.Meta.ordering",
+                "name": "root",
+                "path": [],
+                "issue_id": "root",
+                "similarity": 2.0,
+                "type": "issue"
+            }
+        ]
+    },
+    "artifact_stats": {
+        "skipped_due_to_time": 0,
+        "valid_related_items": 1
+    }
+}

@@ -3,15 +3,19 @@ from importlib import import_module
 
 from django.conf import settings
 from django.contrib.sessions.backends.base import UpdateError
-from django.contrib.sessions.exceptions import SessionInterrupted
+from django.core.exceptions import SuspiciousOperation
 from django.utils.cache import patch_vary_headers
 from django.utils.deprecation import MiddlewareMixin
 from django.utils.http import http_date
 
 
 class SessionMiddleware(MiddlewareMixin):
-    def __init__(self, get_response):
-        super().__init__(get_response)
+    # RemovedInDjango40Warning: when the deprecation ends, replace with:
+    #   def __init__(self, get_response):
+    def __init__(self, get_response=None):
+        self._get_response_none_deprecation(get_response)
+        self.get_response = get_response
+        self._async_check()
         engine = import_module(settings.SESSION_ENGINE)
         self.SessionStore = engine.SessionStore
 
@@ -58,7 +62,7 @@ class SessionMiddleware(MiddlewareMixin):
                     try:
                         request.session.save()
                     except UpdateError:
-                        raise SessionInterrupted(
+                        raise SuspiciousOperation(
                             "The request's session was deleted before the "
                             "request completed. The user may have logged "
                             "out in a concurrent request, for example."

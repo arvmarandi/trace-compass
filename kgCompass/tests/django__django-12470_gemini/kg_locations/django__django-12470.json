@@ -60,64 +60,6 @@
                 "signature": "django.db.models.query.QuerySet.query(self)"
             },
             {
-                "start_line": 265,
-                "file_path": "django/db/models/sql/compiler.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def get_order_by(self):\n        \"\"\"\n        Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\n        ORDER BY clause.\n\n        The order_by clause can alter the select clause (for example it\n        can add aliases to clauses that do not yet have one, or it can\n        add totally new select clauses).\n        \"\"\"\n        if self.query.extra_order_by:\n            ordering = self.query.extra_order_by\n        elif not self.query.default_ordering:\n            ordering = self.query.order_by\n        elif self.query.order_by:\n            ordering = self.query.order_by\n        elif self.query.get_meta().ordering:\n            ordering = self.query.get_meta().ordering\n            self._meta_ordering = ordering\n        else:\n            ordering = []\n        if self.query.standard_ordering:\n            asc, desc = ORDER_DIR['ASC']\n        else:\n            asc, desc = ORDER_DIR['DESC']\n\n        order_by = []\n        for field in ordering:\n            if hasattr(field, 'resolve_expression'):\n                if isinstance(field, Value):\n                    # output_field must be resolved for constants.\n                    field = Cast(field, field.output_field)\n                if not isinstance(field, OrderBy):\n                    field = field.asc()\n                if not self.query.standard_ordering:\n                    field = field.copy()\n                    field.reverse_ordering()\n                order_by.append((field, False))\n                continue\n            if field == '?':  # random\n                order_by.append((OrderBy(Random()), False))\n                continue\n\n            col, order = get_order_dir(field, asc)\n            descending = order == 'DESC'\n\n            if col in self.query.annotation_select:\n                # Reference to expression in SELECT clause\n                order_by.append((\n                    OrderBy(Ref(col, self.query.annotation_select[col]), descending=descending),\n                    True))\n                continue\n            if col in self.query.annotations:\n                # References to an expression which is masked out of the SELECT\n                # clause.\n                expr = self.query.annotations[col]\n                if isinstance(expr, Value):\n                    # output_field must be resolved for constants.\n                    expr = Cast(expr, expr.output_field)\n                order_by.append((OrderBy(expr, descending=descending), False))\n                continue\n\n            if '.' in field:\n                # This came in through an extra(order_by=...) addition. Pass it\n                # on verbatim.\n                table, col = col.split('.', 1)\n                order_by.append((\n                    OrderBy(\n                        RawSQL('%s.%s' % (self.quote_name_unless_alias(table), col), []),\n                        descending=descending\n                    ), False))\n                continue\n\n            if not self.query.extra or col not in self.query.extra:\n                # 'col' is of the form 'field' or 'field1__field2' or\n                # '-field1__field2__field', etc.\n                order_by.extend(self.find_ordering_name(\n                    field, self.query.get_meta(), default_order=asc))\n            else:\n                if col not in self.query.extra_select:\n                    order_by.append((\n                        OrderBy(RawSQL(*self.query.extra[col]), descending=descending),\n                        False))\n                else:\n                    order_by.append((\n                        OrderBy(Ref(col, RawSQL(*self.query.extra[col])), descending=descending),\n                        True))\n        result = []\n        seen = set()\n\n        for expr, is_ref in order_by:\n            resolved = expr.resolve_expression(self.query, allow_joins=True, reuse=None)\n            if self.query.combinator:\n                src = resolved.get_source_expressions()[0]\n                # Relabel order by columns to raw numbers if this is a combined\n                # query; necessary since the columns can't be referenced by the\n                # fully qualified name and the simple column names may collide.\n                for idx, (sel_expr, _, col_alias) in enumerate(self.select):\n                    if is_ref and col_alias == src.refs:\n                        src = src.source\n                    elif col_alias:\n                        continue\n                    if src == sel_expr:\n                        resolved.set_source_expressions([RawSQL('%d' % (idx + 1), ())])\n                        break\n                else:\n                    if col_alias:\n                        raise DatabaseError('ORDER BY term does not match any column in the result set.')\n                    # Add column used in ORDER BY clause without an alias to\n                    # the selected columns.\n                    self.query.add_select_col(src)\n                    resolved.set_source_expressions([RawSQL('%d' % len(self.query.select), ())])\n            sql, params = self.compile(resolved)\n            # Don't add the same column twice, but the order direction is\n            # not taken into account so we strip it. When this entire method\n            # is refactored into expressions, then we can check each part as we\n            # generate it.\n            without_ordering = self.ordering_parts.search(sql).group(1)\n            params_hash = make_hashable(params)\n            if (without_ordering, params_hash) in seen:\n                continue\n            seen.add((without_ordering, params_hash))\n            result.append((resolved, (sql, params, is_ref)))\n        return result",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.sql.compiler.SQLCompiler.get_order_by",
-                "documentation": "Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\nORDER BY clause.\n\nThe order_by clause can alter the select clause (for example it\ncan add aliases to clauses that do not yet have one, or it can\nadd totally new select clauses).",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/sql/compiler.py"
-                    },
-                    {
-                        "start_node": "django/db/models/sql/compiler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.sql.compiler.SQLCompiler.get_order_by"
-                    }
-                ],
-                "similarity": 0.1912198790650816,
-                "end_line": 387,
-                "signature": "django.db.models.sql.compiler.SQLCompiler.get_order_by(self)"
-            },
-            {
-                "start_line": 44,
-                "file_path": "django/db/models/sql/compiler.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        Do any necessary class setup immediately prior to producing SQL. This\n        is for things that can't necessarily be done in __init__ because we\n        might not have all the pieces in place at that time.\n        \"\"\"\n        self.setup_query()\n        order_by = self.get_order_by()\n        self.where, self.having = self.query.where.split_having()\n        extra_select = self.get_extra_select(order_by, self.select)\n        self.has_extra_select = bool(extra_select)\n        group_by = self.get_group_by(self.select + extra_select, order_by)\n        return extra_select, order_by, group_by",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup",
-                "documentation": "Do any necessary class setup immediately prior to producing SQL. This\nis for things that can't necessarily be done in __init__ because we\nmight not have all the pieces in place at that time.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/sql/compiler.py"
-                    },
-                    {
-                        "start_node": "django/db/models/sql/compiler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup"
-                    }
-                ],
-                "similarity": 0.17993452393755688,
-                "end_line": 56,
-                "signature": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup(self)"
-            },
-            {
                 "start_line": 40,
                 "file_path": "django/utils/functional.py",
                 "issue_id": null,
@@ -176,6 +118,35 @@
                 "signature": "django.db.models.options.Options.swapped(self)"
             },
             {
+                "start_line": 265,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_order_by(self):\n        \"\"\"\n        Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\n        ORDER BY clause.\n\n        The order_by clause can alter the select clause (for example it\n        can add aliases to clauses that do not yet have one, or it can\n        add totally new select clauses).\n        \"\"\"\n        if self.query.extra_order_by:\n            ordering = self.query.extra_order_by\n        elif not self.query.default_ordering:\n            ordering = self.query.order_by\n        elif self.query.order_by:\n            ordering = self.query.order_by\n        elif self.query.get_meta().ordering:\n            ordering = self.query.get_meta().ordering\n            self._meta_ordering = ordering\n        else:\n            ordering = []\n        if self.query.standard_ordering:\n            asc, desc = ORDER_DIR['ASC']\n        else:\n            asc, desc = ORDER_DIR['DESC']\n\n        order_by = []\n        for field in ordering:\n            if hasattr(field, 'resolve_expression'):\n                if isinstance(field, Value):\n                    # output_field must be resolved for constants.\n                    field = Cast(field, field.output_field)\n                if not isinstance(field, OrderBy):\n                    field = field.asc()\n                if not self.query.standard_ordering:\n                    field = field.copy()\n                    field.reverse_ordering()\n                order_by.append((field, False))\n                continue\n            if field == '?':  # random\n                order_by.append((OrderBy(Random()), False))\n                continue\n\n            col, order = get_order_dir(field, asc)\n            descending = order == 'DESC'\n\n            if col in self.query.annotation_select:\n                # Reference to expression in SELECT clause\n                order_by.append((\n                    OrderBy(Ref(col, self.query.annotation_select[col]), descending=descending),\n                    True))\n                continue\n            if col in self.query.annotations:\n                # References to an expression which is masked out of the SELECT\n                # clause.\n                expr = self.query.annotations[col]\n                if isinstance(expr, Value):\n                    # output_field must be resolved for constants.\n                    expr = Cast(expr, expr.output_field)\n                order_by.append((OrderBy(expr, descending=descending), False))\n                continue\n\n            if '.' in field:\n                # This came in through an extra(order_by=...) addition. Pass it\n                # on verbatim.\n                table, col = col.split('.', 1)\n                order_by.append((\n                    OrderBy(\n                        RawSQL('%s.%s' % (self.quote_name_unless_alias(table), col), []),\n                        descending=descending\n                    ), False))\n                continue\n\n            if not self.query.extra or col not in self.query.extra:\n                # 'col' is of the form 'field' or 'field1__field2' or\n                # '-field1__field2__field', etc.\n                order_by.extend(self.find_ordering_name(\n                    field, self.query.get_meta(), default_order=asc))\n            else:\n                if col not in self.query.extra_select:\n                    order_by.append((\n                        OrderBy(RawSQL(*self.query.extra[col]), descending=descending),\n                        False))\n                else:\n                    order_by.append((\n                        OrderBy(Ref(col, RawSQL(*self.query.extra[col])), descending=descending),\n                        True))\n        result = []\n        seen = set()\n\n        for expr, is_ref in order_by:\n            resolved = expr.resolve_expression(self.query, allow_joins=True, reuse=None)\n            if self.query.combinator:\n                src = resolved.get_source_expressions()[0]\n                # Relabel order by columns to raw numbers if this is a combined\n                # query; necessary since the columns can't be referenced by the\n                # fully qualified name and the simple column names may collide.\n                for idx, (sel_expr, _, col_alias) in enumerate(self.select):\n                    if is_ref and col_alias == src.refs:\n                        src = src.source\n                    elif col_alias:\n                        continue\n                    if src == sel_expr:\n                        resolved.set_source_expressions([RawSQL('%d' % (idx + 1), ())])\n                        break\n                else:\n                    if col_alias:\n                        raise DatabaseError('ORDER BY term does not match any column in the result set.')\n                    # Add column used in ORDER BY clause without an alias to\n                    # the selected columns.\n                    self.query.add_select_col(src)\n                    resolved.set_source_expressions([RawSQL('%d' % len(self.query.select), ())])\n            sql, params = self.compile(resolved)\n            # Don't add the same column twice, but the order direction is\n            # not taken into account so we strip it. When this entire method\n            # is refactored into expressions, then we can check each part as we\n            # generate it.\n            without_ordering = self.ordering_parts.search(sql).group(1)\n            params_hash = make_hashable(params)\n            if (without_ordering, params_hash) in seen:\n                continue\n            seen.add((without_ordering, params_hash))\n            result.append((resolved, (sql, params, is_ref)))\n        return result",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.get_order_by",
+                "documentation": "Return a list of 2-tuples of form (expr, (sql, params, is_ref)) for the\nORDER BY clause.\n\nThe order_by clause can alter the select clause (for example it\ncan add aliases to clauses that do not yet have one, or it can\nadd totally new select clauses).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.get_order_by"
+                    }
+                ],
+                "similarity": 0.17621987906508157,
+                "end_line": 387,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.get_order_by(self)"
+            },
+            {
                 "start_line": 1387,
                 "file_path": "django/db/models/query.py",
                 "issue_id": null,
@@ -232,35 +203,6 @@
                 "similarity": 0.17537025413591933,
                 "end_line": 36,
                 "signature": "django.db.models.sql.compiler.SQLCompiler.__init__(self, query, connection, using)"
-            },
-            {
-                "start_line": 1513,
-                "file_path": "django/db/models/sql/compiler.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        If the update depends on results from other tables, munge the \"where\"\n        conditions to match the format required for (portable) SQL updates.\n\n        If multiple updates are required, pull out the id values to update at\n        this point so that they don't change as a result of the progressive\n        updates.\n        \"\"\"\n        refcounts_before = self.query.alias_refcount.copy()\n        # Ensure base table is in the query\n        self.query.get_initial_alias()\n        count = self.query.count_active_tables()\n        if not self.query.related_updates and count == 1:\n            return\n        query = self.query.chain(klass=Query)\n        query.select_related = False\n        query.clear_ordering(True)\n        query.extra = {}\n        query.select = []\n        query.add_fields([query.get_meta().pk.name])\n        super().pre_sql_setup()\n\n        must_pre_select = count > 1 and not self.connection.features.update_can_self_select\n\n        # Now we adjust the current query: reset the where clause and get rid\n        # of all the tables we don't need (since they're in the sub-select).\n        self.query.where = self.query.where_class()\n        if self.query.related_updates or must_pre_select:\n            # Either we're using the idents in multiple update queries (so\n            # don't want them to change), or the db backend doesn't support\n            # selecting from the updating table (e.g. MySQL).\n            idents = []\n            for rows in query.get_compiler(self.using).execute_sql(MULTI):\n                idents.extend(r[0] for r in rows)\n            self.query.add_filter(('pk__in', idents))\n            self.query.related_ids = idents\n        else:\n            # The fast path. Filters and updates in one query.\n            self.query.add_filter(('pk__in', query))\n        self.query.reset_refcounts(refcounts_before)",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup",
-                "documentation": "If the update depends on results from other tables, munge the \"where\"\nconditions to match the format required for (portable) SQL updates.\n\nIf multiple updates are required, pull out the id values to update at\nthis point so that they don't change as a result of the progressive\nupdates.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/sql/compiler.py"
-                    },
-                    {
-                        "start_node": "django/db/models/sql/compiler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup"
-                    }
-                ],
-                "similarity": 0.17252893245076573,
-                "end_line": 1553,
-                "signature": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup(self)"
             },
             {
                 "start_line": 73,
@@ -493,6 +435,35 @@
                 "similarity": 0.16164374457498276,
                 "end_line": 41,
                 "signature": "django.db.models.query.BaseIterable.__init__(self, queryset, chunked_fetch, chunk_size)"
+            },
+            {
+                "start_line": 44,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        Do any necessary class setup immediately prior to producing SQL. This\n        is for things that can't necessarily be done in __init__ because we\n        might not have all the pieces in place at that time.\n        \"\"\"\n        self.setup_query()\n        order_by = self.get_order_by()\n        self.where, self.having = self.query.where.split_having()\n        extra_select = self.get_extra_select(order_by, self.select)\n        self.has_extra_select = bool(extra_select)\n        group_by = self.get_group_by(self.select + extra_select, order_by)\n        return extra_select, order_by, group_by",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup",
+                "documentation": "Do any necessary class setup immediately prior to producing SQL. This\nis for things that can't necessarily be done in __init__ because we\nmight not have all the pieces in place at that time.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup"
+                    }
+                ],
+                "similarity": 0.15988514893755687,
+                "end_line": 56,
+                "signature": "django.db.models.sql.compiler.SQLCompiler.pre_sql_setup(self)"
             },
             {
                 "start_line": 257,
@@ -785,6 +756,35 @@
                 "signature": "django.db.models.sql.query.Query.get_meta(self)"
             },
             {
+                "start_line": 1513,
+                "file_path": "django/db/models/sql/compiler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        If the update depends on results from other tables, munge the \"where\"\n        conditions to match the format required for (portable) SQL updates.\n\n        If multiple updates are required, pull out the id values to update at\n        this point so that they don't change as a result of the progressive\n        updates.\n        \"\"\"\n        refcounts_before = self.query.alias_refcount.copy()\n        # Ensure base table is in the query\n        self.query.get_initial_alias()\n        count = self.query.count_active_tables()\n        if not self.query.related_updates and count == 1:\n            return\n        query = self.query.chain(klass=Query)\n        query.select_related = False\n        query.clear_ordering(True)\n        query.extra = {}\n        query.select = []\n        query.add_fields([query.get_meta().pk.name])\n        super().pre_sql_setup()\n\n        must_pre_select = count > 1 and not self.connection.features.update_can_self_select\n\n        # Now we adjust the current query: reset the where clause and get rid\n        # of all the tables we don't need (since they're in the sub-select).\n        self.query.where = self.query.where_class()\n        if self.query.related_updates or must_pre_select:\n            # Either we're using the idents in multiple update queries (so\n            # don't want them to change), or the db backend doesn't support\n            # selecting from the updating table (e.g. MySQL).\n            idents = []\n            for rows in query.get_compiler(self.using).execute_sql(MULTI):\n                idents.extend(r[0] for r in rows)\n            self.query.add_filter(('pk__in', idents))\n            self.query.related_ids = idents\n        else:\n            # The fast path. Filters and updates in one query.\n            self.query.add_filter(('pk__in', query))\n        self.query.reset_refcounts(refcounts_before)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup",
+                "documentation": "If the update depends on results from other tables, munge the \"where\"\nconditions to match the format required for (portable) SQL updates.\n\nIf multiple updates are required, pull out the id values to update at\nthis point so that they don't change as a result of the progressive\nupdates.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/compiler.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/compiler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup"
+                    }
+                ],
+                "similarity": 0.15247955745076572,
+                "end_line": 1553,
+                "signature": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup(self)"
+            },
+            {
                 "start_line": 1194,
                 "file_path": "django/db/models/query.py",
                 "issue_id": null,
@@ -833,7 +833,7 @@
                     },
                     {
                         "start_node": "django/utils/tree.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "django.utils.tree.Node.__init__"
                     }
@@ -1239,7 +1239,7 @@
                     },
                     {
                         "start_node": "django/contrib/postgres/aggregates/mixins.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "django.contrib.postgres.aggregates.mixins.OrderableAggMixin.__init__"
                     }
@@ -1850,7 +1850,7 @@
                     },
                     {
                         "start_node": "django/contrib/gis/db/backends/spatialite/introspection.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.contrib.gis.db.backends.spatialite.introspection.GeoFlexibleFieldLookupDict"
                     }
@@ -2140,7 +2140,7 @@
                     },
                     {
                         "start_node": "django/contrib/contenttypes/admin.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.contenttypes.admin.GenericStackedInline"
                     }
@@ -2662,7 +2662,7 @@
                     },
                     {
                         "start_node": "django/core/management/commands/dumpdata.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.core.management.commands.dumpdata.ProxyModelWarning"
                     }
@@ -2691,7 +2691,7 @@
                     },
                     {
                         "start_node": "django/contrib/admin/utils.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.admin.utils.FieldIsAForeignKeyColumnName"
                     }

@@ -1,0 +1,17 @@
+The issue describes a problem where the LaTeX expression `\frac{\frac{a^3+b}{c}}{\frac{1}{c^2}}` is incorrectly parsed by `sympy.parsing.latex.parse_latex`. The parser yields `((a**3 + b)/c)/1/(c**2)`, while the expected output is `((a**3 + b)/c)/(1/(c**2))`. The core of the problem is that the denominator of the outer fraction, which is itself a fraction (`\frac{1}{c^2}`), is not treated as a single grouped expression during the division operation, leading to incorrect operator precedence.
+
+**Localization of the Bug:**
+
+The `sympy/parsing/latex/_antlr/latexparser.py` file defines the grammar rules for parsing LaTeX expressions using ANTLR. The `frac` method in this file is responsible for recognizing the `\frac{numerator}{denominator}` structure. It parses both the numerator and denominator using the `self.expr()` rule.
+
+The problem is not in how `frac` *recognizes* the structure, but in how the recognized structure (the `FracContext` object) is *translated* into a SymPy expression. When the `FracContext` is processed by a visitor (which is typically a separate class, e.g., `LaTeXSymPyTransformer`, not provided in the snippets), the division operation is performed. If the visitor simply translates `\frac{A}{B}` to `A / B` in Python, and `B` itself is `1/c**2`, then `A / 1 / c**2` results due to the left-associativity of division, instead of `A / (1 / c**2)`.
+
+The fix requires ensuring that the denominator expression is always treated as a single unit (i.e., grouped) when it's part of a division. This semantic grouping logic typically resides in the visitor that walks the parse tree and constructs the SymPy expression, or it could be enforced by modifying the ANTLR grammar (`.g4` file) to explicitly wrap the denominator in a "grouped expression" rule.
+
+**Constraint Violation:**
+
+The provided code snippets do not include the ANTLR grammar file (`latex.g4`) from which `latexparser.py` is generated, nor do they include the visitor class responsible for converting the `FracContext` parse tree node into a SymPy expression. `latexparser.py` itself is a generated file and primarily defines the syntactic structure; it does not contain the semantic actions for building SymPy expressions or enforcing operator precedence beyond what's inherent in the grammar rules.
+
+Therefore, a direct `SEARCH/REPLACE` edit within the provided `sympy/parsing/latex/_antlr/latexparser.py` file cannot correctly address this issue. Any modification to `latexparser.py` would either be a non-standard ANTLR hack that might not work or would be overwritten if the grammar is regenerated. The fundamental fix belongs either in the ANTLR grammar definition (`.g4` file) or in the visitor implementation.
+
+Since I am constrained to only modify the provided files and cannot access or modify the ANTLR grammar or the visitor, I cannot provide a valid `SEARCH/REPLACE` edit that would correctly fix the reported issue. The bug is localized to the semantic interpretation phase (visitor) rather than the syntactic parsing phase (parser definition in `latexparser.py`).

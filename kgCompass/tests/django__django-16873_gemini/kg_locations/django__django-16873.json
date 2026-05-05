@@ -21,7 +21,7 @@
                     },
                     {
                         "start_node": "django/template/engine.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.engine.Engine.__init__"
                     }
@@ -58,35 +58,6 @@
                 "similarity": 0.17781011701700716,
                 "end_line": 195,
                 "signature": "django.template.engine.Engine.render_to_string(self, template_name, context)"
-            },
-            {
-                "start_line": 159,
-                "file_path": "django/dispatch/dispatcher.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def send(self, sender, **named):\n        \"\"\"\n        Send signal from sender to all connected receivers.\n\n        If any receiver raises an error, the error propagates back through send,\n        terminating the dispatch loop. So it's possible that all receivers\n        won't be called if an error is raised.\n\n        If any receivers are asynchronous, they are called after all the\n        synchronous receivers via a single call to async_to_sync(). They are\n        also executed concurrently with asyncio.gather().\n\n        Arguments:\n\n            sender\n                The sender of the signal. Either a specific object or None.\n\n            named\n                Named arguments which will be passed to receivers.\n\n        Return a list of tuple pairs [(receiver, response), ... ].\n        \"\"\"\n        if (\n            not self.receivers\n            or self.sender_receivers_cache.get(sender) is NO_RECEIVERS\n        ):\n            return []\n        responses = []\n        sync_receivers, async_receivers = self._live_receivers(sender)\n        for receiver in sync_receivers:\n            response = receiver(signal=self, sender=sender, **named)\n            responses.append((receiver, response))\n        if async_receivers:\n\n            async def asend():\n                async_responses = await asyncio.gather(\n                    *(\n                        receiver(signal=self, sender=sender, **named)\n                        for receiver in async_receivers\n                    )\n                )\n                return zip(async_receivers, async_responses)\n\n            responses.extend(async_to_sync(asend)())\n        return responses",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.dispatch.dispatcher.Signal.send",
-                "documentation": "Send signal from sender to all connected receivers.\n\nIf any receiver raises an error, the error propagates back through send,\nterminating the dispatch loop. So it's possible that all receivers\nwon't be called if an error is raised.\n\nIf any receivers are asynchronous, they are called after all the\nsynchronous receivers via a single call to async_to_sync(). They are\nalso executed concurrently with asyncio.gather().\n\nArguments:\n\n    sender\n        The sender of the signal. Either a specific object or None.\n\n    named\n        Named arguments which will be passed to receivers.\n\nReturn a list of tuple pairs [(receiver, response), ... ].",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/dispatch/dispatcher.py"
-                    },
-                    {
-                        "start_node": "django/dispatch/dispatcher.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.dispatch.dispatcher.Signal.send"
-                    }
-                ],
-                "similarity": 0.15848530813050132,
-                "end_line": 203,
-                "signature": "django.dispatch.dispatcher.Signal.send(self, sender)"
             },
             {
                 "start_line": 1057,
@@ -145,6 +116,35 @@
                 "similarity": 0.14738585475256494,
                 "end_line": 145,
                 "signature": "django.template.context.Context.__init__(self, dict_, autoescape, use_l10n, use_tz)"
+            },
+            {
+                "start_line": 87,
+                "file_path": "django/db/models/sql/datastructures.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_sql(self, compiler, connection):\n        \"\"\"\n        Generate the full\n           LEFT OUTER JOIN sometable ON sometable.somecol = othertable.othercol, params\n        clause for this join.\n        \"\"\"\n        join_conditions = []\n        params = []\n        qn = compiler.quote_name_unless_alias\n        qn2 = connection.ops.quote_name\n        # Add a join condition for each pair of joining columns.\n        # RemovedInDjango60Warning: when the depraction ends, replace with:\n        # for lhs, rhs in self.join_field:\n        join_fields = self.join_fields or self.join_cols\n        for lhs, rhs in join_fields:\n            if isinstance(lhs, str):\n                # RemovedInDjango60Warning: when the depraction ends, remove\n                # the branch for strings.\n                lhs_full_name = \"%s.%s\" % (qn(self.parent_alias), qn2(lhs))\n                rhs_full_name = \"%s.%s\" % (qn(self.table_alias), qn2(rhs))\n            else:\n                lhs, rhs = connection.ops.prepare_join_on_clause(\n                    self.parent_alias, lhs, self.table_alias, rhs\n                )\n                lhs_sql, lhs_params = compiler.compile(lhs)\n                lhs_full_name = lhs_sql % lhs_params\n                rhs_sql, rhs_params = compiler.compile(rhs)\n                rhs_full_name = rhs_sql % rhs_params\n            join_conditions.append(f\"{lhs_full_name} = {rhs_full_name}\")\n\n        # Add a single condition inside parentheses for whatever\n        # get_extra_restriction() returns.\n        extra_cond = self.join_field.get_extra_restriction(\n            self.table_alias, self.parent_alias\n        )\n        if extra_cond:\n            extra_sql, extra_params = compiler.compile(extra_cond)\n            join_conditions.append(\"(%s)\" % extra_sql)\n            params.extend(extra_params)\n        if self.filtered_relation:\n            try:\n                extra_sql, extra_params = compiler.compile(self.filtered_relation)\n            except FullResultSet:\n                pass\n            else:\n                join_conditions.append(\"(%s)\" % extra_sql)\n                params.extend(extra_params)\n        if not join_conditions:\n            # This might be a rel on the other end of an actual declared field.\n            declared_field = getattr(self.join_field, \"field\", self.join_field)\n            raise ValueError(\n                \"Join generated an empty ON clause. %s did not yield either \"\n                \"joining columns or extra restrictions.\" % declared_field.__class__\n            )\n        on_clause_sql = \" AND \".join(join_conditions)\n        alias_str = (\n            \"\" if self.table_alias == self.table_name else (\" %s\" % self.table_alias)\n        )\n        sql = \"%s %s%s ON (%s)\" % (\n            self.join_type,\n            qn(self.table_name),\n            alias_str,\n            on_clause_sql,\n        )\n        return sql, params",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.datastructures.Join.as_sql",
+                "documentation": "Generate the full\n   LEFT OUTER JOIN sometable ON sometable.somecol = othertable.othercol, params\nclause for this join.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/datastructures.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/datastructures.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.datastructures.Join.as_sql"
+                    }
+                ],
+                "similarity": 0.1459130462420309,
+                "end_line": 151,
+                "signature": "django.db.models.sql.datastructures.Join.as_sql(self, compiler, connection)"
             },
             {
                 "start_line": 223,
@@ -466,35 +466,6 @@
                 "signature": "django.db.models.sql.compiler.SQLCompiler._setup_joins(self, pieces, opts, alias)"
             },
             {
-                "start_line": 412,
-                "file_path": "django/dispatch/dispatcher.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _live_receivers(self, sender):\n        \"\"\"\n        Filter sequence of receivers to get resolved, live receivers.\n\n        This checks for weak references and resolves them, then returning only\n        live receivers.\n        \"\"\"\n        receivers = None\n        if self.use_caching and not self._dead_receivers:\n            receivers = self.sender_receivers_cache.get(sender)\n            # We could end up here with NO_RECEIVERS even if we do check this case in\n            # .send() prior to calling _live_receivers() due to concurrent .send() call.\n            if receivers is NO_RECEIVERS:\n                return [], []\n        if receivers is None:\n            with self.lock:\n                self._clear_dead_receivers()\n                senderkey = _make_id(sender)\n                receivers = []\n                for (_receiverkey, r_senderkey), receiver, is_async in self.receivers:\n                    if r_senderkey == NONE_ID or r_senderkey == senderkey:\n                        receivers.append((receiver, is_async))\n                if self.use_caching:\n                    if not receivers:\n                        self.sender_receivers_cache[sender] = NO_RECEIVERS\n                    else:\n                        # Note, we must cache the weakref versions.\n                        self.sender_receivers_cache[sender] = receivers\n        non_weak_sync_receivers = []\n        non_weak_async_receivers = []\n        for receiver, is_async in receivers:\n            if isinstance(receiver, weakref.ReferenceType):\n                # Dereference the weak reference.\n                receiver = receiver()\n                if receiver is not None:\n                    if is_async:\n                        non_weak_async_receivers.append(receiver)\n                    else:\n                        non_weak_sync_receivers.append(receiver)\n            else:\n                if is_async:\n                    non_weak_async_receivers.append(receiver)\n                else:\n                    non_weak_sync_receivers.append(receiver)\n        return non_weak_sync_receivers, non_weak_async_receivers",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.dispatch.dispatcher.Signal._live_receivers",
-                "documentation": "Filter sequence of receivers to get resolved, live receivers.\n\nThis checks for weak references and resolves them, then returning only\nlive receivers.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/dispatch/dispatcher.py"
-                    },
-                    {
-                        "start_node": "django/dispatch/dispatcher.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "django.dispatch.dispatcher.Signal._live_receivers"
-                    }
-                ],
-                "similarity": 0.12692072293774068,
-                "end_line": 456,
-                "signature": "django.dispatch.dispatcher.Signal._live_receivers(self, sender)"
-            },
-            {
                 "start_line": 156,
                 "file_path": "django/utils/text.py",
                 "issue_id": null,
@@ -688,7 +659,7 @@
                     },
                     {
                         "start_node": "django/template/library.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "django.template.library.InclusionNode.render"
                     }
@@ -696,35 +667,6 @@
                 "similarity": 0.12374135547876755,
                 "end_line": 278,
                 "signature": "django.template.library.InclusionNode.render(self, context)"
-            },
-            {
-                "start_line": 269,
-                "file_path": "django/dispatch/dispatcher.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def send_robust(self, sender, **named):\n        \"\"\"\n        Send signal from sender to all connected receivers catching errors.\n\n        If any receivers are asynchronous, they are called after all the\n        synchronous receivers via a single call to async_to_sync(). They are\n        also executed concurrently with asyncio.gather().\n\n        Arguments:\n\n            sender\n                The sender of the signal. Can be any Python object (normally one\n                registered with a connect if you actually want something to\n                occur).\n\n            named\n                Named arguments which will be passed to receivers.\n\n        Return a list of tuple pairs [(receiver, response), ... ].\n\n        If any receiver raises an error (specifically any subclass of\n        Exception), return the error instance as the result for that receiver.\n        \"\"\"\n        if (\n            not self.receivers\n            or self.sender_receivers_cache.get(sender) is NO_RECEIVERS\n        ):\n            return []\n\n        # Call each receiver with whatever arguments it can accept.\n        # Return a list of tuple pairs [(receiver, response), ... ].\n        responses = []\n        sync_receivers, async_receivers = self._live_receivers(sender)\n        for receiver in sync_receivers:\n            try:\n                response = receiver(signal=self, sender=sender, **named)\n            except Exception as err:\n                self._log_robust_failure(receiver, err)\n                responses.append((receiver, err))\n            else:\n                responses.append((receiver, response))\n        if async_receivers:\n\n            async def asend_and_wrap_exception(receiver):\n                try:\n                    response = await receiver(signal=self, sender=sender, **named)\n                except Exception as err:\n                    self._log_robust_failure(receiver, err)\n                    return err\n                return response\n\n            async def asend():\n                async_responses = await asyncio.gather(\n                    *(\n                        asend_and_wrap_exception(receiver)\n                        for receiver in async_receivers\n                    )\n                )\n                return zip(async_receivers, async_responses)\n\n            responses.extend(async_to_sync(asend)())\n        return responses",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.dispatch.dispatcher.Signal.send_robust",
-                "documentation": "Send signal from sender to all connected receivers catching errors.\n\nIf any receivers are asynchronous, they are called after all the\nsynchronous receivers via a single call to async_to_sync(). They are\nalso executed concurrently with asyncio.gather().\n\nArguments:\n\n    sender\n        The sender of the signal. Can be any Python object (normally one\n        registered with a connect if you actually want something to\n        occur).\n\n    named\n        Named arguments which will be passed to receivers.\n\nReturn a list of tuple pairs [(receiver, response), ... ].\n\nIf any receiver raises an error (specifically any subclass of\nException), return the error instance as the result for that receiver.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/dispatch/dispatcher.py"
-                    },
-                    {
-                        "start_node": "django/dispatch/dispatcher.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.dispatch.dispatcher.Signal.send_robust"
-                    }
-                ],
-                "similarity": 0.12349316710156852,
-                "end_line": 330,
-                "signature": "django.dispatch.dispatcher.Signal.send_robust(self, sender)"
             },
             {
                 "start_line": 72,
@@ -746,7 +688,7 @@
                     },
                     {
                         "start_node": "django/template/loaders/cached.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.loaders.cached.Loader.cache_key"
                     }
@@ -928,6 +870,35 @@
                 "similarity": 0.12053046288225477,
                 "end_line": 1000,
                 "signature": "django.template.base.NodeList.render(self, context)"
+            },
+            {
+                "start_line": 48,
+                "file_path": "django/db/models/sql/datastructures.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        table_name,\n        parent_alias,\n        table_alias,\n        join_type,\n        join_field,\n        nullable,\n        filtered_relation=None,\n    ):\n        # Join table\n        self.table_name = table_name\n        self.parent_alias = parent_alias\n        # Note: table_alias is not necessarily known at instantiation time.\n        self.table_alias = table_alias\n        # LOUTER or INNER\n        self.join_type = join_type\n        # A list of 2-tuples to use in the ON clause of the JOIN.\n        # Each 2-tuple will create one join condition in the ON clause.\n        if hasattr(join_field, \"get_joining_fields\"):\n            self.join_fields = join_field.get_joining_fields()\n            self.join_cols = tuple(\n                (lhs_field.column, rhs_field.column)\n                for lhs_field, rhs_field in self.join_fields\n            )\n        else:\n            warnings.warn(\n                \"The usage of get_joining_columns() in Join is deprecated. Implement \"\n                \"get_joining_fields() instead.\",\n                RemovedInDjango60Warning,\n            )\n            self.join_fields = None\n            self.join_cols = join_field.get_joining_columns()\n        # Along which field (or ForeignObjectRel in the reverse join case)\n        self.join_field = join_field\n        # Is this join nullabled?\n        self.nullable = nullable\n        self.filtered_relation = filtered_relation",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.datastructures.Join.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/datastructures.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/datastructures.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.datastructures.Join.__init__"
+                    }
+                ],
+                "similarity": 0.11983797643636317,
+                "end_line": 85,
+                "signature": "django.db.models.sql.datastructures.Join.__init__(self, table_name, parent_alias, table_alias, join_type, join_field, nullable, filtered_relation)"
             },
             {
                 "start_line": 56,
@@ -1181,7 +1152,7 @@
                     },
                     {
                         "start_node": "django/utils/html.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.utils.html.Urlizer.__call__"
                     }
@@ -1450,6 +1421,35 @@
                 "similarity": 0.11404154938477087,
                 "end_line": 643,
                 "signature": "django.http.request.QueryDict.urlencode(self, safe)"
+            },
+            {
+                "start_line": 148,
+                "file_path": "django/template/defaulttags.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def render(self, context):\n        first = \"\"\n        for var in self.vars:\n            value = var.resolve(context, ignore_failures=True)\n            if value:\n                first = render_value_in_context(value, context)\n                break\n        if self.asvar:\n            context[self.asvar] = first\n            return \"\"\n        return first",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.template.defaulttags.FirstOfNode.render",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/template/defaulttags.py"
+                    },
+                    {
+                        "start_node": "django/template/defaulttags.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.template.defaulttags.FirstOfNode.render"
+                    }
+                ],
+                "similarity": 0.11376830267618121,
+                "end_line": 158,
+                "signature": "django.template.defaulttags.FirstOfNode.render(self, context)"
             }
         ],
         "classes": [
@@ -1502,7 +1502,7 @@
                     },
                     {
                         "start_node": "django/forms/renderers.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.forms.renderers.DjangoTemplates"
                     }
@@ -1589,7 +1589,7 @@
                     },
                     {
                         "start_node": "django/template/response.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.response.ContentNotRenderedError"
                     }
@@ -1792,7 +1792,7 @@
                     },
                     {
                         "start_node": "django/utils/regex_helper.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.utils.regex_helper.Choice"
                     }
@@ -1879,7 +1879,7 @@
                     },
                     {
                         "start_node": "django/utils/regex_helper.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.utils.regex_helper.Group"
                     }
@@ -1937,7 +1937,7 @@
                     },
                     {
                         "start_node": "django/contrib/admindocs/views.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.contrib.admindocs.views.BookmarkletsView"
                     }
@@ -2140,7 +2140,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedLessThan"
                     }
@@ -2169,7 +2169,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedGreaterThanOrEqual"
                     }
@@ -2256,7 +2256,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedIsNull"
                     }
@@ -2382,35 +2382,6 @@
                 "signature": null
             },
             {
-                "start_line": 1350,
-                "file_path": "django/forms/fields.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class JSONString(str):\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.forms.fields.JSONString",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/forms/fields.py"
-                    },
-                    {
-                        "start_node": "django/forms/fields.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.forms.fields.JSONString"
-                    }
-                ],
-                "similarity": 0.03798621544373552,
-                "end_line": 1351,
-                "signature": null
-            },
-            {
                 "start_line": 558,
                 "file_path": "django/forms/widgets.py",
                 "issue_id": null,
@@ -2437,35 +2408,6 @@
                 ],
                 "similarity": 0.03756241019085154,
                 "end_line": 560,
-                "signature": null
-            },
-            {
-                "start_line": 427,
-                "file_path": "django/forms/forms.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class Form(BaseForm, metaclass=DeclarativeFieldsMetaclass):\n    \"A collection of Fields, plus their associated data.\"",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.forms.forms.Form",
-                "documentation": "A collection of Fields, plus their associated data.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/forms/forms.py"
-                    },
-                    {
-                        "start_node": "django/forms/forms.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.forms.forms.Form"
-                    }
-                ],
-                "similarity": 0.03648082090579028,
-                "end_line": 428,
                 "signature": null
             },
             {
@@ -2662,7 +2604,7 @@
                     },
                     {
                         "start_node": "django/templatetags/tz.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.templatetags.tz.datetimeobject"
                     }
@@ -2756,6 +2698,35 @@
                 ],
                 "similarity": 0.03259770273442573,
                 "end_line": 2522,
+                "signature": null
+            },
+            {
+                "start_line": 25,
+                "file_path": "django/db/models/sql/datastructures.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Empty:\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.sql.datastructures.Empty",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/sql/datastructures.py"
+                    },
+                    {
+                        "start_node": "django/db/models/sql/datastructures.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.sql.datastructures.Empty"
+                    }
+                ],
+                "similarity": 0.032405273856676554,
+                "end_line": 26,
                 "signature": null
             },
             {
@@ -2901,6 +2872,35 @@
                 ],
                 "similarity": 0.029100944052504685,
                 "end_line": 71,
+                "signature": null
+            },
+            {
+                "start_line": 139,
+                "file_path": "django/db/models/functions/math.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Power(NumericOutputFieldMixin, Func):\n    function = \"POWER\"\n    arity = 2",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.math.Power",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/math.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/math.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.math.Power"
+                    }
+                ],
+                "similarity": 0.02829936508016703,
+                "end_line": 141,
                 "signature": null
             }
         ],

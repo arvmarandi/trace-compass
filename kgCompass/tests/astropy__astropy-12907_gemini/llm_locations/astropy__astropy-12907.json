@@ -572,7 +572,7 @@
                     },
                     {
                         "start_node": "astropy/convolution/core.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.convolution.core.Kernel.separable"
                     }
@@ -1065,7 +1065,7 @@
                     },
                     {
                         "start_node": "astropy/modeling/tabular.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.modeling.tabular._Tabular.__init__"
                     }
@@ -1452,19 +1452,19 @@
                 "signature": "astropy.convolution.core.Kernel2D.__init__(self, model, x_size, y_size, array)"
             },
             {
-                "name": "astropy.modeling.separable.separability_matrix",
-                "signature": "astropy.modeling.separable.separability_matrix(transform)",
-                "file_path": "astropy/modeling/separable.py",
-                "start_line": 66,
-                "source_code": "def separability_matrix(transform):\n    \"\"\"\n    Compute the correlation between outputs and inputs.\n\n    Parameters\n    ----------\n    transform : `~astropy.modeling.core.Model`\n        A (compound) model.\n\n    Returns\n    -------\n    separable_matrix : ndarray\n        A boolean correlation matrix of shape (n_outputs, n_inputs).\n        Indicates the dependence of outputs on inputs. For completely\n        independent outputs, the diagonal elements are True and\n        off-diagonal elements are False.\n\n    Examples\n    --------\n    >>> from astropy.modeling.models import Shift, Scale, Rotation2D, Polynomial2D\n    >>> separability_matrix(Shift(1) & Shift(2) | Scale(1) & Scale(2))\n        array([[ True, False], [False,  True]]...)\n    >>> separability_matrix(Shift(1) & Shift(2) | Rotation2D(2))\n        array([[ True,  True], [ True,  True]]...)\n    >>> separability_matrix(Shift(1) & Shift(2) | Mapping([0, 1, 0, 1]) | \\\n        Polynomial2D(1) & Polynomial2D(2))\n        array([[ True,  True], [ True,  True]]...)\n    >>> separability_matrix(Shift(1) & Shift(2) | Mapping([0, 1, 0, 1]))\n        array([[ True, False], [False,  True], [ True, False], [False,  True]]...)\n\n    \"\"\"\n    if transform.n_inputs == 1 and transform.n_outputs > 1:\n        return np.ones((transform.n_outputs, transform.n_inputs),\n                       dtype=np.bool_)\n    separable_matrix = _separable(transform)\n    separable_matrix = np.where(separable_matrix != 0, True, False)\n    return separable_matrix",
-                "end_line": 102,
-                "doc_string": "Compute the correlation between outputs and inputs.\n\nParameters\n----------\ntransform : `~astropy.modeling.core.Model`\n    A (compound) model.\n\nReturns\n-------\nseparable_matrix : ndarray\n    A boolean correlation matrix of shape (n_outputs, n_inputs).\n    Indicates the dependence of outputs on inputs. For completely\n    independent outputs, the diagonal elements are True and\n    off-diagonal elements are False.\n\nExamples\n--------\n>>> from astropy.modeling.models import Shift, Scale, Rotation2D, Polynomial2D\n>>> separability_matrix(Shift(1) & Shift(2) | Scale(1) & Scale(2))\n    array([[ True, False], [False,  True]]...)\n>>> separability_matrix(Shift(1) & Shift(2) | Rotation2D(2))\n    array([[ True,  True], [ True,  True]]...)\n>>> separability_matrix(Shift(1) & Shift(2) | Mapping([0, 1, 0, 1]) |         Polynomial2D(1) & Polynomial2D(2))\n    array([[ True,  True], [ True,  True]]...)\n>>> separability_matrix(Shift(1) & Shift(2) | Mapping([0, 1, 0, 1]))\n    array([[ True, False], [False,  True], [ True, False], [False,  True]]...)",
+                "name": "astropy.modeling.core.CompoundModel.__init__",
+                "file_path": "astropy/modeling/core.py",
+                "start_line": 2902,
+                "end_line": 3020,
+                "source_code": "def __init__(self, op, left, right, name=None):\n        self.__dict__['_param_names'] = None\n        self._n_submodels = None\n        self.op = op\n        self.left = left\n        self.right = right\n        self._bounding_box = None\n        self._user_bounding_box = None\n        self._leaflist = None\n        self._tdict = None\n        self._parameters = None\n        self._parameters_ = None\n        self._param_metrics = None\n\n        if op != 'fix_inputs' and len(left) != len(right):\n            raise ValueError(\n                'Both operands must have equal values for n_models')\n        self._n_models = len(left)\n\n        if op != 'fix_inputs' and ((left.model_set_axis != right.model_set_axis)\n                                   or left.model_set_axis):  # not False and not 0\n            raise ValueError(\"model_set_axis must be False or 0 and consistent for operands\")\n        self._model_set_axis = left.model_set_axis\n\n        if op in ['+', '-', '*', '/', '**'] or op in SPECIAL_OPERATORS:\n            if (left.n_inputs != right.n_inputs) or \\\n               (left.n_outputs != right.n_outputs):\n                raise ModelDefinitionError(\n                    'Both operands must match numbers of inputs and outputs')\n            self.n_inputs = left.n_inputs\n            self.n_outputs = left.n_outputs\n            self.inputs = left.inputs\n            self.outputs = left.outputs\n        elif op == '&':\n            self.n_inputs = left.n_inputs + right.n_inputs\n            self.n_outputs = left.n_outputs + right.n_outputs\n            self.inputs = combine_labels(left.inputs, right.inputs)\n            self.outputs = combine_labels(left.outputs, right.outputs)\n        elif op == '|':\n            if left.n_outputs != right.n_inputs:\n                raise ModelDefinitionError(\n                    \"Unsupported operands for |: {0} (n_inputs={1}, \"\n                    \"n_outputs={2}) and {3} (n_inputs={4}, n_outputs={5}); \"\n                    \"n_outputs for the left-hand model must match n_inputs \"\n                    \"for the right-hand model.\".format(\n                        left.name, left.n_inputs, left.n_outputs, right.name,\n                        right.n_inputs, right.n_outputs))\n\n            self.n_inputs = left.n_inputs\n            self.n_outputs = right.n_outputs\n            self.inputs = left.inputs\n            self.outputs = right.outputs\n        elif op == 'fix_inputs':\n            if not isinstance(left, Model):\n                raise ValueError('First argument to \"fix_inputs\" must be an instance of an astropy Model.')\n            if not isinstance(right, dict):\n                raise ValueError('Expected a dictionary for second argument of \"fix_inputs\".')\n\n            # Dict keys must match either possible indices\n            # for model on left side, or names for inputs.\n            self.n_inputs = left.n_inputs - len(right)\n            # Assign directly to the private attribute (instead of using the setter)\n            # to avoid asserting the new number of outputs matches the old one.\n            self._outputs = left.outputs\n            self.n_outputs = left.n_outputs\n            newinputs = list(left.inputs)\n            keys = right.keys()\n            input_ind = []\n            for key in keys:\n                if np.issubdtype(type(key), np.integer):\n                    if key >= left.n_inputs or key < 0:\n                        raise ValueError(\n                            'Substitution key integer value '\n                            'not among possible input choices.')\n                    if key in input_ind:\n                        raise ValueError(\"Duplicate specification of \"\n                                         \"same input (index/name).\")\n                    input_ind.append(key)\n                elif isinstance(key, str):\n                    if key not in left.inputs:\n                        raise ValueError(\n                            'Substitution key string not among possible '\n                            'input choices.')\n                    # Check to see it doesn't match positional\n                    # specification.\n                    ind = left.inputs.index(key)\n                    if ind in input_ind:\n                        raise ValueError(\"Duplicate specification of \"\n                                         \"same input (index/name).\")\n                    input_ind.append(ind)\n            # Remove substituted inputs\n            input_ind.sort()\n            input_ind.reverse()\n            for ind in input_ind:\n                del newinputs[ind]\n            self.inputs = tuple(newinputs)\n            # Now check to see if the input model has bounding_box defined.\n            # If so, remove the appropriate dimensions and set it for this\n            # instance.\n            try:\n                self.bounding_box = \\\n                    self.left.bounding_box.fix_inputs(self, right)\n            except NotImplementedError:\n                pass\n\n        else:\n            raise ModelDefinitionError('Illegal operator: ', self.op)\n        self.name = name\n        self._fittable = None\n        self.fit_deriv = None\n        self.col_fit_deriv = None\n        if op in ('|', '+', '-'):\n            self.linear = left.linear and right.linear\n        else:\n            self.linear = False\n        self.eqcons = []\n        self.ineqcons = []\n        self.n_left_params = len(self.left.parameters)\n        self._map_parameters()",
+                "signature": "astropy.modeling.core.CompoundModel.__init__(self, op, left, right, name)",
+                "doc_string": "",
                 "path": [
                     {
                         "start_node": "root",
                         "description": "points to method",
                         "type": "INFERENCE",
-                        "end_node": "astropy.modeling.separable.separability_matrix"
+                        "end_node": "astropy.modeling.core.CompoundModel.__init__"
                     }
                 ],
                 "type": "method",
@@ -1507,63 +1507,6 @@
                 ],
                 "type": "method",
                 "similarity": 1.0
-            },
-            {
-                "name": "astropy.modeling.core.CompoundModel.__init__",
-                "file_path": "astropy/modeling/core.py",
-                "start_line": 2902,
-                "end_line": 3020,
-                "source_code": "def __init__(self, op, left, right, name=None):\n        self.__dict__['_param_names'] = None\n        self._n_submodels = None\n        self.op = op\n        self.left = left\n        self.right = right\n        self._bounding_box = None\n        self._user_bounding_box = None\n        self._leaflist = None\n        self._tdict = None\n        self._parameters = None\n        self._parameters_ = None\n        self._param_metrics = None\n\n        if op != 'fix_inputs' and len(left) != len(right):\n            raise ValueError(\n                'Both operands must have equal values for n_models')\n        self._n_models = len(left)\n\n        if op != 'fix_inputs' and ((left.model_set_axis != right.model_set_axis)\n                                   or left.model_set_axis):  # not False and not 0\n            raise ValueError(\"model_set_axis must be False or 0 and consistent for operands\")\n        self._model_set_axis = left.model_set_axis\n\n        if op in ['+', '-', '*', '/', '**'] or op in SPECIAL_OPERATORS:\n            if (left.n_inputs != right.n_inputs) or \\\n               (left.n_outputs != right.n_outputs):\n                raise ModelDefinitionError(\n                    'Both operands must match numbers of inputs and outputs')\n            self.n_inputs = left.n_inputs\n            self.n_outputs = left.n_outputs\n            self.inputs = left.inputs\n            self.outputs = left.outputs\n        elif op == '&':\n            self.n_inputs = left.n_inputs + right.n_inputs\n            self.n_outputs = left.n_outputs + right.n_outputs\n            self.inputs = combine_labels(left.inputs, right.inputs)\n            self.outputs = combine_labels(left.outputs, right.outputs)\n        elif op == '|':\n            if left.n_outputs != right.n_inputs:\n                raise ModelDefinitionError(\n                    \"Unsupported operands for |: {0} (n_inputs={1}, \"\n                    \"n_outputs={2}) and {3} (n_inputs={4}, n_outputs={5}); \"\n                    \"n_outputs for the left-hand model must match n_inputs \"\n                    \"for the right-hand model.\".format(\n                        left.name, left.n_inputs, left.n_outputs, right.name,\n                        right.n_inputs, right.n_outputs))\n\n            self.n_inputs = left.n_inputs\n            self.n_outputs = right.n_outputs\n            self.inputs = left.inputs\n            self.outputs = right.outputs\n        elif op == 'fix_inputs':\n            if not isinstance(left, Model):\n                raise ValueError('First argument to \"fix_inputs\" must be an instance of an astropy Model.')\n            if not isinstance(right, dict):\n                raise ValueError('Expected a dictionary for second argument of \"fix_inputs\".')\n\n            # Dict keys must match either possible indices\n            # for model on left side, or names for inputs.\n            self.n_inputs = left.n_inputs - len(right)\n            # Assign directly to the private attribute (instead of using the setter)\n            # to avoid asserting the new number of outputs matches the old one.\n            self._outputs = left.outputs\n            self.n_outputs = left.n_outputs\n            newinputs = list(left.inputs)\n            keys = right.keys()\n            input_ind = []\n            for key in keys:\n                if np.issubdtype(type(key), np.integer):\n                    if key >= left.n_inputs or key < 0:\n                        raise ValueError(\n                            'Substitution key integer value '\n                            'not among possible input choices.')\n                    if key in input_ind:\n                        raise ValueError(\"Duplicate specification of \"\n                                         \"same input (index/name).\")\n                    input_ind.append(key)\n                elif isinstance(key, str):\n                    if key not in left.inputs:\n                        raise ValueError(\n                            'Substitution key string not among possible '\n                            'input choices.')\n                    # Check to see it doesn't match positional\n                    # specification.\n                    ind = left.inputs.index(key)\n                    if ind in input_ind:\n                        raise ValueError(\"Duplicate specification of \"\n                                         \"same input (index/name).\")\n                    input_ind.append(ind)\n            # Remove substituted inputs\n            input_ind.sort()\n            input_ind.reverse()\n            for ind in input_ind:\n                del newinputs[ind]\n            self.inputs = tuple(newinputs)\n            # Now check to see if the input model has bounding_box defined.\n            # If so, remove the appropriate dimensions and set it for this\n            # instance.\n            try:\n                self.bounding_box = \\\n                    self.left.bounding_box.fix_inputs(self, right)\n            except NotImplementedError:\n                pass\n\n        else:\n            raise ModelDefinitionError('Illegal operator: ', self.op)\n        self.name = name\n        self._fittable = None\n        self.fit_deriv = None\n        self.col_fit_deriv = None\n        if op in ('|', '+', '-'):\n            self.linear = left.linear and right.linear\n        else:\n            self.linear = False\n        self.eqcons = []\n        self.ineqcons = []\n        self.n_left_params = len(self.left.parameters)\n        self._map_parameters()",
-                "signature": "astropy.modeling.core.CompoundModel.__init__(self, op, left, right, name)",
-                "doc_string": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to method",
-                        "type": "INFERENCE",
-                        "end_node": "astropy.modeling.core.CompoundModel.__init__"
-                    }
-                ],
-                "type": "method",
-                "similarity": 1.0
-            },
-            {
-                "name": "astropy.modeling.core.CompoundModel._map_parameters",
-                "file_path": "astropy/modeling/core.py",
-                "start_line": 3505,
-                "end_line": 3548,
-                "source_code": "def _map_parameters(self):\n        \"\"\"\n        Map all the constituent model parameters to the compound object,\n        renaming as necessary by appending a suffix number.\n\n        This can be an expensive operation, particularly for a complex\n        expression tree.\n\n        All the corresponding parameter attributes are created that one\n        expects for the Model class.\n\n        The parameter objects that the attributes point to are the same\n        objects as in the constiutent models. Changes made to parameter\n        values to either are seen by both.\n\n        Prior to calling this, none of the associated attributes will\n        exist. This method must be called to make the model usable by\n        fitting engines.\n\n        If oldnames=True, then parameters are named as in the original\n        implementation of compound models.\n        \"\"\"\n        if self._parameters is not None:\n            # do nothing\n            return\n        if self._leaflist is None:\n            self._make_leaflist()\n        self._parameters_ = {}\n        param_map = {}\n        self._param_names = []\n        for lindex, leaf in enumerate(self._leaflist):\n            if not isinstance(leaf, dict):\n                for param_name in leaf.param_names:\n                    param = getattr(leaf, param_name)\n                    new_param_name = f\"{param_name}_{lindex}\"\n                    self.__dict__[new_param_name] = param\n                    self._parameters_[new_param_name] = param\n                    self._param_names.append(new_param_name)\n                    param_map[new_param_name] = (lindex, param_name)\n        self._param_metrics = {}\n        self._param_map = param_map\n        self._param_map_inverse = dict((v, k) for k, v in param_map.items())\n        self._initialize_slices()\n        self._param_names = tuple(self._param_names)",
-                "signature": "astropy.modeling.core.CompoundModel._map_parameters(self)",
-                "doc_string": "Map all the constituent model parameters to the compound object,\nrenaming as necessary by appending a suffix number.\n\nThis can be an expensive operation, particularly for a complex\nexpression tree.\n\nAll the corresponding parameter attributes are created that one\nexpects for the Model class.\n\nThe parameter objects that the attributes point to are the same\nobjects as in the constiutent models. Changes made to parameter\nvalues to either are seen by both.\n\nPrior to calling this, none of the associated attributes will\nexist. This method must be called to make the model usable by\nfitting engines.\n\nIf oldnames=True, then parameters are named as in the original\nimplementation of compound models.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to method",
-                        "type": "INFERENCE",
-                        "end_node": "astropy.modeling.core.CompoundModel._map_parameters"
-                    }
-                ],
-                "type": "method",
-                "similarity": 1.0
-            },
-            {
-                "name": "astropy.modeling.core.CompoundModel._initialize_slices",
-                "file_path": "astropy/modeling/core.py",
-                "start_line": 3550,
-                "end_line": 3565,
-                "source_code": "def _initialize_slices(self):\n        param_metrics = self._param_metrics\n        total_size = 0\n\n        for name in self.param_names:\n            param = getattr(self, name)\n            value = param.value\n            param_size = np.size(value)\n            param_shape = np.shape(value)\n            param_slice = slice(total_size, total_size + param_size)\n            param_metrics[name] = {}\n            param_metrics[name]['slice'] = param_slice\n            param_metrics[name]['shape'] = param_shape\n            param_metrics[name]['size'] = param_size\n            total_size += param_size\n        self._parameters = np.empty(total_size, dtype=np.float64)",
-                "signature": "astropy.modeling.core.CompoundModel._initialize_slices(self)",
-                "doc_string": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to method",
-                        "type": "INFERENCE",
-                        "end_node": "astropy.modeling.core.CompoundModel._initialize_slices"
-                    }
-                ],
-                "type": "method",
-                "similarity": 1.0
             }
         ],
         "classes": [
@@ -1587,7 +1530,7 @@
                     },
                     {
                         "start_node": "astropy/__init__.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.__init__.physical_constants"
                     }
@@ -1732,7 +1675,7 @@
                     },
                     {
                         "start_node": "astropy/__init__.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.__init__.Conf"
                     }
@@ -1877,7 +1820,7 @@
                     },
                     {
                         "start_node": "astropy/io/fits/__init__.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.io.fits.__init__.Conf"
                     }
@@ -2196,7 +2139,7 @@
                     },
                     {
                         "start_node": "astropy/utils/data.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.utils.data.Conf"
                     }
@@ -2312,7 +2255,7 @@
                     },
                     {
                         "start_node": "examples/coordinates/plot_sgr-coordinate-frame.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "examples.coordinates.plot_sgr-coordinate-frame.Sagittarius"
                     }

@@ -456,7 +456,7 @@
                     },
                     {
                         "start_node": "sympy/matrices/expressions/matmul.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sympy.matrices.expressions.matmul.MatMul._eval_derivative_matrix_lines"
                     }
@@ -717,7 +717,7 @@
                     },
                     {
                         "start_node": "sympy/matrices/expressions/matmul.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sympy.matrices.expressions.matmul.MatMul._entry"
                     }
@@ -1220,6 +1220,35 @@
                 "signature": "sympy.printing.pretty.pretty.PrettyPrinter._print_NDimArray(self, expr)"
             },
             {
+                "start_line": 210,
+                "file_path": "sympy/polys/fields.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _rebuild_expr(self, expr, mapping):\n        domain = self.domain\n        powers = tuple((gen, gen.as_base_exp()) for gen in mapping.keys()\n            if gen.is_Pow or isinstance(gen, ExpBase))\n\n        def _rebuild(expr):\n            generator = mapping.get(expr)\n\n            if generator is not None:\n                return generator\n            elif expr.is_Add:\n                return reduce(add, list(map(_rebuild, expr.args)))\n            elif expr.is_Mul:\n                return reduce(mul, list(map(_rebuild, expr.args)))\n            elif expr.is_Pow or isinstance(expr, (ExpBase, Exp1)):\n                b, e = expr.as_base_exp()\n                # look for bg**eg whose integer power may be b**e\n                for gen, (bg, eg) in powers:\n                    if bg == b and Mod(e, eg) == 0:\n                        return mapping.get(gen)**int(e/eg)\n                if e.is_Integer and e is not S.One:\n                    return _rebuild(b)**int(e)\n\n            try:\n                return domain.convert(expr)\n            except CoercionFailed:\n                if not domain.is_Field and domain.has_assoc_Field:\n                    return domain.get_field().convert(expr)\n                else:\n                    raise\n\n        return _rebuild(sympify(expr))",
+                "distance": 1.25,
+                "title": null,
+                "name": "sympy.polys.fields.FracField._rebuild_expr",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sympy/polys/fields.py"
+                    },
+                    {
+                        "start_node": "sympy/polys/fields.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sympy.polys.fields.FracField._rebuild_expr"
+                    }
+                ],
+                "similarity": 0.15455348204355532,
+                "end_line": 241,
+                "signature": "sympy.polys.fields.FracField._rebuild_expr(self, expr, mapping)"
+            },
+            {
                 "start_line": 259,
                 "file_path": "sympy/printing/julia.py",
                 "issue_id": null,
@@ -1421,35 +1450,6 @@
                 "similarity": 0.15254285140430707,
                 "end_line": 200,
                 "signature": "sympy.printing.codeprinter.CodePrinter._doprint_loops(self, expr, assign_to)"
-            },
-            {
-                "start_line": 119,
-                "file_path": "sympy/printing/julia.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _print_Mul(self, expr):\n        # print complex numbers nicely in Julia\n        if (expr.is_number and expr.is_imaginary and\n                expr.as_coeff_Mul()[0].is_integer):\n            return \"%sim\" % self._print(-S.ImaginaryUnit*expr)\n\n        # cribbed from str.py\n        prec = precedence(expr)\n\n        c, e = expr.as_coeff_Mul()\n        if c < 0:\n            expr = _keep_coeff(-c, e)\n            sign = \"-\"\n        else:\n            sign = \"\"\n\n        a = []  # items in the numerator\n        b = []  # items that are in the denominator (if any)\n\n        pow_paren = []  # Will collect all pow with more than one base element and exp = -1\n\n        if self.order not in ('old', 'none'):\n            args = expr.as_ordered_factors()\n        else:\n            # use make_args in case expr was something like -x -> x\n            args = Mul.make_args(expr)\n\n        # Gather args for numerator/denominator\n        for item in args:\n            if (item.is_commutative and item.is_Pow and item.exp.is_Rational\n                    and item.exp.is_negative):\n                if item.exp != -1:\n                    b.append(Pow(item.base, -item.exp, evaluate=False))\n                else:\n                    if len(item.args[0].args) != 1 and isinstance(item.base, Mul):   # To avoid situations like #14160\n                        pow_paren.append(item)\n                    b.append(Pow(item.base, -item.exp))\n            elif item.is_Rational and item is not S.Infinity:\n                if item.p != 1:\n                    a.append(Rational(item.p))\n                if item.q != 1:\n                    b.append(Rational(item.q))\n            else:\n                a.append(item)\n\n        a = a or [S.One]\n\n        a_str = [self.parenthesize(x, prec) for x in a]\n        b_str = [self.parenthesize(x, prec) for x in b]\n\n        # To parenthesize Pow with exp = -1 and having more than one Symbol\n        for item in pow_paren:\n            if item.base in b:\n                b_str[b.index(item.base)] = \"(%s)\" % b_str[b.index(item.base)]\n\n        # from here it differs from str.py to deal with \"*\" and \".*\"\n        def multjoin(a, a_str):\n            # here we probably are assuming the constants will come first\n            r = a_str[0]\n            for i in range(1, len(a)):\n                mulsym = '*' if a[i-1].is_number else '.*'\n                r = r + mulsym + a_str[i]\n            return r\n\n        if not b:\n            return sign + multjoin(a, a_str)\n        elif len(b) == 1:\n            divsym = '/' if b[0].is_number else './'\n            return sign + multjoin(a, a_str) + divsym + b_str[0]\n        else:\n            divsym = '/' if all([bi.is_number for bi in b]) else './'\n            return (sign + multjoin(a, a_str) +\n                    divsym + \"(%s)\" % multjoin(b, b_str))",
-                "distance": 1.25,
-                "title": null,
-                "name": "sympy.printing.julia.JuliaCodePrinter._print_Mul",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sympy/printing/julia.py"
-                    },
-                    {
-                        "start_node": "sympy/printing/julia.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sympy.printing.julia.JuliaCodePrinter._print_Mul"
-                    }
-                ],
-                "similarity": 0.1524370056951304,
-                "end_line": 191,
-                "signature": "sympy.printing.julia.JuliaCodePrinter._print_Mul(self, expr)"
             }
         ],
         "classes": [
@@ -1589,7 +1589,7 @@
                     },
                     {
                         "start_node": "sympy/integrals/risch.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sympy.integrals.risch.NonElementaryIntegralException"
                     }
@@ -1647,7 +1647,7 @@
                     },
                     {
                         "start_node": "sympy/tensor/index_methods.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.tensor.index_methods.IndexConformanceException"
                     }
@@ -2285,7 +2285,7 @@
                     },
                     {
                         "start_node": "sympy/integrals/meijerint.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.integrals.meijerint._CoeffExpValueError"
                     }
@@ -2343,7 +2343,7 @@
                     },
                     {
                         "start_node": "sympy/core/evalf.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "sympy.core.evalf.PrecisionExhausted"
                     }
@@ -2430,7 +2430,7 @@
                     },
                     {
                         "start_node": "sympy/printing/cxxcode.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sympy.printing.cxxcode.CXX98CodePrinter"
                     }

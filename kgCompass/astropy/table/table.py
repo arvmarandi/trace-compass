@@ -251,6 +251,7 @@ class TableColumns(OrderedDict):
 
     def __getitem__(self, item):
         """Get items from a TableColumns object.
+
         ::
 
           tc = TableColumns(cols=[Column(name='a'), Column(name='b'), Column(name='c')])
@@ -273,9 +274,7 @@ class TableColumns(OrderedDict):
             return self.__class__([self[x] for x in list(self)[item]])
         else:
             raise IndexError(
-                "Illegal key or index value for {} object".format(
-                    self.__class__.__name__
-                )
+                f"Illegal key or index value for {type(self).__name__} object"
             )
 
     def __setitem__(self, item, value, validated=False):
@@ -291,9 +290,7 @@ class TableColumns(OrderedDict):
         """
         if item in self and not validated:
             raise ValueError(
-                "Cannot replace column '{}'.  Use Table.replace_column() instead.".format(
-                    item
-                )
+                f"Cannot replace column '{item}'.  Use Table.replace_column() instead."
             )
         super().__setitem__(item, value)
 
@@ -507,7 +504,7 @@ class PprintIncludeExclude(TableAttribute):
         self._remove(names, raise_exc=True)
 
     def _remove(self, names, raise_exc=False):
-        """Remove ``names`` with optional checking if they exist"""
+        """Remove ``names`` with optional checking if they exist."""
         instance, names, value = self._add_remove_setup(names)
 
         # Return now if there are no attributes and thus no action to be taken.
@@ -526,7 +523,7 @@ class PprintIncludeExclude(TableAttribute):
         self.__set__(instance, value)
 
     def _rename(self, name, new_name):
-        """Rename ``name`` to ``new_name`` if ``name`` is in the list"""
+        """Rename ``name`` to ``new_name`` if ``name`` is in the list."""
         names = self() or ()
         if name in names:
             new_names = list(names)
@@ -759,9 +756,7 @@ class Table:
             copy = False
         elif kwargs:
             raise TypeError(
-                "__init__() got unexpected keyword argument {!r}".format(
-                    list(kwargs.keys())[0]
-                )
+                f"__init__() got unexpected keyword argument {list(kwargs.keys())[0]!r}"
             )
 
         if isinstance(data, np.ndarray) and data.shape == (0,) and not data.dtype.names:
@@ -924,7 +919,12 @@ class Table:
                     value = None
 
             if value not in (np.ma.masked, None):
-                setattr(self[name].info, attr, value)
+                col = self[name]
+                if attr == "unit" and isinstance(col, Quantity):
+                    # Update the Quantity unit in-place
+                    col <<= value
+                else:
+                    setattr(col.info, attr, value)
 
     def __getstate__(self):
         columns = OrderedDict(
@@ -967,7 +967,8 @@ class Table:
     def _mask(self):
         """This is needed so that comparison of a masked Table and a
         MaskedArray works.  The requirement comes from numpy.ma.core
-        so don't remove this property."""
+        so don't remove this property.
+        """
         return self.as_array().mask
 
     def filled(self, fill_value=None):
@@ -1217,7 +1218,6 @@ class Table:
 
                 # Finally do the masking in a mixin-safe way.
                 self[name][indexes] = np.ma.masked
-        return
 
     def _init_from_list(self, data, names, dtype, n_cols, copy):
         """Initialize table from a list of column data.  A column can be a
@@ -1231,8 +1231,8 @@ class Table:
         cols = []
         default_names = _auto_names(n_cols)
 
-        for col, name, default_name, dtype in zip(data, names, default_names, dtype):
-            col = self._convert_data_to_col(col, copy, default_name, dtype, name)
+        for col, name, default_name, dt in zip(data, names, default_names, dtype):
+            col = self._convert_data_to_col(col, copy, default_name, dt, name)
 
             cols.append(col)
 
@@ -1278,7 +1278,6 @@ class Table:
         col : Column, MaskedColumn, mixin-column type
             Object that can be used as a column in self
         """
-
         data_is_mixin = self._is_mixin_for_table(data)
         masked_col_cls = (
             self.ColumnClass
@@ -1399,8 +1398,7 @@ class Table:
         return col
 
     def _init_from_ndarray(self, data, names, dtype, n_cols, copy):
-        """Initialize table from an ndarray structured array"""
-
+        """Initialize table from an ndarray structured array."""
         data_names = data.dtype.names or _auto_names(n_cols)
         struct = data.dtype.names is not None
         names = [name or data_names[i] for i, name in enumerate(names)]
@@ -1414,8 +1412,7 @@ class Table:
         self._init_from_list(cols, names, dtype, n_cols, copy)
 
     def _init_from_dict(self, data, names, dtype, n_cols, copy):
-        """Initialize table from a dictionary of columns"""
-
+        """Initialize table from a dictionary of columns."""
         data_list = [data[name] for name in names]
         self._init_from_list(data_list, names, dtype, n_cols, copy)
 
@@ -1429,7 +1426,6 @@ class Table:
         of the table MaskedColumn.  If not a MaskedColumn, then ensure that any
         Column-like object is a subclass of the table Column.
         """
-
         col_cls = col.__class__
 
         if self.masked:
@@ -1459,8 +1455,7 @@ class Table:
         return col
 
     def _init_from_cols(self, cols):
-        """Initialize table from a list of Column or mixin objects"""
-
+        """Initialize table from a list of Column or mixin objects."""
         lengths = {len(col) for col in cols}
         if len(lengths) > 1:
             raise ValueError(f"Inconsistent data column lengths: {lengths}")
@@ -1486,7 +1481,6 @@ class Table:
 
     def _new_from_slice(self, slice_):
         """Create a new table as a referenced slice from self."""
-
         table = self.__class__(masked=self.masked)
         if self.meta:
             table.meta = self.meta.copy()  # Shallow copy for slice
@@ -1564,7 +1558,6 @@ class Table:
 
         Examples
         --------
-
         To iterate over the columns of a table::
 
             >>> t = Table([[1], [2]])
@@ -1669,11 +1662,7 @@ class Table:
         This may be relatively slow for large tables as it requires checking the mask
         values of each column.
         """
-        for col in self.itercols():
-            if hasattr(col, "mask") and np.any(col.mask):
-                return True
-        else:
-            return False
+        return any(hasattr(col, "mask") and np.any(col.mask) for col in self.itercols())
 
     def _is_mixin_for_table(self, col):
         """
@@ -1805,7 +1794,6 @@ class Table:
         call this method while offline (and don't have a cached version of
         jquery and jquery.dataTables), you will not get the jsviewer features.
         """
-
         from IPython.display import HTML
 
         from .jsviewer import JSViewer
@@ -1887,7 +1875,6 @@ class Table:
             that if a column with this name already exists, this option will be
             ignored. Defaults to "idx".
         """
-
         import os
         import tempfile
         import webbrowser
@@ -1956,7 +1943,6 @@ class Table:
         ``astropy.conf.max_width``.
 
         """
-
         lines, outs = self.formatter._pformat_table(
             self,
             max_lines,
@@ -2002,7 +1988,6 @@ class Table:
         ``astropy.conf.max_width``.
 
         """
-
         return self.pformat(
             max_lines,
             max_width,
@@ -2089,9 +2074,7 @@ class Table:
             # If item is an empty array/list/tuple then return the table with no rows
             return self._new_from_slice([])
         elif (
-            isinstance(item, slice)
-            or isinstance(item, np.ndarray)
-            or isinstance(item, list)
+            isinstance(item, (slice, np.ndarray, list))
             or isinstance(item, tuple)
             and all(isinstance(x, np.ndarray) for x in item)
         ):
@@ -2130,13 +2113,9 @@ class Table:
                 self._set_row(idx=item, colnames=self.colnames, vals=value)
 
             elif (
-                isinstance(item, slice)
-                or isinstance(item, np.ndarray)
-                or isinstance(item, list)
-                or (
-                    isinstance(item, tuple)  # output from np.where
-                    and all(isinstance(x, np.ndarray) for x in item)
-                )
+                isinstance(item, (slice, np.ndarray, list))
+                or isinstance(item, tuple)
+                and all(isinstance(x, np.ndarray) for x in item)
             ):
                 if isinstance(value, Table):
                     vals = (col for col in value.columns.values())
@@ -2231,7 +2210,7 @@ class Table:
 
     @staticmethod
     def _is_list_or_tuple_of_str(names):
-        """Check that ``names`` is a tuple or list of strings"""
+        """Check that ``names`` is a tuple or list of strings."""
         return (
             isinstance(names, (tuple, list))
             and names
@@ -2261,6 +2240,21 @@ class Table:
             # Get the first column name
             self._first_colname = next(iter(self.columns))
             return len(self.columns[self._first_colname])
+
+    def __or__(self, other):
+        if isinstance(other, Table):
+            updated_table = self.copy()
+            updated_table.update(other)
+            return updated_table
+        else:
+            return NotImplemented
+
+    def __ior__(self, other):
+        try:
+            self.update(other)
+            return self
+        except TypeError:
+            return NotImplemented
 
     def index_column(self, name):
         """
@@ -2556,7 +2550,12 @@ class Table:
         refcount = None
         old_col = None
 
-        if "refcount" in warns and name in self.colnames:
+        # sys.getrefcount is CPython specific and not on PyPy.
+        if (
+            "refcount" in warns
+            and name in self.colnames
+            and hasattr(sys, "getrefcount")
+        ):
             refcount = sys.getrefcount(self[name])
 
         if name in self.colnames:
@@ -2586,7 +2585,8 @@ class Table:
             except AttributeError:
                 pass
 
-        if "refcount" in warns:
+        # sys.getrefcount is CPython specific and not on PyPy.
+        if "refcount" in warns and hasattr(sys, "getrefcount"):
             # Did reference count change?
             new_refcount = sys.getrefcount(self[name])
             if refcount != new_refcount:
@@ -2863,7 +2863,6 @@ class Table:
 
         To remove several columns at the same time use remove_columns.
         """
-
         self.remove_columns([name])
 
     def remove_columns(self, names):
@@ -2926,7 +2925,6 @@ class Table:
         out_kind : str
             Output dtype.kind
         """
-
         for col in self.itercols():
             if col.dtype.kind == in_kind:
                 try:
@@ -3022,12 +3020,10 @@ class Table:
         """
         Rename a column.
 
-        This can also be done directly with by setting the ``name`` attribute
-        for a column::
+        This can also be done directly by setting the ``name`` attribute
+        of the ``info`` property of the column::
 
-          table[name].name = new_name
-
-        TODO: this won't work for mixins
+          table[name].info.name = new_name
 
         Parameters
         ----------
@@ -3056,7 +3052,6 @@ class Table:
               1   3   5
               2   4   6
         """
-
         if name not in self.keys():
             raise KeyError(f"Column {name} does not exist")
 
@@ -3095,7 +3090,6 @@ class Table:
               1   3   5
               2   4   6
         """
-
         if not self._is_list_or_tuple_of_str(names):
             raise TypeError("input 'names' must be a tuple or a list of column names")
 
@@ -3349,7 +3343,9 @@ class Table:
         The argument ``other`` must be a |Table|, or something that can be used
         to initialize a table. Columns from (possibly converted) ``other`` are
         added to this table. In case of matching column names the column from
-        this table is replaced with the one from ``other``.
+        this table is replaced with the one from ``other``. If ``other`` is a
+        |Table| instance then ``|=`` is available as alternate syntax for in-place
+        update and ``|`` can be used merge data to a new table.
 
         Parameters
         ----------
@@ -3713,7 +3709,6 @@ class Table:
             array([ True,  True])
 
         """
-
         if isinstance(other, Table):
             other = other.as_array()
 
@@ -3826,7 +3821,7 @@ class Table:
 
     def group_by(self, keys):
         """
-        Group this table by the specified ``keys``
+        Group this table by the specified ``keys``.
 
         This effectively splits the table into groups which correspond to unique
         values of the ``keys`` grouping object.  The output is a new
@@ -3853,7 +3848,7 @@ class Table:
 
     def to_pandas(self, index=None, use_nullable_int=True):
         """
-        Return a :class:`pandas.DataFrame` instance
+        Return a :class:`pandas.DataFrame` instance.
 
         The index of the created DataFrame is controlled by the ``index``
         argument.  For ``index=True`` or the default ``None``, an index will be
@@ -4040,7 +4035,7 @@ class Table:
     @classmethod
     def from_pandas(cls, dataframe, index=False, units=None):
         """
-        Create a `~astropy.table.Table` from a :class:`pandas.DataFrame` instance
+        Create a `~astropy.table.Table` from a :class:`pandas.DataFrame` instance.
 
         In addition to converting generic numeric or string columns, this supports
         conversion of pandas Date and Time delta columns to `~astropy.time.Time`
@@ -4095,7 +4090,6 @@ class Table:
           2002-01-01T00:00:00.000     300.0     4.0
 
         """
-
         out = OrderedDict()
 
         names = list(dataframe.columns)
@@ -4147,7 +4141,7 @@ class Table:
 
                     # When the numpy object array is represented as a list then
                     # numpy initializes to the correct string or unicode type.
-                    data = np.array([x for x in data])
+                    data = np.array(list(data))
 
             # Numpy datetime64
             if data.dtype.kind == "M":
@@ -4188,7 +4182,7 @@ class QTable(Table):
     except that columns with an associated ``unit`` attribute are converted to
     `~astropy.units.Quantity` objects.
 
-    See also:
+    For more information see:
 
     - https://docs.astropy.org/en/stable/table/
     - https://docs.astropy.org/en/stable/table/mixin_columns.html

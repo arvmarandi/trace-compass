@@ -1,0 +1,145 @@
+The issue arises because the `RST` writer in `astropy.io.ascii` does not natively support the `header_rows` keyword argument, which is passed down from `astropy.table.QTable.write`. When `tbl.write(..., format="ascii.rst", header_rows=["name", "unit"])` is called, the `header_rows` argument is ultimately passed to the `RST` writer's `__init__` method, leading to a `TypeError`.
+
+The solution involves two main parts:
+1.  **Modify `astropy/io/ascii/core.py`**:
+    *   Prevent `header_rows` from being passed directly to the `RST` writer's `__init__` method. This is done by explicitly excluding it from `writer_kwargs`.
+    *   Add logic to `_get_writer` to set `writer.header.header_rows` after the writer object has been initialized. This is a common pattern for arguments that configure the header/data components of a writer.
+2.  **Modify `astropy/io/ascii/rst.py`**:
+    *   Define a custom `RSTHeader` class that inherits from `BaseHeader`. This custom header class will be responsible for generating the multiple header rows (e.g., column names and units) based on the `header_rows` configuration.
+    *   Make the `RST` writer use this new `RSTHeader` class.
+    *   Adjust the `RST.write` method to correctly assemble the RestructuredText table, including the top and bottom separators, by leveraging the column widths determined during the writing process. The original `RST.write` method assumed a single header line and incorrectly used `lines[1]` for separators.
+
+Here are the `SEARCH/REPLACE` edits:
+
+```python
+### astropy/io/ascii/core.py
+- start_line : 1807
+- end_line : 1807
+<<<<<<< SEARCH
+    writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}
+=======
+    writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars and k != 'header_rows'}
+>>>>>>> REPLACE
+```
+
+```python
+### astropy/io/ascii/core.py
+- start_line : 1849
+- end_line : 1854
+<<<<<<< SEARCH
+    if "fill_exclude_names" in kwargs:
+        writer.data.fill_exclude_names = kwargs["fill_exclude_names"]
+    return writer
+=======
+    if "fill_exclude_names" in kwargs:
+        writer.data.fill_exclude_names = kwargs["fill_exclude_names"]
+    if "header_rows" in kwargs:
+        writer.header.header_rows = kwargs["header_rows"]
+    return writer
+>>>>>>> REPLACE
+```
+
+```python
+### astropy/io/ascii/rst.py
+- start_line : 58
+- end_line : 66
+<<<<<<< SEARCH
+class RST(BaseWriter):
+    """
+    RestructuredText table writer
+    """
+    def __init__(self):
+        super().__init__(delimiter_pad=None, bookend=False)
+
+    def write(self, lines):
+        lines = super().write(lines)
+        lines = [lines[1]] + lines + [lines[1]]
+        return lines
+=======
+from astropy.io.ascii.core import BaseHeader, BaseSplitter, DefaultSplitter, BaseWriter
+
+class RSTHeader(BaseHeader):
+    """
+    RestructuredText table header writer.
+    """
+    splitter_class = DefaultSplitter
+    col_start_map = {}
+    col_end_map = {}
+
+    # BaseHeader already initializes self.header_rows = None, so no explicit __init__ is needed
+    # for this attribute.
+
+    def write(self, lines):
+        # `lines` is a list to which header content lines should be appended.
+        # Separators are handled by the main RST writer.
+
+        header_content_lines = []
+
+        # If header_rows is None, default to "name"
+        if self.header_rows is None:
+            header_content_lines.append(self.splitter.join(self.colnames))
+        else:
+            for row_type in self.header_rows:
+                if row_type == "name":
+                    header_content_lines.append(self.splitter.join(self.colnames))
+                elif row_type == "unit":
+                    units = self._get_units()
+                    header_content_lines.append(self.splitter.join([units.get(name, " ") for name in self.colnames]))
+                # Add other header row types here if needed (e.g., "dtype")
+                else:
+                    # For unknown header row types, add a blank line.
+                    # The actual widths are not known here, so we can't pad correctly
+                    # based on final column widths. However, the splitter will
+                    # just join empty strings with spaces.
+                    header_content_lines.append(self.splitter.join(["" for _ in self.colnames]))
+
+        lines.extend(header_content_lines)
+        return lines
+
+
+class RST(BaseWriter):
+    """
+    RestructuredText table writer
+    """
+    header_class = RSTHeader # Use the custom header class
+
+    def __init__(self):
+        super().__init__(delimiter_pad=None, bookend=False)
+
+    def write(self, table): # Corrected signature: `table` is the input
+        # Call the base writer's write method, which takes the table object.
+        # This method will internally call self.header.write and self.data.write
+        # and concatenate the results into a list of formatted lines.
+        all_formatted_lines = super().write(table)
+
+        # The BaseWriter's _get_str_data method (called by super().write)
+        # calculates the column widths and stores them in self.data.col_widths.
+        # We need to access these to create the RST separators.
+        widths = self.data.col_widths
+        separator = " ".join(["=" * width for width in widths])
+
+        # Construct the final RST output
+        # The header content lines are at the beginning of all_formatted_lines.
+        # We insert the separator at the beginning, after the header content,
+        # and at the end.
+        
+        # Determine the number of header content lines generated by RSTHeader.write
+        num_header_content_lines = 0
+        if self.header.header_rows is None:
+            num_header_content_lines = 1 # Default to just names
+        else:
+            num_header_content_lines = len(self.header.header_rows)
+            # If header_rows is an empty list, num_header_content_lines will be 0. This is correct.
+
+        header_lines = all_formatted_lines[:num_header_content_lines]
+        data_lines = all_formatted_lines[num_header_content_lines:]
+
+        output_lines = [separator]
+        output_lines.extend(header_lines)
+        output_lines.append(separator)
+        output_lines.extend(data_lines)
+        output_lines.append(separator)
+
+        return output_lines
+>>>>>>> REPLACE
+```

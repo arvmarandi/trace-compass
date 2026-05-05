@@ -2,12 +2,12 @@
     "related_entities": {
         "methods": [
             {
-                "start_line": 683,
+                "start_line": 686,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def __init__(\n        self,\n        data=None,\n        masked=False,\n        names=None,\n        dtype=None,\n        meta=None,\n        copy=True,\n        rows=None,\n        copy_indices=True,\n        units=None,\n        descriptions=None,\n        **kwargs,\n    ):\n        # Set up a placeholder empty table\n        self._set_masked(masked)\n        self.columns = self.TableColumns()\n        self.formatter = self.TableFormatter()\n        self._copy_indices = True  # copy indices from this Table by default\n        self._init_indices = copy_indices  # whether to copy indices in init\n        self.primary_key = None\n\n        # Must copy if dtype are changing\n        if not copy and dtype is not None:\n            raise ValueError(\"Cannot specify dtype when copy=False\")\n\n        # Specifies list of names found for the case of initializing table with\n        # a list of dict. If data are not list of dict then this is None.\n        names_from_list_of_dict = None\n\n        # Row-oriented input, e.g. list of lists or list of tuples, list of\n        # dict, Row instance.  Set data to something that the subsequent code\n        # will parse correctly.\n        if rows is not None:\n            if data is not None:\n                raise ValueError(\"Cannot supply both `data` and `rows` values\")\n            if isinstance(rows, types.GeneratorType):\n                # Without this then the all(..) test below uses up the generator\n                rows = list(rows)\n\n            # Get column names if `rows` is a list of dict, otherwise this is None\n            names_from_list_of_dict = _get_names_from_list_of_dict(rows)\n            if names_from_list_of_dict:\n                data = rows\n            elif isinstance(rows, self.Row):\n                data = rows\n            else:\n                data = list(zip(*rows))\n\n        # Infer the type of the input data and set up the initialization\n        # function, number of columns, and potentially the default col names\n\n        default_names = None\n\n        # Handle custom (subclass) table attributes that are stored in meta.\n        # These are defined as class attributes using the TableAttribute\n        # descriptor.  Any such attributes get removed from kwargs here and\n        # stored for use after the table is otherwise initialized. Any values\n        # provided via kwargs will have precedence over existing values from\n        # meta (e.g. from data as a Table or meta via kwargs).\n        meta_table_attrs = {}\n        if kwargs:\n            for attr in list(kwargs):\n                descr = getattr(self.__class__, attr, None)\n                if isinstance(descr, TableAttribute):\n                    meta_table_attrs[attr] = kwargs.pop(attr)\n\n        if hasattr(data, \"__astropy_table__\"):\n            # Data object implements the __astropy_table__ interface method.\n            # Calling that method returns an appropriate instance of\n            # self.__class__ and respects the `copy` arg.  The returned\n            # Table object should NOT then be copied.\n            data = data.__astropy_table__(self.__class__, copy, **kwargs)\n            copy = False\n        elif kwargs:\n            raise TypeError(\n                f\"__init__() got unexpected keyword argument {list(kwargs.keys())[0]!r}\"\n            )\n\n        if isinstance(data, np.ndarray) and data.shape == (0,) and not data.dtype.names:\n            data = None\n\n        if isinstance(data, self.Row):\n            data = data._table[data._index : data._index + 1]\n\n        if isinstance(data, (list, tuple)):\n            # Get column names from `data` if it is a list of dict, otherwise this is None.\n            # This might be previously defined if `rows` was supplied as an init arg.\n            names_from_list_of_dict = (\n                names_from_list_of_dict or _get_names_from_list_of_dict(data)\n            )\n            if names_from_list_of_dict:\n                init_func = self._init_from_list_of_dicts\n                n_cols = len(names_from_list_of_dict)\n            else:\n                init_func = self._init_from_list\n                n_cols = len(data)\n\n        elif isinstance(data, np.ndarray):\n            if data.dtype.names:\n                init_func = self._init_from_ndarray  # _struct\n                n_cols = len(data.dtype.names)\n                default_names = data.dtype.names\n            else:\n                init_func = self._init_from_ndarray  # _homog\n                if data.shape == ():\n                    raise ValueError(\"Can not initialize a Table with a scalar\")\n                elif len(data.shape) == 1:\n                    data = data[np.newaxis, :]\n                n_cols = data.shape[1]\n\n        elif isinstance(data, Mapping):\n            init_func = self._init_from_dict\n            default_names = list(data)\n            n_cols = len(default_names)\n\n        elif isinstance(data, Table):\n            # If user-input meta is None then use data.meta (if non-trivial)\n            if meta is None and data.meta:\n                # At this point do NOT deepcopy data.meta as this will happen after\n                # table init_func() is called.  But for table input the table meta\n                # gets a key copy here if copy=False because later a direct object ref\n                # is used.\n                meta = data.meta if copy else data.meta.copy()\n\n            # Handle indices on input table. Copy primary key and don't copy indices\n            # if the input Table is in non-copy mode.\n            self.primary_key = data.primary_key\n            self._init_indices = self._init_indices and data._copy_indices\n\n            # Extract default names, n_cols, and then overwrite ``data`` to be the\n            # table columns so we can use _init_from_list.\n            default_names = data.colnames\n            n_cols = len(default_names)\n            data = list(data.columns.values())\n\n            init_func = self._init_from_list\n\n        elif data is None:\n            if names is None:\n                if dtype is None:\n                    # Table was initialized as `t = Table()`. Set up for empty\n                    # table with names=[], data=[], and n_cols=0.\n                    # self._init_from_list() will simply return, giving the\n                    # expected empty table.\n                    names = []\n                else:\n                    try:\n                        # No data nor names but dtype is available.  This must be\n                        # valid to initialize a structured array.\n                        dtype = np.dtype(dtype)\n                        names = dtype.names\n                        dtype = [dtype[name] for name in names]\n                    except Exception:\n                        raise ValueError(\n                            \"dtype was specified but could not be \"\n                            \"parsed for column names\"\n                        )\n            # names is guaranteed to be set at this point\n            init_func = self._init_from_list\n            n_cols = len(names)\n            data = [[]] * n_cols\n\n        else:\n            raise ValueError(f\"Data type {type(data)} not allowed to init Table\")\n\n        # Set up defaults if names and/or dtype are not specified.\n        # A value of None means the actual value will be inferred\n        # within the appropriate initialization routine, either from\n        # existing specification or auto-generated.\n\n        if dtype is None:\n            dtype = [None] * n_cols\n        elif isinstance(dtype, np.dtype):\n            if default_names is None:\n                default_names = dtype.names\n            # Convert a numpy dtype input to a list of dtypes for later use.\n            dtype = [dtype[name] for name in dtype.names]\n\n        if names is None:\n            names = default_names or [None] * n_cols\n\n        names = [None if name is None else str(name) for name in names]\n\n        self._check_names_dtype(names, dtype, n_cols)\n\n        # Finally do the real initialization\n        init_func(data, names, dtype, n_cols, copy)\n\n        # Set table meta.  If copy=True then deepcopy meta otherwise use the\n        # user-supplied meta directly.\n        if meta is not None:\n            self.meta = deepcopy(meta) if copy else meta\n\n        # Update meta with TableAttributes supplied as kwargs in Table init.\n        # This takes precedence over previously-defined meta.\n        if meta_table_attrs:\n            for attr, value in meta_table_attrs.items():\n                setattr(self, attr, value)\n\n        # Whatever happens above, the masked property should be set to a boolean\n        if self.masked not in (None, True, False):\n            raise TypeError(\"masked property must be None, True or False\")\n\n        self._set_column_attribute(\"unit\", units)\n        self._set_column_attribute(\"description\", descriptions)",
+                "source_code": "def __init__(\n        self,\n        data=None,\n        masked=False,\n        names=None,\n        dtype=None,\n        meta=None,\n        copy=True,\n        rows=None,\n        copy_indices=True,\n        units=None,\n        descriptions=None,\n        **kwargs,\n    ):\n        # Set up a placeholder empty table\n        self._set_masked(masked)\n        self.columns = self.TableColumns()\n        self.formatter = self.TableFormatter()\n        self._copy_indices = True  # copy indices from this Table by default\n        self._init_indices = copy_indices  # whether to copy indices in init\n        self.primary_key = None\n\n        # Must copy if dtype are changing\n        if not copy and dtype is not None:\n            raise ValueError(\"Cannot specify dtype when copy=False\")\n\n        # Specifies list of names found for the case of initializing table with\n        # a list of dict. If data are not list of dict then this is None.\n        names_from_list_of_dict = None\n\n        # Row-oriented input, e.g. list of lists or list of tuples, list of\n        # dict, Row instance.  Set data to something that the subsequent code\n        # will parse correctly.\n        if rows is not None:\n            if data is not None:\n                raise ValueError(\"Cannot supply both `data` and `rows` values\")\n            if isinstance(rows, types.GeneratorType):\n                # Without this then the all(..) test below uses up the generator\n                rows = list(rows)\n\n            # Get column names if `rows` is a list of dict, otherwise this is None\n            names_from_list_of_dict = _get_names_from_list_of_dict(rows)\n            if names_from_list_of_dict:\n                data = rows\n            elif isinstance(rows, self.Row):\n                data = rows\n            else:\n                data = list(zip(*rows))\n\n        # Infer the type of the input data and set up the initialization\n        # function, number of columns, and potentially the default col names\n\n        default_names = None\n\n        # Handle custom (subclass) table attributes that are stored in meta.\n        # These are defined as class attributes using the TableAttribute\n        # descriptor.  Any such attributes get removed from kwargs here and\n        # stored for use after the table is otherwise initialized. Any values\n        # provided via kwargs will have precedence over existing values from\n        # meta (e.g. from data as a Table or meta via kwargs).\n        meta_table_attrs = {}\n        if kwargs:\n            for attr in list(kwargs):\n                descr = getattr(self.__class__, attr, None)\n                if isinstance(descr, TableAttribute):\n                    meta_table_attrs[attr] = kwargs.pop(attr)\n\n        if hasattr(data, \"__astropy_table__\"):\n            # Data object implements the __astropy_table__ interface method.\n            # Calling that method returns an appropriate instance of\n            # self.__class__ and respects the `copy` arg.  The returned\n            # Table object should NOT then be copied.\n            data = data.__astropy_table__(self.__class__, copy, **kwargs)\n            copy = False\n        elif kwargs:\n            raise TypeError(\n                \"__init__() got unexpected keyword argument {!r}\".format(\n                    list(kwargs.keys())[0]\n                )\n            )\n\n        if isinstance(data, np.ndarray) and data.shape == (0,) and not data.dtype.names:\n            data = None\n\n        if isinstance(data, self.Row):\n            data = data._table[data._index : data._index + 1]\n\n        if isinstance(data, (list, tuple)):\n            # Get column names from `data` if it is a list of dict, otherwise this is None.\n            # This might be previously defined if `rows` was supplied as an init arg.\n            names_from_list_of_dict = (\n                names_from_list_of_dict or _get_names_from_list_of_dict(data)\n            )\n            if names_from_list_of_dict:\n                init_func = self._init_from_list_of_dicts\n                n_cols = len(names_from_list_of_dict)\n            else:\n                init_func = self._init_from_list\n                n_cols = len(data)\n\n        elif isinstance(data, np.ndarray):\n            if data.dtype.names:\n                init_func = self._init_from_ndarray  # _struct\n                n_cols = len(data.dtype.names)\n                default_names = data.dtype.names\n            else:\n                init_func = self._init_from_ndarray  # _homog\n                if data.shape == ():\n                    raise ValueError(\"Can not initialize a Table with a scalar\")\n                elif len(data.shape) == 1:\n                    data = data[np.newaxis, :]\n                n_cols = data.shape[1]\n\n        elif isinstance(data, Mapping):\n            init_func = self._init_from_dict\n            default_names = list(data)\n            n_cols = len(default_names)\n\n        elif isinstance(data, Table):\n            # If user-input meta is None then use data.meta (if non-trivial)\n            if meta is None and data.meta:\n                # At this point do NOT deepcopy data.meta as this will happen after\n                # table init_func() is called.  But for table input the table meta\n                # gets a key copy here if copy=False because later a direct object ref\n                # is used.\n                meta = data.meta if copy else data.meta.copy()\n\n            # Handle indices on input table. Copy primary key and don't copy indices\n            # if the input Table is in non-copy mode.\n            self.primary_key = data.primary_key\n            self._init_indices = self._init_indices and data._copy_indices\n\n            # Extract default names, n_cols, and then overwrite ``data`` to be the\n            # table columns so we can use _init_from_list.\n            default_names = data.colnames\n            n_cols = len(default_names)\n            data = list(data.columns.values())\n\n            init_func = self._init_from_list\n\n        elif data is None:\n            if names is None:\n                if dtype is None:\n                    # Table was initialized as `t = Table()`. Set up for empty\n                    # table with names=[], data=[], and n_cols=0.\n                    # self._init_from_list() will simply return, giving the\n                    # expected empty table.\n                    names = []\n                else:\n                    try:\n                        # No data nor names but dtype is available.  This must be\n                        # valid to initialize a structured array.\n                        dtype = np.dtype(dtype)\n                        names = dtype.names\n                        dtype = [dtype[name] for name in names]\n                    except Exception:\n                        raise ValueError(\n                            \"dtype was specified but could not be \"\n                            \"parsed for column names\"\n                        )\n            # names is guaranteed to be set at this point\n            init_func = self._init_from_list\n            n_cols = len(names)\n            data = [[]] * n_cols\n\n        else:\n            raise ValueError(f\"Data type {type(data)} not allowed to init Table\")\n\n        # Set up defaults if names and/or dtype are not specified.\n        # A value of None means the actual value will be inferred\n        # within the appropriate initialization routine, either from\n        # existing specification or auto-generated.\n\n        if dtype is None:\n            dtype = [None] * n_cols\n        elif isinstance(dtype, np.dtype):\n            if default_names is None:\n                default_names = dtype.names\n            # Convert a numpy dtype input to a list of dtypes for later use.\n            dtype = [dtype[name] for name in dtype.names]\n\n        if names is None:\n            names = default_names or [None] * n_cols\n\n        names = [None if name is None else str(name) for name in names]\n\n        self._check_names_dtype(names, dtype, n_cols)\n\n        # Finally do the real initialization\n        init_func(data, names, dtype, n_cols, copy)\n\n        # Set table meta.  If copy=True then deepcopy meta otherwise use the\n        # user-supplied meta directly.\n        if meta is not None:\n            self.meta = deepcopy(meta) if copy else meta\n\n        # Update meta with TableAttributes supplied as kwargs in Table init.\n        # This takes precedence over previously-defined meta.\n        if meta_table_attrs:\n            for attr, value in meta_table_attrs.items():\n                setattr(self, attr, value)\n\n        # Whatever happens above, the masked property should be set to a boolean\n        if self.masked not in (None, True, False):\n            raise TypeError(\"masked property must be None, True or False\")\n\n        self._set_column_attribute(\"unit\", units)\n        self._set_column_attribute(\"description\", descriptions)",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.__init__",
@@ -26,8 +26,8 @@
                         "end_node": "astropy.table.table.Table.__init__"
                     }
                 ],
-                "similarity": 0.2672680288562244,
-                "end_line": 888,
+                "similarity": 0.26725238742298635,
+                "end_line": 893,
                 "signature": "astropy.table.table.Table.__init__(self, data, masked, names, dtype, meta, copy, rows, copy_indices, units, descriptions)"
             },
             {
@@ -60,16 +60,16 @@
                 "signature": "astropy.table.table.TableColumns.__init__(self, cols)"
             },
             {
-                "start_line": 1457,
+                "start_line": 1461,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _init_from_cols(self, cols):\n        \"\"\"Initialize table from a list of Column or mixin objects.\"\"\"\n        lengths = {len(col) for col in cols}\n        if len(lengths) > 1:\n            raise ValueError(f\"Inconsistent data column lengths: {lengths}\")\n\n        # Make sure that all Column-based objects have correct class.  For\n        # plain Table this is self.ColumnClass, but for instance QTable will\n        # convert columns with units to a Quantity mixin.\n        newcols = [self._convert_col_for_table(col) for col in cols]\n        self._make_table_from_cols(self, newcols)\n\n        # Deduplicate indices.  It may happen that after pickling or when\n        # initing from an existing table that column indices which had been\n        # references to a single index object got *copied* into an independent\n        # object.  This results in duplicates which will cause downstream problems.\n        index_dict = {}\n        for col in self.itercols():\n            for i, index in enumerate(col.info.indices or []):\n                names = tuple(ind_col.info.name for ind_col in index.columns)\n                if names in index_dict:\n                    col.info.indices[i] = index_dict[names]\n                else:\n                    index_dict[names] = index",
+                "source_code": "def _init_from_cols(self, cols):\n        \"\"\"Initialize table from a list of Column or mixin objects\"\"\"\n\n        lengths = {len(col) for col in cols}\n        if len(lengths) > 1:\n            raise ValueError(f\"Inconsistent data column lengths: {lengths}\")\n\n        # Make sure that all Column-based objects have correct class.  For\n        # plain Table this is self.ColumnClass, but for instance QTable will\n        # convert columns with units to a Quantity mixin.\n        newcols = [self._convert_col_for_table(col) for col in cols]\n        self._make_table_from_cols(self, newcols)\n\n        # Deduplicate indices.  It may happen that after pickling or when\n        # initing from an existing table that column indices which had been\n        # references to a single index object got *copied* into an independent\n        # object.  This results in duplicates which will cause downstream problems.\n        index_dict = {}\n        for col in self.itercols():\n            for i, index in enumerate(col.info.indices or []):\n                names = tuple(ind_col.info.name for ind_col in index.columns)\n                if names in index_dict:\n                    col.info.indices[i] = index_dict[names]\n                else:\n                    index_dict[names] = index",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table._init_from_cols",
-                "documentation": "Initialize table from a list of Column or mixin objects.",
+                "documentation": "Initialize table from a list of Column or mixin objects",
                 "path": [
                     {
                         "start_node": "root",
@@ -84,8 +84,8 @@
                         "end_node": "astropy.table.table.Table._init_from_cols"
                     }
                 ],
-                "similarity": 0.23722767761886368,
-                "end_line": 1480,
+                "similarity": 0.2357983874745285,
+                "end_line": 1485,
                 "signature": "astropy.table.table.Table._init_from_cols(self, cols)"
             },
             {
@@ -118,7 +118,36 @@
                 "signature": "astropy.table.table.Table.__getitem__(self, item)"
             },
             {
-                "start_line": 1148,
+                "start_line": 1222,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _init_from_list(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a list of column data.  A column can be a\n        Column object, np.ndarray, mixin, or any other iterable object.\n        \"\"\"\n        # Special case of initializing an empty table like `t = Table()`. No\n        # action required at this point.\n        if n_cols == 0:\n            return\n\n        cols = []\n        default_names = _auto_names(n_cols)\n\n        for col, name, default_name, dtype in zip(data, names, default_names, dtype):\n            col = self._convert_data_to_col(col, copy, default_name, dtype, name)\n\n            cols.append(col)\n\n        self._init_from_cols(cols)",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table._init_from_list",
+                "documentation": "Initialize table from a list of column data.  A column can be a\nColumn object, np.ndarray, mixin, or any other iterable object.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table._init_from_list"
+                    }
+                ],
+                "similarity": 0.22012123623125718,
+                "end_line": 1239,
+                "signature": "astropy.table.table.Table._init_from_list(self, data, names, dtype, n_cols, copy)"
+            },
+            {
+                "start_line": 1147,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -143,45 +172,16 @@
                     }
                 ],
                 "similarity": 0.21986750522203763,
-                "end_line": 1159,
+                "end_line": 1158,
                 "signature": "astropy.table.table.Table._check_names_dtype(self, names, dtype, n_cols)"
             },
             {
-                "start_line": 1222,
+                "start_line": 2105,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _init_from_list(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a list of column data.  A column can be a\n        Column object, np.ndarray, mixin, or any other iterable object.\n        \"\"\"\n        # Special case of initializing an empty table like `t = Table()`. No\n        # action required at this point.\n        if n_cols == 0:\n            return\n\n        cols = []\n        default_names = _auto_names(n_cols)\n\n        for col, name, default_name, dt in zip(data, names, default_names, dtype):\n            col = self._convert_data_to_col(col, copy, default_name, dt, name)\n\n            cols.append(col)\n\n        self._init_from_cols(cols)",
-                "distance": 0.5,
-                "title": null,
-                "name": "astropy.table.table.Table._init_from_list",
-                "documentation": "Initialize table from a list of column data.  A column can be a\nColumn object, np.ndarray, mixin, or any other iterable object.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/table/table.py"
-                    },
-                    {
-                        "start_node": "astropy/table/table.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.table.table.Table._init_from_list"
-                    }
-                ],
-                "similarity": 0.21898497378775444,
-                "end_line": 1239,
-                "signature": "astropy.table.table.Table._init_from_list(self, data, names, dtype, n_cols, copy)"
-            },
-            {
-                "start_line": 2088,
-                "file_path": "astropy/table/table.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __setitem__(self, item, value):\n        # If the item is a string then it must be the name of a column.\n        # If that column doesn't already exist then create it now.\n        if isinstance(item, str) and item not in self.colnames:\n            self.add_column(value, name=item, copy=True)\n\n        else:\n            n_cols = len(self.columns)\n\n            if isinstance(item, str):\n                # Set an existing column by first trying to replace, and if\n                # this fails do an in-place update.  See definition of mask\n                # property for discussion of the _setitem_inplace attribute.\n                if (\n                    not getattr(self, \"_setitem_inplace\", False)\n                    and not conf.replace_inplace\n                ):\n                    try:\n                        self._replace_column_warnings(item, value)\n                        return\n                    except Exception:\n                        pass\n                self.columns[item][:] = value\n\n            elif isinstance(item, (int, np.integer)):\n                self._set_row(idx=item, colnames=self.colnames, vals=value)\n\n            elif (\n                isinstance(item, (slice, np.ndarray, list))\n                or isinstance(item, tuple)\n                and all(isinstance(x, np.ndarray) for x in item)\n            ):\n                if isinstance(value, Table):\n                    vals = (col for col in value.columns.values())\n\n                elif isinstance(value, np.ndarray) and value.dtype.names:\n                    vals = (value[name] for name in value.dtype.names)\n\n                elif np.isscalar(value):\n                    vals = itertools.repeat(value, n_cols)\n\n                else:  # Assume this is an iterable that will work\n                    if len(value) != n_cols:\n                        raise ValueError(\n                            \"Right side value needs {} elements (one for each column)\".format(\n                                n_cols\n                            )\n                        )\n                    vals = value\n\n                for col, val in zip(self.columns.values(), vals):\n                    col[item] = val\n\n            else:\n                raise ValueError(f\"Illegal type {type(item)} for table item access\")",
+                "source_code": "def __setitem__(self, item, value):\n        # If the item is a string then it must be the name of a column.\n        # If that column doesn't already exist then create it now.\n        if isinstance(item, str) and item not in self.colnames:\n            self.add_column(value, name=item, copy=True)\n\n        else:\n            n_cols = len(self.columns)\n\n            if isinstance(item, str):\n                # Set an existing column by first trying to replace, and if\n                # this fails do an in-place update.  See definition of mask\n                # property for discussion of the _setitem_inplace attribute.\n                if (\n                    not getattr(self, \"_setitem_inplace\", False)\n                    and not conf.replace_inplace\n                ):\n                    try:\n                        self._replace_column_warnings(item, value)\n                        return\n                    except Exception:\n                        pass\n                self.columns[item][:] = value\n\n            elif isinstance(item, (int, np.integer)):\n                self._set_row(idx=item, colnames=self.colnames, vals=value)\n\n            elif (\n                isinstance(item, slice)\n                or isinstance(item, np.ndarray)\n                or isinstance(item, list)\n                or (\n                    isinstance(item, tuple)  # output from np.where\n                    and all(isinstance(x, np.ndarray) for x in item)\n                )\n            ):\n                if isinstance(value, Table):\n                    vals = (col for col in value.columns.values())\n\n                elif isinstance(value, np.ndarray) and value.dtype.names:\n                    vals = (value[name] for name in value.dtype.names)\n\n                elif np.isscalar(value):\n                    vals = itertools.repeat(value, n_cols)\n\n                else:  # Assume this is an iterable that will work\n                    if len(value) != n_cols:\n                        raise ValueError(\n                            \"Right side value needs {} elements (one for each column)\".format(\n                                n_cols\n                            )\n                        )\n                    vals = value\n\n                for col, val in zip(self.columns.values(), vals):\n                    col[item] = val\n\n            else:\n                raise ValueError(f\"Illegal type {type(item)} for table item access\")",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.__setitem__",
@@ -200,12 +200,12 @@
                         "end_node": "astropy.table.table.Table.__setitem__"
                     }
                 ],
-                "similarity": 0.21797658991409724,
-                "end_line": 2142,
+                "similarity": 0.21829996461923556,
+                "end_line": 2163,
                 "signature": "astropy.table.table.Table.__setitem__(self, item, value)"
             },
             {
-                "start_line": 4220,
+                "start_line": 4226,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -230,45 +230,16 @@
                     }
                 ],
                 "similarity": 0.216149362496109,
-                "end_line": 4241,
+                "end_line": 4247,
                 "signature": "astropy.table.table.QTable._convert_col_for_table(self, col)"
             },
             {
-                "start_line": 1482,
+                "start_line": 895,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _new_from_slice(self, slice_):\n        \"\"\"Create a new table as a referenced slice from self.\"\"\"\n        table = self.__class__(masked=self.masked)\n        if self.meta:\n            table.meta = self.meta.copy()  # Shallow copy for slice\n        table.primary_key = self.primary_key\n\n        newcols = []\n        for col in self.columns.values():\n            newcol = col[slice_]\n\n            # Note in line below, use direct attribute access to col.indices for Column\n            # instances instead of the generic col.info.indices.  This saves about 4 usec\n            # per column.\n            if (col if isinstance(col, Column) else col.info).indices:\n                # TODO : as far as I can tell the only purpose of setting _copy_indices\n                # here is to communicate that to the initial test in `slice_indices`.\n                # Why isn't that just sent as an arg to the function?\n                col.info._copy_indices = self._copy_indices\n                newcol = col.info.slice_indices(newcol, slice_, len(col))\n\n                # Don't understand why this is forcing a value on the original column.\n                # Normally col.info does not even have a _copy_indices attribute.  Tests\n                # still pass if this line is deleted.  (Each col.info attribute access\n                # is expensive).\n                col.info._copy_indices = True\n\n            newcols.append(newcol)\n\n        self._make_table_from_cols(\n            table, newcols, verify=False, names=self.columns.keys()\n        )\n        return table",
-                "distance": 0.5,
-                "title": null,
-                "name": "astropy.table.table.Table._new_from_slice",
-                "documentation": "Create a new table as a referenced slice from self.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/table/table.py"
-                    },
-                    {
-                        "start_node": "astropy/table/table.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.table.table.Table._new_from_slice"
-                    }
-                ],
-                "similarity": 0.21063443294751275,
-                "end_line": 1514,
-                "signature": "astropy.table.table.Table._new_from_slice(self, slice_)"
-            },
-            {
-                "start_line": 890,
-                "file_path": "astropy/table/table.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _set_column_attribute(self, attr, values):\n        \"\"\"Set ``attr`` for columns to ``values``, which can be either a dict (keyed by column\n        name) or a dict of name: value pairs.  This is used for handling the ``units`` and\n        ``descriptions`` kwargs to ``__init__``.\n        \"\"\"\n        if not values:\n            return\n\n        if isinstance(values, Row):\n            # For a Row object transform to an equivalent dict.\n            values = {name: values[name] for name in values.colnames}\n\n        if not isinstance(values, Mapping):\n            # If not a dict map, assume iterable and map to dict if the right length\n            if len(values) != len(self.columns):\n                raise ValueError(\n                    f\"sequence of {attr} values must match number of columns\"\n                )\n            values = dict(zip(self.colnames, values))\n\n        for name, value in values.items():\n            if name not in self.columns:\n                raise ValueError(\n                    f\"invalid column name {name} for setting {attr} attribute\"\n                )\n\n            # Special case: ignore unit if it is an empty or blank string\n            if attr == \"unit\" and isinstance(value, str):\n                if value.strip() == \"\":\n                    value = None\n\n            if value not in (np.ma.masked, None):\n                col = self[name]\n                if attr == \"unit\" and isinstance(col, Quantity):\n                    # Update the Quantity unit in-place\n                    col <<= value\n                else:\n                    setattr(col.info, attr, value)",
+                "source_code": "def _set_column_attribute(self, attr, values):\n        \"\"\"Set ``attr`` for columns to ``values``, which can be either a dict (keyed by column\n        name) or a dict of name: value pairs.  This is used for handling the ``units`` and\n        ``descriptions`` kwargs to ``__init__``.\n        \"\"\"\n        if not values:\n            return\n\n        if isinstance(values, Row):\n            # For a Row object transform to an equivalent dict.\n            values = {name: values[name] for name in values.colnames}\n\n        if not isinstance(values, Mapping):\n            # If not a dict map, assume iterable and map to dict if the right length\n            if len(values) != len(self.columns):\n                raise ValueError(\n                    f\"sequence of {attr} values must match number of columns\"\n                )\n            values = dict(zip(self.colnames, values))\n\n        for name, value in values.items():\n            if name not in self.columns:\n                raise ValueError(\n                    f\"invalid column name {name} for setting {attr} attribute\"\n                )\n\n            # Special case: ignore unit if it is an empty or blank string\n            if attr == \"unit\" and isinstance(value, str):\n                if value.strip() == \"\":\n                    value = None\n\n            if value not in (np.ma.masked, None):\n                setattr(self[name].info, attr, value)",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table._set_column_attribute",
@@ -287,9 +258,38 @@
                         "end_node": "astropy.table.table.Table._set_column_attribute"
                     }
                 ],
-                "similarity": 0.2096880777415106,
+                "similarity": 0.21295954889437807,
                 "end_line": 927,
                 "signature": "astropy.table.table.Table._set_column_attribute(self, attr, values)"
+            },
+            {
+                "start_line": 1487,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _new_from_slice(self, slice_):\n        \"\"\"Create a new table as a referenced slice from self.\"\"\"\n\n        table = self.__class__(masked=self.masked)\n        if self.meta:\n            table.meta = self.meta.copy()  # Shallow copy for slice\n        table.primary_key = self.primary_key\n\n        newcols = []\n        for col in self.columns.values():\n            newcol = col[slice_]\n\n            # Note in line below, use direct attribute access to col.indices for Column\n            # instances instead of the generic col.info.indices.  This saves about 4 usec\n            # per column.\n            if (col if isinstance(col, Column) else col.info).indices:\n                # TODO : as far as I can tell the only purpose of setting _copy_indices\n                # here is to communicate that to the initial test in `slice_indices`.\n                # Why isn't that just sent as an arg to the function?\n                col.info._copy_indices = self._copy_indices\n                newcol = col.info.slice_indices(newcol, slice_, len(col))\n\n                # Don't understand why this is forcing a value on the original column.\n                # Normally col.info does not even have a _copy_indices attribute.  Tests\n                # still pass if this line is deleted.  (Each col.info attribute access\n                # is expensive).\n                col.info._copy_indices = True\n\n            newcols.append(newcol)\n\n        self._make_table_from_cols(\n            table, newcols, verify=False, names=self.columns.keys()\n        )\n        return table",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table._new_from_slice",
+                "documentation": "Create a new table as a referenced slice from self.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table._new_from_slice"
+                    }
+                ],
+                "similarity": 0.21073888510120656,
+                "end_line": 1520,
+                "signature": "astropy.table.table.Table._new_from_slice(self, slice_)"
             },
             {
                 "start_line": 252,
@@ -297,11 +297,11 @@
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def __getitem__(self, item):\n        \"\"\"Get items from a TableColumns object.\n\n        ::\n\n          tc = TableColumns(cols=[Column(name='a'), Column(name='b'), Column(name='c')])\n          tc['a']  # Column('a')\n          tc[1] # Column('b')\n          tc['a', 'b'] # <TableColumns names=('a', 'b')>\n          tc[1:3] # <TableColumns names=('b', 'c')>\n        \"\"\"\n        if isinstance(item, str):\n            return OrderedDict.__getitem__(self, item)\n        elif isinstance(item, (int, np.integer)):\n            return list(self.values())[item]\n        elif (\n            isinstance(item, np.ndarray) and item.shape == () and item.dtype.kind == \"i\"\n        ):\n            return list(self.values())[item.item()]\n        elif isinstance(item, tuple):\n            return self.__class__([self[x] for x in item])\n        elif isinstance(item, slice):\n            return self.__class__([self[x] for x in list(self)[item]])\n        else:\n            raise IndexError(\n                f\"Illegal key or index value for {type(self).__name__} object\"\n            )",
+                "source_code": "def __getitem__(self, item):\n        \"\"\"Get items from a TableColumns object.\n        ::\n\n          tc = TableColumns(cols=[Column(name='a'), Column(name='b'), Column(name='c')])\n          tc['a']  # Column('a')\n          tc[1] # Column('b')\n          tc['a', 'b'] # <TableColumns names=('a', 'b')>\n          tc[1:3] # <TableColumns names=('b', 'c')>\n        \"\"\"\n        if isinstance(item, str):\n            return OrderedDict.__getitem__(self, item)\n        elif isinstance(item, (int, np.integer)):\n            return list(self.values())[item]\n        elif (\n            isinstance(item, np.ndarray) and item.shape == () and item.dtype.kind == \"i\"\n        ):\n            return list(self.values())[item.item()]\n        elif isinstance(item, tuple):\n            return self.__class__([self[x] for x in item])\n        elif isinstance(item, slice):\n            return self.__class__([self[x] for x in list(self)[item]])\n        else:\n            raise IndexError(\n                \"Illegal key or index value for {} object\".format(\n                    self.__class__.__name__\n                )\n            )",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.TableColumns.__getitem__",
-                "documentation": "Get items from a TableColumns object.\n\n::\n\n  tc = TableColumns(cols=[Column(name='a'), Column(name='b'), Column(name='c')])\n  tc['a']  # Column('a')\n  tc[1] # Column('b')\n  tc['a', 'b'] # <TableColumns names=('a', 'b')>\n  tc[1:3] # <TableColumns names=('b', 'c')>",
+                "documentation": "Get items from a TableColumns object.\n::\n\n  tc = TableColumns(cols=[Column(name='a'), Column(name='b'), Column(name='c')])\n  tc['a']  # Column('a')\n  tc[1] # Column('b')\n  tc['a', 'b'] # <TableColumns names=('a', 'b')>\n  tc[1:3] # <TableColumns names=('b', 'c')>",
                 "path": [
                     {
                         "start_node": "root",
@@ -316,12 +316,12 @@
                         "end_node": "astropy.table.table.TableColumns.__getitem__"
                     }
                 ],
-                "similarity": 0.20607538875447728,
-                "end_line": 278,
+                "similarity": 0.20536416657005416,
+                "end_line": 279,
                 "signature": "astropy.table.table.TableColumns.__getitem__(self, item)"
             },
             {
-                "start_line": 1517,
+                "start_line": 1523,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -346,20 +346,20 @@
                     }
                 ],
                 "similarity": 0.20284609629771,
-                "end_line": 1539,
+                "end_line": 1545,
                 "signature": "astropy.table.table.Table._make_table_from_cols(table, cols, verify, names)"
             },
             {
-                "start_line": 1414,
+                "start_line": 1416,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _init_from_dict(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a dictionary of columns.\"\"\"\n        data_list = [data[name] for name in names]\n        self._init_from_list(data_list, names, dtype, n_cols, copy)",
+                "source_code": "def _init_from_dict(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a dictionary of columns\"\"\"\n\n        data_list = [data[name] for name in names]\n        self._init_from_list(data_list, names, dtype, n_cols, copy)",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table._init_from_dict",
-                "documentation": "Initialize table from a dictionary of columns.",
+                "documentation": "Initialize table from a dictionary of columns",
                 "path": [
                     {
                         "start_node": "root",
@@ -374,46 +374,17 @@
                         "end_node": "astropy.table.table.Table._init_from_dict"
                     }
                 ],
-                "similarity": 0.19300087359007675,
-                "end_line": 1417,
+                "similarity": 0.1904455733658159,
+                "end_line": 1420,
                 "signature": "astropy.table.table.Table._init_from_dict(self, data, names, dtype, n_cols, copy)"
             },
             {
-                "start_line": 1161,
+                "start_line": 1979,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _init_from_list_of_dicts(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a list of dictionaries representing rows.\"\"\"\n        # Define placeholder for missing values as a unique object that cannot\n        # every occur in user data.\n        MISSING = object()\n\n        # Gather column names that exist in the input `data`.\n        names_from_data = set()\n        for row in data:\n            names_from_data.update(row)\n\n        if set(data[0].keys()) == names_from_data:\n            names_from_data = list(data[0].keys())\n        else:\n            names_from_data = sorted(names_from_data)\n\n        # Note: if set(data[0].keys()) != names_from_data, this will give an\n        # exception later, so NO need to catch here.\n\n        # Convert list of dict into dict of list (cols), keep track of missing\n        # indexes and put in MISSING placeholders in the `cols` lists.\n        cols = {}\n        missing_indexes = defaultdict(list)\n        for name in names_from_data:\n            cols[name] = []\n            for ii, row in enumerate(data):\n                try:\n                    val = row[name]\n                except KeyError:\n                    missing_indexes[name].append(ii)\n                    val = MISSING\n                cols[name].append(val)\n\n        # Fill the missing entries with first values\n        if missing_indexes:\n            for name, indexes in missing_indexes.items():\n                col = cols[name]\n                first_val = next(val for val in col if val is not MISSING)\n                for index in indexes:\n                    col[index] = first_val\n\n        # prepare initialization\n        if all(name is None for name in names):\n            names = names_from_data\n\n        self._init_from_dict(cols, names, dtype, n_cols, copy)\n\n        # Mask the missing values if necessary, converting columns to MaskedColumn\n        # as needed.\n        if missing_indexes:\n            for name, indexes in missing_indexes.items():\n                col = self[name]\n                # Ensure that any Column subclasses with MISSING values can support\n                # setting masked values. As of astropy 4.0 the test condition below is\n                # always True since _init_from_dict cannot result in mixin columns.\n                if isinstance(col, Column) and not isinstance(col, MaskedColumn):\n                    self[name] = self.MaskedColumn(col, copy=False)\n\n                # Finally do the masking in a mixin-safe way.\n                self[name][indexes] = np.ma.masked",
-                "distance": 0.5,
-                "title": null,
-                "name": "astropy.table.table.Table._init_from_list_of_dicts",
-                "documentation": "Initialize table from a list of dictionaries representing rows.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/table/table.py"
-                    },
-                    {
-                        "start_node": "astropy/table/table.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.table.table.Table._init_from_list_of_dicts"
-                    }
-                ],
-                "similarity": 0.1897729180280277,
-                "end_line": 1220,
-                "signature": "astropy.table.table.Table._init_from_list_of_dicts(self, data, names, dtype, n_cols, copy)"
-            },
-            {
-                "start_line": 1965,
-                "file_path": "astropy/table/table.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def pformat_all(\n        self,\n        max_lines=-1,\n        max_width=-1,\n        show_name=True,\n        show_unit=None,\n        show_dtype=False,\n        html=False,\n        tableid=None,\n        align=None,\n        tableclass=None,\n    ):\n        \"\"\"Return a list of lines for the formatted string representation of\n        the entire table.\n\n        If no value of ``max_lines`` is supplied then the height of the\n        screen terminal is used to set ``max_lines``.  If the terminal\n        height cannot be determined then the default is taken from the\n        configuration item ``astropy.conf.max_lines``.  If a negative\n        value of ``max_lines`` is supplied then there is no line limit\n        applied.\n\n        The same applies for ``max_width`` except the configuration item  is\n        ``astropy.conf.max_width``.\n\n        \"\"\"\n        return self.pformat(\n            max_lines,\n            max_width,\n            show_name,\n            show_unit,\n            show_dtype,\n            html,\n            tableid,\n            align,\n            tableclass,\n        )",
+                "source_code": "def pformat_all(\n        self,\n        max_lines=-1,\n        max_width=-1,\n        show_name=True,\n        show_unit=None,\n        show_dtype=False,\n        html=False,\n        tableid=None,\n        align=None,\n        tableclass=None,\n    ):\n        \"\"\"Return a list of lines for the formatted string representation of\n        the entire table.\n\n        If no value of ``max_lines`` is supplied then the height of the\n        screen terminal is used to set ``max_lines``.  If the terminal\n        height cannot be determined then the default is taken from the\n        configuration item ``astropy.conf.max_lines``.  If a negative\n        value of ``max_lines`` is supplied then there is no line limit\n        applied.\n\n        The same applies for ``max_width`` except the configuration item  is\n        ``astropy.conf.max_width``.\n\n        \"\"\"\n\n        return self.pformat(\n            max_lines,\n            max_width,\n            show_name,\n            show_unit,\n            show_dtype,\n            html,\n            tableid,\n            align,\n            tableclass,\n        )",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.pformat_all",
@@ -432,12 +403,41 @@
                         "end_node": "astropy.table.table.Table.pformat_all"
                     }
                 ],
-                "similarity": 0.18857786178012995,
-                "end_line": 2001,
+                "similarity": 0.188719641912825,
+                "end_line": 2016,
                 "signature": "astropy.table.table.Table.pformat_all(self, max_lines, max_width, show_name, show_unit, show_dtype, html, tableid, align, tableclass)"
             },
             {
-                "start_line": 1579,
+                "start_line": 1160,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _init_from_list_of_dicts(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from a list of dictionaries representing rows.\"\"\"\n        # Define placeholder for missing values as a unique object that cannot\n        # every occur in user data.\n        MISSING = object()\n\n        # Gather column names that exist in the input `data`.\n        names_from_data = set()\n        for row in data:\n            names_from_data.update(row)\n\n        if set(data[0].keys()) == names_from_data:\n            names_from_data = list(data[0].keys())\n        else:\n            names_from_data = sorted(names_from_data)\n\n        # Note: if set(data[0].keys()) != names_from_data, this will give an\n        # exception later, so NO need to catch here.\n\n        # Convert list of dict into dict of list (cols), keep track of missing\n        # indexes and put in MISSING placeholders in the `cols` lists.\n        cols = {}\n        missing_indexes = defaultdict(list)\n        for name in names_from_data:\n            cols[name] = []\n            for ii, row in enumerate(data):\n                try:\n                    val = row[name]\n                except KeyError:\n                    missing_indexes[name].append(ii)\n                    val = MISSING\n                cols[name].append(val)\n\n        # Fill the missing entries with first values\n        if missing_indexes:\n            for name, indexes in missing_indexes.items():\n                col = cols[name]\n                first_val = next(val for val in col if val is not MISSING)\n                for index in indexes:\n                    col[index] = first_val\n\n        # prepare initialization\n        if all(name is None for name in names):\n            names = names_from_data\n\n        self._init_from_dict(cols, names, dtype, n_cols, copy)\n\n        # Mask the missing values if necessary, converting columns to MaskedColumn\n        # as needed.\n        if missing_indexes:\n            for name, indexes in missing_indexes.items():\n                col = self[name]\n                # Ensure that any Column subclasses with MISSING values can support\n                # setting masked values. As of astropy 4.0 the test condition below is\n                # always True since _init_from_dict cannot result in mixin columns.\n                if isinstance(col, Column) and not isinstance(col, MaskedColumn):\n                    self[name] = self.MaskedColumn(col, copy=False)\n\n                # Finally do the masking in a mixin-safe way.\n                self[name][indexes] = np.ma.masked\n        return",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table._init_from_list_of_dicts",
+                "documentation": "Initialize table from a list of dictionaries representing rows.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table._init_from_list_of_dicts"
+                    }
+                ],
+                "similarity": 0.1881491335717002,
+                "end_line": 1220,
+                "signature": "astropy.table.table.Table._init_from_list_of_dicts(self, data, names, dtype, n_cols, copy)"
+            },
+            {
+                "start_line": 1586,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -462,7 +462,7 @@
                     }
                 ],
                 "similarity": 0.18654151080748632,
-                "end_line": 1620,
+                "end_line": 1627,
                 "signature": "astropy.table.table.Table._base_repr_(self, html, descr_vals, max_width, tableid, show_dtype, max_lines, tableclass)"
             },
             {
@@ -495,7 +495,7 @@
                 "signature": "astropy.table.table.Table._set_masked(self, masked)"
             },
             {
-                "start_line": 1680,
+                "start_line": 1691,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -520,95 +520,8 @@
                     }
                 ],
                 "similarity": 0.1834797091519929,
-                "end_line": 1720,
+                "end_line": 1731,
                 "signature": "astropy.table.table.Table.pprint(self, max_lines, max_width, show_name, show_unit, show_dtype, align)"
-            },
-            {
-                "start_line": 434,
-                "file_path": "astropy/units/quantity.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __new__(\n        cls,\n        value,\n        unit=None,\n        dtype=np.inexact,\n        copy=True,\n        order=None,\n        subok=False,\n        ndmin=0,\n    ):\n        if unit is not None:\n            # convert unit first, to avoid multiple string->unit conversions\n            unit = Unit(unit)\n\n        # inexact -> upcast to float dtype\n        float_default = dtype is np.inexact\n        if float_default:\n            dtype = None\n\n        # optimize speed for Quantity with no dtype given, copy=False\n        if isinstance(value, Quantity):\n            if unit is not None and unit is not value.unit:\n                value = value.to(unit)\n                # the above already makes a copy (with float dtype)\n                copy = False\n\n            if type(value) is not cls and not (subok and isinstance(value, cls)):\n                value = value.view(cls)\n\n            if float_default and value.dtype.kind in \"iu\":\n                dtype = float\n\n            return np.array(\n                value, dtype=dtype, copy=copy, order=order, subok=True, ndmin=ndmin\n            )\n\n        # Maybe str, or list/tuple of Quantity? If so, this may set value_unit.\n        # To ensure array remains fast, we short-circuit it.\n        value_unit = None\n        if not isinstance(value, np.ndarray):\n            if isinstance(value, str):\n                # The first part of the regex string matches any integer/float;\n                # the second parts adds possible trailing .+-, which will break\n                # the float function below and ensure things like 1.2.3deg\n                # will not work.\n                pattern = (\n                    r\"\\s*[+-]?\"\n                    r\"((\\d+\\.?\\d*)|(\\.\\d+)|([nN][aA][nN])|\"\n                    r\"([iI][nN][fF]([iI][nN][iI][tT][yY]){0,1}))\"\n                    r\"([eE][+-]?\\d+)?\"\n                    r\"[.+-]?\"\n                )\n\n                v = re.match(pattern, value)\n                unit_string = None\n                try:\n                    value = float(v.group())\n\n                except Exception:\n                    raise TypeError(\n                        f'Cannot parse \"{value}\" as a {cls.__name__}. It does not '\n                        \"start with a number.\"\n                    )\n\n                unit_string = v.string[v.end() :].strip()\n                if unit_string:\n                    value_unit = Unit(unit_string)\n                    if unit is None:\n                        unit = value_unit  # signal no conversion needed below.\n\n            elif isiterable(value) and len(value) > 0:\n                # Iterables like lists and tuples.\n                if all(isinstance(v, Quantity) for v in value):\n                    # If a list/tuple containing only quantities, convert all\n                    # to the same unit.\n                    if unit is None:\n                        unit = value[0].unit\n                    value = [q.to_value(unit) for q in value]\n                    value_unit = unit  # signal below that conversion has been done\n                elif (\n                    dtype is None\n                    and not hasattr(value, \"dtype\")\n                    and isinstance(unit, StructuredUnit)\n                ):\n                    # Special case for list/tuple of values and a structured unit:\n                    # ``np.array(value, dtype=None)`` would treat tuples as lower\n                    # levels of the array, rather than as elements of a structured\n                    # array, so we use the structure of the unit to help infer the\n                    # structured dtype of the value.\n                    dtype = unit._recursively_get_dtype(value)\n\n        using_default_unit = False\n        if value_unit is None:\n            # If the value has a `unit` attribute and if not None\n            # (for Columns with uninitialized unit), treat it like a quantity.\n            value_unit = getattr(value, \"unit\", None)\n            if value_unit is None:\n                # Default to dimensionless for no (initialized) unit attribute.\n                if unit is None:\n                    using_default_unit = True\n                    unit = cls._default_unit\n                value_unit = unit  # signal below that no conversion is needed\n            else:\n                try:\n                    value_unit = Unit(value_unit)\n                except Exception as exc:\n                    raise TypeError(\n                        f\"The unit attribute {value.unit!r} of the input could \"\n                        \"not be parsed as an astropy Unit.\"\n                    ) from exc\n\n                if unit is None:\n                    unit = value_unit\n                elif unit is not value_unit:\n                    copy = False  # copy will be made in conversion at end\n\n        value = np.array(\n            value, dtype=dtype, copy=copy, order=order, subok=True, ndmin=ndmin\n        )\n\n        # For no-user-input unit, make sure the constructed unit matches the\n        # structure of the data.\n        if using_default_unit and value.dtype.names is not None:\n            unit = value_unit = _structured_unit_like_dtype(value_unit, value.dtype)\n\n        # check that array contains numbers or long int objects\n        if value.dtype.kind in \"OSU\" and not (\n            value.dtype.kind == \"O\" and isinstance(value.item(0), numbers.Number)\n        ):\n            raise TypeError(\"The value must be a valid Python or Numpy numeric type.\")\n\n        # by default, cast any integer, boolean, etc., to float\n        if float_default and value.dtype.kind in \"iuO\":\n            value = value.astype(float)\n\n        # if we allow subclasses, allow a class from the unit.\n        if subok:\n            qcls = getattr(unit, \"_quantity_class\", cls)\n            if issubclass(qcls, cls):\n                cls = qcls\n\n        value = value.view(cls)\n        value._set_unit(value_unit)\n        if unit is value_unit:\n            return value\n        else:\n            # here we had non-Quantity input that had a \"unit\" attribute\n            # with a unit different from the desired one.  So, convert.\n            return value.to(unit)",
-                "distance": 1.25,
-                "title": null,
-                "name": "astropy.units.quantity.Quantity.__new__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/units/quantity.py"
-                    },
-                    {
-                        "start_node": "astropy/units/quantity.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.units.quantity.Quantity.__new__"
-                    }
-                ],
-                "similarity": 0.18113713117452662,
-                "end_line": 582,
-                "signature": "astropy.units.quantity.Quantity.__new__(cls, value, unit, dtype, copy, order, subok, ndmin)"
-            },
-            {
-                "start_line": 856,
-                "file_path": "astropy/units/core.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __rmul__(self, m):\n        if isinstance(m, (bytes, str)):\n            return Unit(m) * self\n\n        # Cannot handle this as Unit.  Here, m cannot be a Quantity,\n        # so we make it into one, fasttracking when it does not have a unit\n        # for the common case of <array> * <unit>.\n        try:\n            from .quantity import Quantity\n\n            if hasattr(m, \"unit\"):\n                result = Quantity(m)\n                result *= self\n                return result\n            else:\n                return Quantity(m, unit=self)\n        except TypeError:\n            return NotImplemented",
-                "distance": 1.25,
-                "title": null,
-                "name": "astropy.units.core.UnitBase.__rmul__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/units/core.py"
-                    },
-                    {
-                        "start_node": "astropy/units/core.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.units.core.UnitBase.__rmul__"
-                    }
-                ],
-                "similarity": 0.1805872797997809,
-                "end_line": 873,
-                "signature": "astropy.units.core.UnitBase.__rmul__(self, m)"
-            },
-            {
-                "start_line": 2009,
-                "file_path": "astropy/units/core.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __call__(\n        self,\n        s=\"\",\n        represents=None,\n        format=None,\n        namespace=None,\n        doc=None,\n        parse_strict=\"raise\",\n    ):\n        # Short-circuit if we're already a unit\n        if hasattr(s, \"_get_physical_type_id\"):\n            return s\n\n        # turn possible Quantity input for s or represents into a Unit\n        from .quantity import Quantity\n\n        if isinstance(represents, Quantity):\n            if is_effectively_unity(represents.value):\n                represents = represents.unit\n            else:\n                represents = CompositeUnit(\n                    represents.value * represents.unit.scale,\n                    bases=represents.unit.bases,\n                    powers=represents.unit.powers,\n                    _error_check=False,\n                )\n\n        if isinstance(s, Quantity):\n            if is_effectively_unity(s.value):\n                s = s.unit\n            else:\n                s = CompositeUnit(\n                    s.value * s.unit.scale,\n                    bases=s.unit.bases,\n                    powers=s.unit.powers,\n                    _error_check=False,\n                )\n\n        # now decide what we really need to do; define derived Unit?\n        if isinstance(represents, UnitBase):\n            # This has the effect of calling the real __new__ and\n            # __init__ on the Unit class.\n            return super().__call__(\n                s, represents, format=format, namespace=namespace, doc=doc\n            )\n\n        # or interpret a Quantity (now became unit), string or number?\n        if isinstance(s, UnitBase):\n            return s\n\n        elif isinstance(s, (bytes, str)):\n            if len(s.strip()) == 0:\n                # Return the NULL unit\n                return dimensionless_unscaled\n\n            if format is None:\n                format = unit_format.Generic\n\n            f = unit_format.get_format(format)\n            if isinstance(s, bytes):\n                s = s.decode(\"ascii\")\n\n            try:\n                return f.parse(s)\n            except NotImplementedError:\n                raise\n            except Exception as e:\n                if parse_strict == \"silent\":\n                    pass\n                else:\n                    # Deliberately not issubclass here. Subclasses\n                    # should use their name.\n                    if f is not unit_format.Generic:\n                        format_clause = f.name + \" \"\n                    else:\n                        format_clause = \"\"\n                    msg = (\n                        f\"'{s}' did not parse as {format_clause}unit: {str(e)} \"\n                        \"If this is meant to be a custom unit, \"\n                        \"define it with 'u.def_unit'. To have it \"\n                        \"recognized inside a file reader or other code, \"\n                        \"enable it with 'u.add_enabled_units'. \"\n                        \"For details, see \"\n                        \"https://docs.astropy.org/en/latest/units/combining_and_defining.html\"\n                    )\n                    if parse_strict == \"raise\":\n                        raise ValueError(msg)\n                    elif parse_strict == \"warn\":\n                        warnings.warn(msg, UnitsWarning)\n                    else:\n                        raise ValueError(\n                            \"'parse_strict' must be 'warn', 'raise' or 'silent'\"\n                        )\n                return UnrecognizedUnit(s)\n\n        elif isinstance(s, (int, float, np.floating, np.integer)):\n            return CompositeUnit(s, [], [], _error_check=False)\n\n        elif isinstance(s, tuple):\n            from .structured import StructuredUnit\n\n            return StructuredUnit(s)\n\n        elif s is None:\n            raise TypeError(\"None is not a valid Unit\")\n\n        else:\n            raise TypeError(f\"{s} can not be converted to a Unit\")",
-                "distance": 1.25,
-                "title": null,
-                "name": "astropy.units.core._UnitMetaClass.__call__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/units/core.py"
-                    },
-                    {
-                        "start_node": "astropy/units/core.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.units.core._UnitMetaClass.__call__"
-                    }
-                ],
-                "similarity": 0.17882779500632456,
-                "end_line": 2116,
-                "signature": "astropy.units.core._UnitMetaClass.__call__(self, s, represents, format, namespace, doc, parse_strict)"
             },
             {
                 "start_line": 1933,
@@ -669,7 +582,7 @@
                 "signature": "astropy.units.quantity.Quantity.__array_finalize__(self, obj)"
             },
             {
-                "start_line": 3644,
+                "start_line": 3648,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -694,7 +607,7 @@
                     }
                 ],
                 "similarity": 0.1770256942701679,
-                "end_line": 3662,
+                "end_line": 3666,
                 "signature": "astropy.table.table.Table.copy(self, copy_data)"
             },
             {
@@ -756,16 +669,16 @@
                 "signature": "astropy.io.registry.core.UnifiedOutputRegistry.write(self, data)"
             },
             {
-                "start_line": 1555,
+                "start_line": 1561,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def itercols(self):\n        \"\"\"\n        Iterate over the columns of this table.\n\n        Examples\n        --------\n        To iterate over the columns of a table::\n\n            >>> t = Table([[1], [2]])\n            >>> for col in t.itercols():\n            ...     print(col)\n            col0\n            ----\n               1\n            col1\n            ----\n               2\n\n        Using ``itercols()`` is similar to  ``for col in t.columns.values()``\n        but is syntactically preferred.\n        \"\"\"\n        for colname in self.columns:\n            yield self[colname]",
+                "source_code": "def itercols(self):\n        \"\"\"\n        Iterate over the columns of this table.\n\n        Examples\n        --------\n\n        To iterate over the columns of a table::\n\n            >>> t = Table([[1], [2]])\n            >>> for col in t.itercols():\n            ...     print(col)\n            col0\n            ----\n               1\n            col1\n            ----\n               2\n\n        Using ``itercols()`` is similar to  ``for col in t.columns.values()``\n        but is syntactically preferred.\n        \"\"\"\n        for colname in self.columns:\n            yield self[colname]",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.itercols",
-                "documentation": "Iterate over the columns of this table.\n\nExamples\n--------\nTo iterate over the columns of a table::\n\n    >>> t = Table([[1], [2]])\n    >>> for col in t.itercols():\n    ...     print(col)\n    col0\n    ----\n       1\n    col1\n    ----\n       2\n\nUsing ``itercols()`` is similar to  ``for col in t.columns.values()``\nbut is syntactically preferred.",
+                "documentation": "Iterate over the columns of this table.\n\nExamples\n--------\n\nTo iterate over the columns of a table::\n\n    >>> t = Table([[1], [2]])\n    >>> for col in t.itercols():\n    ...     print(col)\n    col0\n    ----\n       1\n    col1\n    ----\n       2\n\nUsing ``itercols()`` is similar to  ``for col in t.columns.values()``\nbut is syntactically preferred.",
                 "path": [
                     {
                         "start_node": "root",
@@ -780,12 +693,12 @@
                         "end_node": "astropy.table.table.Table.itercols"
                     }
                 ],
-                "similarity": 0.17394842506219305,
-                "end_line": 1577,
+                "similarity": 0.17499773600983598,
+                "end_line": 1584,
                 "signature": "astropy.table.table.Table.itercols(self)"
             },
             {
-                "start_line": 1723,
+                "start_line": 1734,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -810,7 +723,7 @@
                     }
                 ],
                 "similarity": 0.17299666163822244,
-                "end_line": 1742,
+                "end_line": 1753,
                 "signature": "astropy.table.table.Table.pprint_all(self, max_lines, max_width, show_name, show_unit, show_dtype, align)"
             },
             {
@@ -843,7 +756,7 @@
                 "signature": "astropy.table.table.Table.__delitem__(self, item)"
             },
             {
-                "start_line": 1667,
+                "start_line": 1678,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -868,11 +781,11 @@
                     }
                 ],
                 "similarity": 0.17183019405944872,
-                "end_line": 1677,
+                "end_line": 1688,
                 "signature": "astropy.table.table.Table._is_mixin_for_table(self, col)"
             },
             {
-                "start_line": 3109,
+                "start_line": 3115,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -897,7 +810,7 @@
                     }
                 ],
                 "similarity": 0.17133606711462476,
-                "end_line": 3130,
+                "end_line": 3136,
                 "signature": "astropy.table.table.Table._set_row(self, idx, colnames, vals)"
             },
             {
@@ -930,12 +843,12 @@
                 "signature": "astropy.table.table.Table.from_pandas(cls, dataframe, index, units)"
             },
             {
-                "start_line": 280,
+                "start_line": 281,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def __setitem__(self, item, value, validated=False):\n        \"\"\"\n        Set item in this dict instance, but do not allow directly replacing an\n        existing column unless it is already validated (and thus is certain to\n        not corrupt the table).\n\n        NOTE: it is easily possible to corrupt a table by directly *adding* a new\n        key to the TableColumns attribute of a Table, e.g.\n        ``t.columns['jane'] = 'doe'``.\n\n        \"\"\"\n        if item in self and not validated:\n            raise ValueError(\n                f\"Cannot replace column '{item}'.  Use Table.replace_column() instead.\"\n            )\n        super().__setitem__(item, value)",
+                "source_code": "def __setitem__(self, item, value, validated=False):\n        \"\"\"\n        Set item in this dict instance, but do not allow directly replacing an\n        existing column unless it is already validated (and thus is certain to\n        not corrupt the table).\n\n        NOTE: it is easily possible to corrupt a table by directly *adding* a new\n        key to the TableColumns attribute of a Table, e.g.\n        ``t.columns['jane'] = 'doe'``.\n\n        \"\"\"\n        if item in self and not validated:\n            raise ValueError(\n                \"Cannot replace column '{}'.  Use Table.replace_column() instead.\".format(\n                    item\n                )\n            )\n        super().__setitem__(item, value)",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.TableColumns.__setitem__",
@@ -954,9 +867,38 @@
                         "end_node": "astropy.table.table.TableColumns.__setitem__"
                     }
                 ],
-                "similarity": 0.16839015098760182,
-                "end_line": 295,
+                "similarity": 0.16975911420242618,
+                "end_line": 298,
                 "signature": "astropy.table.table.TableColumns.__setitem__(self, item, value, validated)"
+            },
+            {
+                "start_line": 434,
+                "file_path": "astropy/units/quantity.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __new__(\n        cls,\n        value,\n        unit=None,\n        dtype=np.inexact,\n        copy=True,\n        order=None,\n        subok=False,\n        ndmin=0,\n    ):\n        if unit is not None:\n            # convert unit first, to avoid multiple string->unit conversions\n            unit = Unit(unit)\n\n        # inexact -> upcast to float dtype\n        float_default = dtype is np.inexact\n        if float_default:\n            dtype = None\n\n        # optimize speed for Quantity with no dtype given, copy=False\n        if isinstance(value, Quantity):\n            if unit is not None and unit is not value.unit:\n                value = value.to(unit)\n                # the above already makes a copy (with float dtype)\n                copy = False\n\n            if type(value) is not cls and not (subok and isinstance(value, cls)):\n                value = value.view(cls)\n\n            if float_default and value.dtype.kind in \"iu\":\n                dtype = float\n\n            return np.array(\n                value, dtype=dtype, copy=copy, order=order, subok=True, ndmin=ndmin\n            )\n\n        # Maybe str, or list/tuple of Quantity? If so, this may set value_unit.\n        # To ensure array remains fast, we short-circuit it.\n        value_unit = None\n        if not isinstance(value, np.ndarray):\n            if isinstance(value, str):\n                # The first part of the regex string matches any integer/float;\n                # the second parts adds possible trailing .+-, which will break\n                # the float function below and ensure things like 1.2.3deg\n                # will not work.\n                pattern = (\n                    r\"\\s*[+-]?\"\n                    r\"((\\d+\\.?\\d*)|(\\.\\d+)|([nN][aA][nN])|\"\n                    r\"([iI][nN][fF]([iI][nN][iI][tT][yY]){0,1}))\"\n                    r\"([eE][+-]?\\d+)?\"\n                    r\"[.+-]?\"\n                )\n\n                v = re.match(pattern, value)\n                unit_string = None\n                try:\n                    value = float(v.group())\n\n                except Exception:\n                    raise TypeError(\n                        f'Cannot parse \"{value}\" as a {cls.__name__}. It does not '\n                        \"start with a number.\"\n                    )\n\n                unit_string = v.string[v.end() :].strip()\n                if unit_string:\n                    value_unit = Unit(unit_string)\n                    if unit is None:\n                        unit = value_unit  # signal no conversion needed below.\n\n            elif isiterable(value) and len(value) > 0:\n                # Iterables like lists and tuples.\n                if all(isinstance(v, Quantity) for v in value):\n                    # If a list/tuple containing only quantities, convert all\n                    # to the same unit.\n                    if unit is None:\n                        unit = value[0].unit\n                    value = [q.to_value(unit) for q in value]\n                    value_unit = unit  # signal below that conversion has been done\n                elif (\n                    dtype is None\n                    and not hasattr(value, \"dtype\")\n                    and isinstance(unit, StructuredUnit)\n                ):\n                    # Special case for list/tuple of values and a structured unit:\n                    # ``np.array(value, dtype=None)`` would treat tuples as lower\n                    # levels of the array, rather than as elements of a structured\n                    # array, so we use the structure of the unit to help infer the\n                    # structured dtype of the value.\n                    dtype = unit._recursively_get_dtype(value)\n\n        using_default_unit = False\n        if value_unit is None:\n            # If the value has a `unit` attribute and if not None\n            # (for Columns with uninitialized unit), treat it like a quantity.\n            value_unit = getattr(value, \"unit\", None)\n            if value_unit is None:\n                # Default to dimensionless for no (initialized) unit attribute.\n                if unit is None:\n                    using_default_unit = True\n                    unit = cls._default_unit\n                value_unit = unit  # signal below that no conversion is needed\n            else:\n                try:\n                    value_unit = Unit(value_unit)\n                except Exception as exc:\n                    raise TypeError(\n                        f\"The unit attribute {value.unit!r} of the input could \"\n                        \"not be parsed as an astropy Unit.\"\n                    ) from exc\n\n                if unit is None:\n                    unit = value_unit\n                elif unit is not value_unit:\n                    copy = False  # copy will be made in conversion at end\n\n        value = np.array(\n            value, dtype=dtype, copy=copy, order=order, subok=True, ndmin=ndmin\n        )\n\n        # For no-user-input unit, make sure the constructed unit matches the\n        # structure of the data.\n        if using_default_unit and value.dtype.names is not None:\n            unit = value_unit = _structured_unit_like_dtype(value_unit, value.dtype)\n\n        # check that array contains numbers or long int objects\n        if value.dtype.kind in \"OSU\" and not (\n            value.dtype.kind == \"O\" and isinstance(value.item(0), numbers.Number)\n        ):\n            raise TypeError(\"The value must be a valid Python or Numpy numeric type.\")\n\n        # by default, cast any integer, boolean, etc., to float\n        if float_default and value.dtype.kind in \"iuO\":\n            value = value.astype(float)\n\n        # if we allow subclasses, allow a class from the unit.\n        if subok:\n            qcls = getattr(unit, \"_quantity_class\", cls)\n            if issubclass(qcls, cls):\n                cls = qcls\n\n        value = value.view(cls)\n        value._set_unit(value_unit)\n        if unit is value_unit:\n            return value\n        else:\n            # here we had non-Quantity input that had a \"unit\" attribute\n            # with a unit different from the desired one.  So, convert.\n            return value.to(unit)",
+                "distance": 1.25,
+                "title": null,
+                "name": "astropy.units.quantity.Quantity.__new__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/units/quantity.py"
+                    },
+                    {
+                        "start_node": "astropy/units/quantity.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.units.quantity.Quantity.__new__"
+                    }
+                ],
+                "similarity": 0.16838713117452658,
+                "end_line": 582,
+                "signature": "astropy.units.quantity.Quantity.__new__(cls, value, unit, dtype, copy, order, subok, ndmin)"
             },
             {
                 "start_line": 158,
@@ -988,36 +930,7 @@
                 "signature": "astropy.io.ascii.latex.LatexHeader.write(self, lines)"
             },
             {
-                "start_line": 1400,
-                "file_path": "astropy/table/table.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _init_from_ndarray(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from an ndarray structured array.\"\"\"\n        data_names = data.dtype.names or _auto_names(n_cols)\n        struct = data.dtype.names is not None\n        names = [name or data_names[i] for i, name in enumerate(names)]\n\n        cols = (\n            [data[name] for name in data_names]\n            if struct\n            else [data[:, i] for i in range(n_cols)]\n        )\n\n        self._init_from_list(cols, names, dtype, n_cols, copy)",
-                "distance": 0.5,
-                "title": null,
-                "name": "astropy.table.table.Table._init_from_ndarray",
-                "documentation": "Initialize table from an ndarray structured array.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy/table/table.py"
-                    },
-                    {
-                        "start_node": "astropy/table/table.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "astropy.table.table.Table._init_from_ndarray"
-                    }
-                ],
-                "similarity": 0.16628007988211188,
-                "end_line": 1412,
-                "signature": "astropy.table.table.Table._init_from_ndarray(self, data, names, dtype, n_cols, copy)"
-            },
-            {
-                "start_line": 1123,
+                "start_line": 1122,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -1042,7 +955,7 @@
                     }
                 ],
                 "similarity": 0.16617315478214026,
-                "end_line": 1146,
+                "end_line": 1145,
                 "signature": "astropy.table.table.Table.__array__(self, dtype)"
             },
             {
@@ -1104,12 +1017,12 @@
                 "signature": "astropy.io.ascii.latex.AASTexHeader.write(self, lines)"
             },
             {
-                "start_line": 1827,
+                "start_line": 1839,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def show_in_browser(\n        self,\n        max_lines=5000,\n        jsviewer=False,\n        browser=\"default\",\n        jskwargs={\"use_local_files\": True},\n        tableid=None,\n        table_class=\"display compact\",\n        css=None,\n        show_row_index=\"idx\",\n    ):\n        \"\"\"Render the table in HTML and show it in a web browser.\n\n        Parameters\n        ----------\n        max_lines : int\n            Maximum number of rows to export to the table (set low by default\n            to avoid memory issues, since the browser view requires duplicating\n            the table in memory).  A negative value of ``max_lines`` indicates\n            no row limit.\n        jsviewer : bool\n            If `True`, prepends some javascript headers so that the table is\n            rendered as a `DataTables <https://datatables.net>`_ data table.\n            This allows in-browser searching & sorting.\n        browser : str\n            Any legal browser name, e.g. ``'firefox'``, ``'chrome'``,\n            ``'safari'`` (for mac, you may need to use ``'open -a\n            \"/Applications/Google Chrome.app\" {}'`` for Chrome).  If\n            ``'default'``, will use the system default browser.\n        jskwargs : dict\n            Passed to the `astropy.table.JSViewer` init. Defaults to\n            ``{'use_local_files': True}`` which means that the JavaScript\n            libraries will be served from local copies.\n        tableid : str or None\n            An html ID tag for the table.  Default is ``table{id}``, where id\n            is the unique integer id of the table object, id(self).\n        table_class : str or None\n            A string with a list of HTML classes used to style the table.\n            Default is \"display compact\", and other possible values can be\n            found in https://www.datatables.net/manual/styling/classes\n        css : str\n            A valid CSS string declaring the formatting for the table. Defaults\n            to ``astropy.table.jsviewer.DEFAULT_CSS``.\n        show_row_index : str or False\n            If this does not evaluate to False, a column with the given name\n            will be added to the version of the table that gets displayed.\n            This new column shows the index of the row in the table itself,\n            even when the displayed table is re-sorted by another column. Note\n            that if a column with this name already exists, this option will be\n            ignored. Defaults to \"idx\".\n        \"\"\"\n        import os\n        import tempfile\n        import webbrowser\n        from urllib.parse import urljoin\n        from urllib.request import pathname2url\n\n        from .jsviewer import DEFAULT_CSS\n\n        if css is None:\n            css = DEFAULT_CSS\n\n        # We can't use NamedTemporaryFile here because it gets deleted as\n        # soon as it gets garbage collected.\n        tmpdir = tempfile.mkdtemp()\n        path = os.path.join(tmpdir, \"table.html\")\n\n        with open(path, \"w\") as tmp:\n            if jsviewer:\n                if show_row_index:\n                    display_table = self._make_index_row_display_table(show_row_index)\n                else:\n                    display_table = self\n                display_table.write(\n                    tmp,\n                    format=\"jsviewer\",\n                    css=css,\n                    max_lines=max_lines,\n                    jskwargs=jskwargs,\n                    table_id=tableid,\n                    table_class=table_class,\n                )\n            else:\n                self.write(tmp, format=\"html\")\n\n        try:\n            br = webbrowser.get(None if browser == \"default\" else browser)\n        except webbrowser.Error:\n            log.error(f\"Browser '{browser}' not found.\")\n        else:\n            br.open(urljoin(\"file:\", pathname2url(path)))",
+                "source_code": "def show_in_browser(\n        self,\n        max_lines=5000,\n        jsviewer=False,\n        browser=\"default\",\n        jskwargs={\"use_local_files\": True},\n        tableid=None,\n        table_class=\"display compact\",\n        css=None,\n        show_row_index=\"idx\",\n    ):\n        \"\"\"Render the table in HTML and show it in a web browser.\n\n        Parameters\n        ----------\n        max_lines : int\n            Maximum number of rows to export to the table (set low by default\n            to avoid memory issues, since the browser view requires duplicating\n            the table in memory).  A negative value of ``max_lines`` indicates\n            no row limit.\n        jsviewer : bool\n            If `True`, prepends some javascript headers so that the table is\n            rendered as a `DataTables <https://datatables.net>`_ data table.\n            This allows in-browser searching & sorting.\n        browser : str\n            Any legal browser name, e.g. ``'firefox'``, ``'chrome'``,\n            ``'safari'`` (for mac, you may need to use ``'open -a\n            \"/Applications/Google Chrome.app\" {}'`` for Chrome).  If\n            ``'default'``, will use the system default browser.\n        jskwargs : dict\n            Passed to the `astropy.table.JSViewer` init. Defaults to\n            ``{'use_local_files': True}`` which means that the JavaScript\n            libraries will be served from local copies.\n        tableid : str or None\n            An html ID tag for the table.  Default is ``table{id}``, where id\n            is the unique integer id of the table object, id(self).\n        table_class : str or None\n            A string with a list of HTML classes used to style the table.\n            Default is \"display compact\", and other possible values can be\n            found in https://www.datatables.net/manual/styling/classes\n        css : str\n            A valid CSS string declaring the formatting for the table. Defaults\n            to ``astropy.table.jsviewer.DEFAULT_CSS``.\n        show_row_index : str or False\n            If this does not evaluate to False, a column with the given name\n            will be added to the version of the table that gets displayed.\n            This new column shows the index of the row in the table itself,\n            even when the displayed table is re-sorted by another column. Note\n            that if a column with this name already exists, this option will be\n            ignored. Defaults to \"idx\".\n        \"\"\"\n\n        import os\n        import tempfile\n        import webbrowser\n        from urllib.parse import urljoin\n        from urllib.request import pathname2url\n\n        from .jsviewer import DEFAULT_CSS\n\n        if css is None:\n            css = DEFAULT_CSS\n\n        # We can't use NamedTemporaryFile here because it gets deleted as\n        # soon as it gets garbage collected.\n        tmpdir = tempfile.mkdtemp()\n        path = os.path.join(tmpdir, \"table.html\")\n\n        with open(path, \"w\") as tmp:\n            if jsviewer:\n                if show_row_index:\n                    display_table = self._make_index_row_display_table(show_row_index)\n                else:\n                    display_table = self\n                display_table.write(\n                    tmp,\n                    format=\"jsviewer\",\n                    css=css,\n                    max_lines=max_lines,\n                    jskwargs=jskwargs,\n                    table_id=tableid,\n                    table_class=table_class,\n                )\n            else:\n                self.write(tmp, format=\"html\")\n\n        try:\n            br = webbrowser.get(None if browser == \"default\" else browser)\n        except webbrowser.Error:\n            log.error(f\"Browser '{browser}' not found.\")\n        else:\n            br.open(urljoin(\"file:\", pathname2url(path)))",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.show_in_browser",
@@ -1128,8 +1041,8 @@
                         "end_node": "astropy.table.table.Table.show_in_browser"
                     }
                 ],
-                "similarity": 0.1650399227498677,
-                "end_line": 1917,
+                "similarity": 0.16501397597074866,
+                "end_line": 1930,
                 "signature": "astropy.table.table.Table.show_in_browser(self, max_lines, jsviewer, browser, jskwargs, tableid, table_class, css, show_row_index)"
             },
             {
@@ -1162,7 +1075,36 @@
                 "signature": "astropy.table.table.Table.__len__(self)"
             },
             {
-                "start_line": 1744,
+                "start_line": 1401,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _init_from_ndarray(self, data, names, dtype, n_cols, copy):\n        \"\"\"Initialize table from an ndarray structured array\"\"\"\n\n        data_names = data.dtype.names or _auto_names(n_cols)\n        struct = data.dtype.names is not None\n        names = [name or data_names[i] for i, name in enumerate(names)]\n\n        cols = (\n            [data[name] for name in data_names]\n            if struct\n            else [data[:, i] for i in range(n_cols)]\n        )\n\n        self._init_from_list(cols, names, dtype, n_cols, copy)",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table._init_from_ndarray",
+                "documentation": "Initialize table from an ndarray structured array",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table._init_from_ndarray"
+                    }
+                ],
+                "similarity": 0.16344408175468916,
+                "end_line": 1414,
+                "signature": "astropy.table.table.Table._init_from_ndarray(self, data, names, dtype, n_cols, copy)"
+            },
+            {
+                "start_line": 1755,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -1187,16 +1129,16 @@
                     }
                 ],
                 "similarity": 0.16324881667541252,
-                "end_line": 1749,
+                "end_line": 1760,
                 "signature": "astropy.table.table.Table._make_index_row_display_table(self, index_row_name)"
             },
             {
-                "start_line": 1751,
+                "start_line": 1762,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def show_in_notebook(\n        self,\n        tableid=None,\n        css=None,\n        display_length=50,\n        table_class=\"astropy-default\",\n        show_row_index=\"idx\",\n    ):\n        \"\"\"Render the table in HTML and show it in the IPython notebook.\n\n        Parameters\n        ----------\n        tableid : str or None\n            An html ID tag for the table.  Default is ``table{id}-XXX``, where\n            id is the unique integer id of the table object, id(self), and XXX\n            is a random number to avoid conflicts when printing the same table\n            multiple times.\n        table_class : str or None\n            A string with a list of HTML classes used to style the table.\n            The special default string ('astropy-default') means that the string\n            will be retrieved from the configuration item\n            ``astropy.table.default_notebook_table_class``. Note that these\n            table classes may make use of bootstrap, as this is loaded with the\n            notebook.  See `this page <https://getbootstrap.com/css/#tables>`_\n            for the list of classes.\n        css : str\n            A valid CSS string declaring the formatting for the table. Defaults\n            to ``astropy.table.jsviewer.DEFAULT_CSS_NB``.\n        display_length : int, optional\n            Number or rows to show. Defaults to 50.\n        show_row_index : str or False\n            If this does not evaluate to False, a column with the given name\n            will be added to the version of the table that gets displayed.\n            This new column shows the index of the row in the table itself,\n            even when the displayed table is re-sorted by another column. Note\n            that if a column with this name already exists, this option will be\n            ignored. Defaults to \"idx\".\n\n        Notes\n        -----\n        Currently, unlike `show_in_browser` (with ``jsviewer=True``), this\n        method needs to access online javascript code repositories.  This is due\n        to modern browsers' limitations on accessing local files.  Hence, if you\n        call this method while offline (and don't have a cached version of\n        jquery and jquery.dataTables), you will not get the jsviewer features.\n        \"\"\"\n        from IPython.display import HTML\n\n        from .jsviewer import JSViewer\n\n        if tableid is None:\n            tableid = f\"table{id(self)}-{np.random.randint(1, 1e6)}\"\n\n        jsv = JSViewer(display_length=display_length)\n        if show_row_index:\n            display_table = self._make_index_row_display_table(show_row_index)\n        else:\n            display_table = self\n        if table_class == \"astropy-default\":\n            table_class = conf.default_notebook_table_class\n        html = display_table._base_repr_(\n            html=True,\n            max_width=-1,\n            tableid=tableid,\n            max_lines=-1,\n            show_dtype=False,\n            tableclass=table_class,\n        )\n\n        columns = display_table.columns.values()\n        sortable_columns = [\n            i for i, col in enumerate(columns) if col.info.dtype.kind in \"iufc\"\n        ]\n        html += jsv.ipynb(tableid, css=css, sort_columns=sortable_columns)\n        return HTML(html)",
+                "source_code": "def show_in_notebook(\n        self,\n        tableid=None,\n        css=None,\n        display_length=50,\n        table_class=\"astropy-default\",\n        show_row_index=\"idx\",\n    ):\n        \"\"\"Render the table in HTML and show it in the IPython notebook.\n\n        Parameters\n        ----------\n        tableid : str or None\n            An html ID tag for the table.  Default is ``table{id}-XXX``, where\n            id is the unique integer id of the table object, id(self), and XXX\n            is a random number to avoid conflicts when printing the same table\n            multiple times.\n        table_class : str or None\n            A string with a list of HTML classes used to style the table.\n            The special default string ('astropy-default') means that the string\n            will be retrieved from the configuration item\n            ``astropy.table.default_notebook_table_class``. Note that these\n            table classes may make use of bootstrap, as this is loaded with the\n            notebook.  See `this page <https://getbootstrap.com/css/#tables>`_\n            for the list of classes.\n        css : str\n            A valid CSS string declaring the formatting for the table. Defaults\n            to ``astropy.table.jsviewer.DEFAULT_CSS_NB``.\n        display_length : int, optional\n            Number or rows to show. Defaults to 50.\n        show_row_index : str or False\n            If this does not evaluate to False, a column with the given name\n            will be added to the version of the table that gets displayed.\n            This new column shows the index of the row in the table itself,\n            even when the displayed table is re-sorted by another column. Note\n            that if a column with this name already exists, this option will be\n            ignored. Defaults to \"idx\".\n\n        Notes\n        -----\n        Currently, unlike `show_in_browser` (with ``jsviewer=True``), this\n        method needs to access online javascript code repositories.  This is due\n        to modern browsers' limitations on accessing local files.  Hence, if you\n        call this method while offline (and don't have a cached version of\n        jquery and jquery.dataTables), you will not get the jsviewer features.\n        \"\"\"\n\n        from IPython.display import HTML\n\n        from .jsviewer import JSViewer\n\n        if tableid is None:\n            tableid = f\"table{id(self)}-{np.random.randint(1, 1e6)}\"\n\n        jsv = JSViewer(display_length=display_length)\n        if show_row_index:\n            display_table = self._make_index_row_display_table(show_row_index)\n        else:\n            display_table = self\n        if table_class == \"astropy-default\":\n            table_class = conf.default_notebook_table_class\n        html = display_table._base_repr_(\n            html=True,\n            max_width=-1,\n            tableid=tableid,\n            max_lines=-1,\n            show_dtype=False,\n            tableclass=table_class,\n        )\n\n        columns = display_table.columns.values()\n        sortable_columns = [\n            i for i, col in enumerate(columns) if col.info.dtype.kind in \"iufc\"\n        ]\n        html += jsv.ipynb(tableid, css=css, sort_columns=sortable_columns)\n        return HTML(html)",
                 "distance": 0.5,
                 "title": null,
                 "name": "astropy.table.table.Table.show_in_notebook",
@@ -1215,12 +1157,12 @@
                         "end_node": "astropy.table.table.Table.show_in_notebook"
                     }
                 ],
-                "similarity": 0.16303932012332145,
-                "end_line": 1825,
+                "similarity": 0.16300662844943864,
+                "end_line": 1837,
                 "signature": "astropy.table.table.Table.show_in_notebook(self, tableid, css, display_length, table_class, show_row_index)"
             },
             {
-                "start_line": 1541,
+                "start_line": 1547,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -1245,7 +1187,7 @@
                     }
                 ],
                 "similarity": 0.1626781050023038,
-                "end_line": 1553,
+                "end_line": 1559,
                 "signature": "astropy.table.table.Table._set_col_parent_table_and_mask(self, col)"
             },
             {
@@ -1278,7 +1220,7 @@
                 "signature": "astropy.io.registry.core.UnifiedOutputRegistry.get_writer(self, data_format, data_class)"
             },
             {
-                "start_line": 1622,
+                "start_line": 1629,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -1303,7 +1245,7 @@
                     }
                 ],
                 "similarity": 0.16185257923007096,
-                "end_line": 1629,
+                "end_line": 1636,
                 "signature": "astropy.table.table.Table._repr_html_(self)"
             },
             {
@@ -1336,7 +1278,7 @@
                 "signature": "astropy.table.table.Table.more(self, max_lines, max_width, show_name, show_unit, show_dtype)"
             },
             {
-                "start_line": 533,
+                "start_line": 536,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "method",
@@ -1361,7 +1303,7 @@
                     }
                 ],
                 "similarity": 0.16010776508515054,
-                "end_line": 563,
+                "end_line": 566,
                 "signature": "astropy.table.table.PprintIncludeExclude.set(self, names)"
             },
             {
@@ -1452,6 +1394,64 @@
                 "signature": "astropy.units.quantity.SpecificTypeQuantity._set_unit(self, unit)"
             },
             {
+                "start_line": 630,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def as_array(self, keep_byteorder=False, names=None):\n        \"\"\"\n        Return a new copy of the table in the form of a structured np.ndarray or\n        np.ma.MaskedArray object (as appropriate).\n\n        Parameters\n        ----------\n        keep_byteorder : bool, optional\n            By default the returned array has all columns in native byte\n            order.  However, if this option is `True` this preserves the\n            byte order of all columns (if any are non-native).\n\n        names : list, optional:\n            List of column names to include for returned structured array.\n            Default is to include all table columns.\n\n        Returns\n        -------\n        table_array : array or `~numpy.ma.MaskedArray`\n            Copy of table as a numpy structured array.\n            ndarray for unmasked or `~numpy.ma.MaskedArray` for masked.\n        \"\"\"\n        masked = self.masked or self.has_masked_columns or self.has_masked_values\n        empty_init = ma.empty if masked else np.empty\n        if len(self.columns) == 0:\n            return empty_init(0, dtype=None)\n\n        dtype = []\n\n        cols = self.columns.values()\n\n        if names is not None:\n            cols = [col for col in cols if col.info.name in names]\n\n        for col in cols:\n            col_descr = descr(col)\n\n            if not (col.info.dtype.isnative or keep_byteorder):\n                new_dt = np.dtype(col_descr[1]).newbyteorder(\"=\")\n                col_descr = (col_descr[0], new_dt, col_descr[2])\n\n            dtype.append(col_descr)\n\n        data = empty_init(len(self), dtype=dtype)\n        for col in cols:\n            # When assigning from one array into a field of a structured array,\n            # Numpy will automatically swap those columns to their destination\n            # byte order where applicable\n            data[col.info.name] = col\n\n            # For masked out, masked mixin columns need to set output mask attribute.\n            if masked and has_info_class(col, MixinInfo) and hasattr(col, \"mask\"):\n                data[col.info.name].mask = col.mask\n\n        return data",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table.as_array",
+                "documentation": "Return a new copy of the table in the form of a structured np.ndarray or\nnp.ma.MaskedArray object (as appropriate).\n\nParameters\n----------\nkeep_byteorder : bool, optional\n    By default the returned array has all columns in native byte\n    order.  However, if this option is `True` this preserves the\n    byte order of all columns (if any are non-native).\n\nnames : list, optional:\n    List of column names to include for returned structured array.\n    Default is to include all table columns.\n\nReturns\n-------\ntable_array : array or `~numpy.ma.MaskedArray`\n    Copy of table as a numpy structured array.\n    ndarray for unmasked or `~numpy.ma.MaskedArray` for masked.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table.as_array"
+                    }
+                ],
+                "similarity": 0.15796755107497495,
+                "end_line": 684,
+                "signature": "astropy.table.table.Table.as_array(self, keep_byteorder, names)"
+            },
+            {
+                "start_line": 3345,
+                "file_path": "astropy/table/table.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def update(self, other, copy=True):\n        \"\"\"\n        Perform a dictionary-style update and merge metadata.\n\n        The argument ``other`` must be a |Table|, or something that can be used\n        to initialize a table. Columns from (possibly converted) ``other`` are\n        added to this table. In case of matching column names the column from\n        this table is replaced with the one from ``other``.\n\n        Parameters\n        ----------\n        other : table-like\n            Data to update this table with.\n        copy : bool\n            Whether the updated columns should be copies of or references to\n            the originals.\n\n        See Also\n        --------\n        add_columns, astropy.table.hstack, replace_column\n\n        Examples\n        --------\n        Update a table with another table::\n\n            >>> t1 = Table({'a': ['foo', 'bar'], 'b': [0., 0.]}, meta={'i': 0})\n            >>> t2 = Table({'b': [1., 2.], 'c': [7., 11.]}, meta={'n': 2})\n            >>> t1.update(t2)\n            >>> t1\n            <Table length=2>\n             a      b       c\n            str3 float64 float64\n            ---- ------- -------\n             foo     1.0     7.0\n             bar     2.0    11.0\n            >>> t1.meta\n            {'i': 0, 'n': 2}\n\n        Update a table with a dictionary::\n\n            >>> t = Table({'a': ['foo', 'bar'], 'b': [0., 0.]})\n            >>> t.update({'b': [1., 2.]})\n            >>> t\n            <Table length=2>\n             a      b\n            str3 float64\n            ---- -------\n             foo     1.0\n             bar     2.0\n        \"\"\"\n        from .operations import _merge_table_meta\n\n        if not isinstance(other, Table):\n            other = self.__class__(other, copy=copy)\n        common_cols = set(self.colnames).intersection(other.colnames)\n        for name, col in other.items():\n            if name in common_cols:\n                self.replace_column(name, col, copy=copy)\n            else:\n                self.add_column(col, name=name, copy=copy)\n        _merge_table_meta(self, [self, other], metadata_conflicts=\"silent\")",
+                "distance": 0.5,
+                "title": null,
+                "name": "astropy.table.table.Table.update",
+                "documentation": "Perform a dictionary-style update and merge metadata.\n\nThe argument ``other`` must be a |Table|, or something that can be used\nto initialize a table. Columns from (possibly converted) ``other`` are\nadded to this table. In case of matching column names the column from\nthis table is replaced with the one from ``other``.\n\nParameters\n----------\nother : table-like\n    Data to update this table with.\ncopy : bool\n    Whether the updated columns should be copies of or references to\n    the originals.\n\nSee Also\n--------\nadd_columns, astropy.table.hstack, replace_column\n\nExamples\n--------\nUpdate a table with another table::\n\n    >>> t1 = Table({'a': ['foo', 'bar'], 'b': [0., 0.]}, meta={'i': 0})\n    >>> t2 = Table({'b': [1., 2.], 'c': [7., 11.]}, meta={'n': 2})\n    >>> t1.update(t2)\n    >>> t1\n    <Table length=2>\n     a      b       c\n    str3 float64 float64\n    ---- ------- -------\n     foo     1.0     7.0\n     bar     2.0    11.0\n    >>> t1.meta\n    {'i': 0, 'n': 2}\n\nUpdate a table with a dictionary::\n\n    >>> t = Table({'a': ['foo', 'bar'], 'b': [0., 0.]})\n    >>> t.update({'b': [1., 2.]})\n    >>> t\n    <Table length=2>\n     a      b\n    str3 float64\n    ---- -------\n     foo     1.0\n     bar     2.0",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy/table/table.py"
+                    },
+                    {
+                        "start_node": "astropy/table/table.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "astropy.table.table.Table.update"
+                    }
+                ],
+                "similarity": 0.15773584566310875,
+                "end_line": 3405,
+                "signature": "astropy.table.table.Table.update(self, other, copy)"
+            },
+            {
                 "name": "astropy.io.ascii.rst.RST.__init__",
                 "file_path": "astropy/io/ascii/rst.py",
                 "start_line": 60,
@@ -1484,6 +1484,25 @@
                         "description": "points to method",
                         "type": "INFERENCE",
                         "end_node": "astropy.io.ascii.rst.RST.write"
+                    }
+                ],
+                "type": "method",
+                "similarity": 1.0
+            },
+            {
+                "name": "astropy.io.ascii.core._get_writer",
+                "signature": "astropy.io.ascii.core._get_writer(Writer, fast_writer)",
+                "file_path": "astropy/io/ascii/core.py",
+                "start_line": 1793,
+                "source_code": "def _get_writer(Writer, fast_writer, **kwargs):\n    \"\"\"Initialize a table writer allowing for common customizations. This\n    routine is for internal (package) use only and is useful because it depends\n    only on the \"core\" module.\"\"\"\n\n    from .fastbasic import FastBasic\n\n    # A value of None for fill_values imply getting the default string\n    # representation of masked values (depending on the writer class), but the\n    # machinery expects a list.  The easiest here is to just pop the value off,\n    # i.e. fill_values=None is the same as not providing it at all.\n    if \"fill_values\" in kwargs and kwargs[\"fill_values\"] is None:\n        del kwargs[\"fill_values\"]\n\n    if issubclass(Writer, FastBasic):  # Fast writers handle args separately\n        return Writer(**kwargs)\n    elif fast_writer and f\"fast_{Writer._format_name}\" in FAST_CLASSES:\n        # Switch to fast writer\n        kwargs[\"fast_writer\"] = fast_writer\n        return FAST_CLASSES[f\"fast_{Writer._format_name}\"](**kwargs)\n\n    writer_kwargs = {k: v for k, v in kwargs.items() if k not in extra_writer_pars}\n    writer = Writer(**writer_kwargs)\n\n    if \"delimiter\" in kwargs:\n        writer.header.splitter.delimiter = kwargs[\"delimiter\"]\n        writer.data.splitter.delimiter = kwargs[\"delimiter\"]\n    if \"comment\" in kwargs:\n        writer.header.write_comment = kwargs[\"comment\"]\n        writer.data.write_comment = kwargs[\"comment\"]\n    if \"quotechar\" in kwargs:\n        writer.header.splitter.quotechar = kwargs[\"quotechar\"]\n        writer.data.splitter.quotechar = kwargs[\"quotechar\"]\n    if \"formats\" in kwargs:\n        writer.data.formats = kwargs[\"formats\"]\n    if \"strip_whitespace\" in kwargs:\n        if kwargs[\"strip_whitespace\"]:\n            # Restore the default SplitterClass process_val method which strips\n            # whitespace.  This may have been changed in the Writer\n            # initialization (e.g. Rdb and Tab)\n            writer.data.splitter.process_val = operator.methodcaller(\"strip\", \" \\t\")\n        else:\n            writer.data.splitter.process_val = None\n    if \"names\" in kwargs:\n        writer.header.names = kwargs[\"names\"]\n    if \"include_names\" in kwargs:\n        writer.include_names = kwargs[\"include_names\"]\n    if \"exclude_names\" in kwargs:\n        writer.exclude_names = kwargs[\"exclude_names\"]\n    if \"fill_values\" in kwargs:\n        # Prepend user-specified values to the class default.\n        with suppress(TypeError, IndexError):\n            # Test if it looks like (match, replace_string, optional_colname),\n            # in which case make it a list\n            kwargs[\"fill_values\"][1] + \"\"\n            kwargs[\"fill_values\"] = [kwargs[\"fill_values\"]]\n        writer.data.fill_values = kwargs[\"fill_values\"] + writer.data.fill_values\n    if \"fill_include_names\" in kwargs:\n        writer.data.fill_include_names = kwargs[\"fill_include_names\"]\n    if \"fill_exclude_names\" in kwargs:\n        writer.data.fill_exclude_names = kwargs[\"fill_exclude_names\"]\n    return writer",
+                "end_line": 1854,
+                "doc_string": "Initialize a table writer allowing for common customizations. This\nroutine is for internal (package) use only and is useful because it depends\nonly on the \"core\" module.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to method",
+                        "type": "INFERENCE",
+                        "end_node": "astropy.io.ascii.core._get_writer"
                     }
                 ],
                 "type": "method",
@@ -1526,6 +1545,44 @@
                 ],
                 "type": "method",
                 "similarity": 1.0
+            },
+            {
+                "name": "astropy.io.ascii.connect.io_write",
+                "signature": "astropy.io.ascii.connect.io_write(format, table, filename)",
+                "file_path": "astropy/io/ascii/connect.py",
+                "start_line": 22,
+                "source_code": "def io_write(format, table, filename, **kwargs):\n    from .ui import write\n\n    if format != \"ascii\":\n        format = re.sub(r\"^ascii\\.\", \"\", format)\n        kwargs[\"format\"] = format\n    return write(table, filename, **kwargs)",
+                "end_line": 28,
+                "doc_string": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to method",
+                        "type": "INFERENCE",
+                        "end_node": "astropy.io.ascii.connect.io_write"
+                    }
+                ],
+                "type": "method",
+                "similarity": 1.0
+            },
+            {
+                "name": "astropy.table.connect.TableWrite.__call__",
+                "file_path": "astropy/table/connect.py",
+                "start_line": 127,
+                "end_line": 130,
+                "source_code": "def __call__(self, *args, serialize_method=None, **kwargs):\n        instance = self._instance\n        with serialize_method_as(instance, serialize_method):\n            self.registry.write(instance, *args, **kwargs)",
+                "signature": "astropy.table.connect.TableWrite.__call__(self)",
+                "doc_string": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to method",
+                        "type": "INFERENCE",
+                        "end_node": "astropy.table.connect.TableWrite.__call__"
+                    }
+                ],
+                "type": "method",
+                "similarity": 1.0
             }
         ],
         "classes": [
@@ -1549,7 +1606,7 @@
                     },
                     {
                         "start_node": "astropy/table/__init__.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.table.__init__.Conf"
                     }
@@ -1607,7 +1664,7 @@
                     },
                     {
                         "start_node": "astropy/__init__.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.__init__.physical_constants"
                     }
@@ -1762,7 +1819,7 @@
                 "signature": null
             },
             {
-                "start_line": 365,
+                "start_line": 368,
                 "file_path": "astropy/table/table.py",
                 "issue_id": null,
                 "type": "class",
@@ -1787,7 +1844,7 @@
                     }
                 ],
                 "similarity": 0.13226315537451755,
-                "end_line": 395,
+                "end_line": 398,
                 "signature": null
             },
             {
@@ -1955,7 +2012,7 @@
                     },
                     {
                         "start_node": "astropy/utils/data.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.utils.data.Conf"
                     }
@@ -2245,7 +2302,7 @@
                     },
                     {
                         "start_node": "astropy/io/ascii/fixedwidth.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.io.ascii.fixedwidth.FixedWidthTwoLineHeader"
                     }
@@ -2332,7 +2389,7 @@
                     },
                     {
                         "start_node": "astropy/visualization/wcsaxes/__init__.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.visualization.wcsaxes.__init__.Conf"
                     }
@@ -2796,7 +2853,7 @@
                     },
                     {
                         "start_node": "astropy/io/ascii/qdp.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.io.ascii.qdp.QDPHeader"
                     }

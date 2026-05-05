@@ -1,0 +1,26 @@
+The issue arises because the `TEST: {"MIGRATE": False}` setting prevents Django from running migrations to create the database schema for testing. However, by default, `SERIALIZE` is `True` (`connection.settings_dict['TEST'].get('SERIALIZE', True)`). This means that even without migrations, Django attempts to serialize the database content using `serialize_db_to_string()`.
+
+The `serialize_db_to_string()` method, in its `get_objects()` generator, iterates over models from *migrated* apps (e.g., `django.contrib.admin`) to dump their data. Since `MIGRATE: False` means these tables were never created, querying them results in a `psycopg2.errors.UndefinedTable` error for tables like `django_admin_log`.
+
+The logical fix is to ensure that if `MIGRATE` is `False` and `SERIALIZE` is not explicitly set, then `SERIALIZE` should also implicitly become `False`. This prevents Django from trying to serialize data from tables that it hasn't created. If a user explicitly sets `SERIALIZE: True` even with `MIGRATE: False`, it implies they are managing the schema themselves and expect serialization to work on their pre-existing schema.
+
+The proposed change modifies the logic for the `serialize` parameter passed to `create_test_db` in `django/test/utils.py`.
+
+```python
+### django/test/utils.py
+- start_line : 171
+- end_line : 175
+<<<<<<< SEARCH
+                    connection.creation.create_test_db(
+                        verbosity=verbosity,
+                        autoclobber=not interactive,
+                        keepdb=keepdb,
+                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', True),
+=======
+                    connection.creation.create_test_db(
+                        verbosity=verbosity,
+                        autoclobber=not interactive,
+                        keepdb=keepdb,
+                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', connection.settings_dict['TEST'].get('MIGRATE', True)),
+>>>>>>> REPLACE
+```

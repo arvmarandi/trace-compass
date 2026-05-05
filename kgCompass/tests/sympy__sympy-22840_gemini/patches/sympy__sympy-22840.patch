@@ -1,0 +1,22 @@
+The issue describes "strange behaviour" of `sympy.cse()` when applied to expressions involving `sympy.MatrixSymbol` and its elements. Specifically, `cse()` replaces `MatrixSymbol("a", 4, 4)` with a scalar `Symbol` (e.g., `x0`), and then accesses to its elements (e.g., `MatrixSymbol("a", 4, 4)[0, 0]`) are represented as `x0[0, 0]` in the `cse_subs` output. This `x0[0, 0]` is interpreted as `Indexed(x0, 0, 0)`. When `sympy.printing.ccode` is used, this leads to incorrect C code like `x0[0] = a[0];` and `x1 = x0[0];`, which treats `a` and `x0` as 1D arrays rather than 2D matrices.
+
+The root cause is that `cse()`'s internal traversal and replacement logic (specifically the `_traverse` function within `_cse`) identifies `MatrixSymbol` objects as candidates for common subexpression elimination and replaces them with standard `Dummy` symbols. However, `MatrixElement` objects (which represent `MatrixSymbol` elements like `A[i, j]`) are explicitly skipped from replacement. This creates a semantic mismatch: the matrix itself (`MatrixSymbol`) is replaced by a scalar symbol, but its elements (`MatrixElement`) are not. When the `cse` algorithm then reconstructs the expressions, `MatrixElement(MatrixSymbol, i, j)` effectively becomes `MatrixElement(Symbol, i, j)`. While `MatrixElement`'s `__new__` method *should* raise a `TypeError` for a non-matrix base, it appears that `cse` implicitly converts this invalid `MatrixElement(Symbol, i, j)` into an `Indexed(Symbol, i, j)` object in its output, which `ccode` then misinterprets.
+
+To fix this, `MatrixSymbol` objects should also be skipped from common subexpression elimination, similar to how `MatrixElement` objects are skipped. This prevents `MatrixSymbol` instances from being replaced by scalar `Dummy` symbols. If `MatrixSymbol` objects are not replaced, then `MatrixElement(MatrixSymbol, i, j)` expressions will remain intact, and the `ccode` printer can correctly generate `a[i][j]` (or similar) for them. This approach ensures that matrix expressions are treated as atomic units by `cse` for the purpose of replacement by scalar symbols, thus avoiding the generation of semantically incorrect intermediate expressions and subsequent erroneous C code.
+
+The change will be made in the `_traverse` function, which is an inner function within `sympy.simplify.cse_main._cse`.
+
+```python
+### sympy/simplify/cse_main.py
+# This change is within the internal `_traverse` function of `_cse`.
+# The `_traverse` function is not directly exposed in the provided snippets,
+# but it is a core part of `cse`'s implementation.
+# The line numbers are approximate based on SymPy 1.8 source.
+<<<<<<< SEARCH
+            if node.is_Atom or node.is_Indexed or node.is_MatrixElement:
+                continue
+=======
+            if node.is_Atom or node.is_Indexed or node.is_MatrixElement or isinstance(node, MatrixSymbol):
+                continue
+>>>>>>> REPLACE
+```

@@ -1,20 +1,31 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 
-import itertools
 import warnings
 import weakref
+import re
+
 from copy import deepcopy
 
 import numpy as np
 from numpy import ma
 
-from astropy.units import Quantity, StructuredUnit, Unit
-from astropy.utils.console import color_print
-from astropy.utils.data_info import BaseColumnInfo, dtype_info_name
-from astropy.utils.metadata import MetaData
-from astropy.utils.misc import dtype_bytes_or_chars
+# Remove this when Numpy no longer emits this warning and that Numpy version
+# becomes the minimum required version for Astropy.
+# https://github.com/astropy/astropy/issues/6285
+try:
+    from numpy.ma.core import MaskedArrayFutureWarning
+except ImportError:
+    # For Numpy versions that do not raise this warning.
+    MaskedArrayFutureWarning = None
 
-from . import groups, pprint
+from ..units import Unit, Quantity
+from ..utils.console import color_print
+from ..utils.metadata import MetaData
+from ..utils.data_info import BaseColumnInfo, dtype_info_name
+from ..utils.misc import dtype_bytes_or_chars
+from . import groups
+from . import pprint
+from .np_utils import fix_column_name
 
 # These "shims" provide __getitem__ implementations for Column and MaskedColumn
 from ._column_mixins import _ColumnGetitemShim, _MaskedColumnGetitemShim
@@ -33,36 +44,25 @@ class StringTruncateWarning(UserWarning):
     This does not inherit from AstropyWarning because we want to use
     stacklevel=2 to show the user where the issue occurred in their code.
     """
-
     pass
 
 
 # Always emit this warning, not just the first instance
-warnings.simplefilter("always", StringTruncateWarning)
+warnings.simplefilter('always', StringTruncateWarning)
 
 
 def _auto_names(n_cols):
     from . import conf
-
     return [str(conf.auto_colname).format(i) for i in range(n_cols)]
 
 
 # list of one and two-dimensional comparison functions, which sometimes return
 # a Column class and sometimes a plain array. Used in __array_wrap__ to ensure
 # they only return plain (masked) arrays (see #1446 and #1685)
-_comparison_functions = {
-    np.greater,
-    np.greater_equal,
-    np.less,
-    np.less_equal,
-    np.not_equal,
-    np.equal,
-    np.isfinite,
-    np.isinf,
-    np.isnan,
-    np.sign,
-    np.signbit,
-}
+_comparison_functions = set(
+    [np.greater, np.greater_equal, np.less, np.less_equal,
+     np.not_equal, np.equal,
+     np.isfinite, np.isinf, np.isnan, np.sign, np.signbit])
 
 
 def col_copy(col, copy_indices=True):
@@ -83,16 +83,26 @@ def col_copy(col, copy_indices=True):
     if isinstance(col, BaseColumn):
         return col.copy()
 
-    newcol = col.copy() if hasattr(col, "copy") else deepcopy(col)
-    # If the column has info defined, we copy it and adjust any indices
-    # to point to the copied column.  By guarding with the if statement,
-    # we avoid side effects (of creating the default info instance).
-    if "info" in col.__dict__:
+    # The new column should have None for the parent_table ref.  If the
+    # original parent_table weakref there at the point of copying then it
+    # generates an infinite recursion.  Instead temporarily remove the weakref
+    # on the original column and restore after the copy in an exception-safe
+    # manner.
+
+    parent_table = col.info.parent_table
+    indices = col.info.indices
+    col.info.parent_table = None
+    col.info.indices = []
+
+    try:
+        newcol = col.copy() if hasattr(col, 'copy') else deepcopy(col)
         newcol.info = col.info
-        if copy_indices and col.info.indices:
-            newcol.info.indices = deepcopy(col.info.indices)
-            for index in newcol.info.indices:
-                index.replace_col(col, newcol)
+        newcol.info.indices = deepcopy(indices or []) if copy_indices else []
+        for index in newcol.info.indices:
+            index.replace_col(col, newcol)
+    finally:
+        col.info.parent_table = parent_table
+        col.info.indices = indices
 
     return newcol
 
@@ -113,7 +123,6 @@ class FalseArray(np.ndarray):
     shape : tuple
         Data shape
     """
-
     def __new__(cls, shape):
         obj = np.zeros(shape, dtype=bool).view(cls)
         return obj
@@ -121,232 +130,8 @@ class FalseArray(np.ndarray):
     def __setitem__(self, item, val):
         val = np.asarray(val)
         if np.any(val):
-            raise ValueError(
-                f"Cannot set any element of {type(self).__name__} class to True"
-            )
-
-
-def _expand_string_array_for_values(arr, values):
-    """
-    For string-dtype return a version of ``arr`` that is wide enough for ``values``.
-    If ``arr`` is not string-dtype or does not need expansion then return ``arr``.
-
-    Parameters
-    ----------
-    arr : np.ndarray
-        Input array
-    values : scalar or array-like
-        Values for width comparison for string arrays
-
-    Returns
-    -------
-    arr_expanded : np.ndarray
-
-    """
-    if arr.dtype.kind in ("U", "S") and values is not np.ma.masked:
-        # Find the length of the longest string in the new values.
-        values_str_len = np.char.str_len(values).max()
-
-        # Determine character repeat count of arr.dtype.  Returns a positive
-        # int or None (something like 'U0' is not possible in numpy).  If new values
-        # are longer than current then make a new (wider) version of arr.
-        arr_str_len = dtype_bytes_or_chars(arr.dtype)
-        if arr_str_len and values_str_len > arr_str_len:
-            arr_dtype = arr.dtype.byteorder + arr.dtype.kind + str(values_str_len)
-            arr = arr.astype(arr_dtype)
-
-    return arr
-
-
-def _convert_sequence_data_to_array(data, dtype=None):
-    """Convert N-d sequence-like data to ndarray or MaskedArray.
-
-    This is the core function for converting Python lists or list of lists to a
-    numpy array. This handles embedded np.ma.masked constants in ``data`` along
-    with the special case of an homogeneous list of MaskedArray elements.
-
-    Considerations:
-
-    - np.ma.array is about 50 times slower than np.array for list input. This
-      function avoids using np.ma.array on list input.
-    - np.array emits a UserWarning for embedded np.ma.masked, but only for int
-      or float inputs. For those it converts to np.nan and forces float dtype.
-      For other types np.array is inconsistent, for instance converting
-      np.ma.masked to "0.0" for str types.
-    - Searching in pure Python for np.ma.masked in ``data`` is comparable in
-      speed to calling ``np.array(data)``.
-    - This function may end up making two additional copies of input ``data``.
-
-    Parameters
-    ----------
-    data : N-d sequence
-        Input data, typically list or list of lists
-    dtype : None or dtype-like
-        Output datatype (None lets np.array choose)
-
-    Returns
-    -------
-    np_data : np.ndarray or np.ma.MaskedArray
-
-    """
-    np_ma_masked = np.ma.masked  # Avoid repeated lookups of this object
-
-    # Special case of an homogeneous list of MaskedArray elements (see #8977).
-    # np.ma.masked is an instance of MaskedArray, so exclude those values.
-    if (
-        hasattr(data, "__len__")
-        and len(data) > 0
-        and all(
-            isinstance(val, np.ma.MaskedArray) and val is not np_ma_masked
-            for val in data
-        )
-    ):
-        np_data = np.ma.array(data, dtype=dtype)
-        return np_data
-
-    # First convert data to a plain ndarray. If there are instances of np.ma.masked
-    # in the data this will issue a warning for int and float.
-    with warnings.catch_warnings(record=True) as warns:
-        # Ensure this warning from numpy is always enabled and that it is not
-        # converted to an error (which can happen during pytest).
-        warnings.filterwarnings(
-            "always", category=UserWarning, message=".*converting a masked element.*"
-        )
-        # FutureWarning in numpy 1.21. See https://github.com/astropy/astropy/issues/11291
-        # and https://github.com/numpy/numpy/issues/18425.
-        warnings.filterwarnings(
-            "always",
-            category=FutureWarning,
-            message=".*Promotion of numbers and bools to strings.*",
-        )
-        try:
-            np_data = np.array(data, dtype=dtype)
-        except np.ma.MaskError:
-            # Catches case of dtype=int with masked values, instead let it
-            # convert to float
-            np_data = np.array(data)
-        except Exception:
-            # Conversion failed for some reason, e.g. [2, 1*u.m] gives TypeError in Quantity.
-            # First try to interpret the data as Quantity. If that still fails then fall
-            # through to object
-            try:
-                np_data = Quantity(data, dtype)
-            except Exception:
-                dtype = object
-                np_data = np.array(data, dtype=dtype)
-
-    if np_data.ndim == 0 or (np_data.ndim > 0 and len(np_data) == 0):
-        # Implies input was a scalar or an empty list (e.g. initializing an
-        # empty table with pre-declared names and dtypes but no data).  Here we
-        # need to fall through to initializing with the original data=[].
-        return data
-
-    # If there were no warnings and the data are int or float, then we are done.
-    # Other dtypes like string or complex can have masked values and the
-    # np.array() conversion gives the wrong answer (e.g. converting np.ma.masked
-    # to the string "0.0").
-    if len(warns) == 0 and np_data.dtype.kind in ("i", "f"):
-        return np_data
-
-    # Now we need to determine if there is an np.ma.masked anywhere in input data.
-
-    # Make a statement like below to look for np.ma.masked in a nested sequence.
-    # Because np.array(data) succeeded we know that `data` has a regular N-d
-    # structure. Find ma_masked:
-    #   any(any(any(d2 is ma_masked for d2 in d1) for d1 in d0) for d0 in data)
-    # Using this eval avoids creating a copy of `data` in the more-usual case of
-    # no masked elements.
-    any_statement = "d0 is ma_masked"
-    for ii in reversed(range(np_data.ndim)):
-        if ii == 0:
-            any_statement = f"any({any_statement} for d0 in data)"
-        elif ii == np_data.ndim - 1:
-            any_statement = f"any(d{ii} is ma_masked for d{ii} in d{ii-1})"
-        else:
-            any_statement = f"any({any_statement} for d{ii} in d{ii-1})"
-    context = {"ma_masked": np.ma.masked, "data": data}
-    has_masked = eval(any_statement, context)
-
-    # If there are any masks then explicitly change each one to a fill value and
-    # set a mask boolean array. If not has_masked then we're done.
-    if has_masked:
-        mask = np.zeros(np_data.shape, dtype=bool)
-        data_filled = np.array(data, dtype=object)
-
-        # Make type-appropriate fill value based on initial conversion.
-        if np_data.dtype.kind == "U":
-            fill = ""
-        elif np_data.dtype.kind == "S":
-            fill = b""
-        else:
-            # Zero works for every numeric type.
-            fill = 0
-
-        ranges = [range(dim) for dim in np_data.shape]
-        for idxs in itertools.product(*ranges):
-            val = data_filled[idxs]
-            if val is np_ma_masked:
-                data_filled[idxs] = fill
-                mask[idxs] = True
-            elif isinstance(val, bool) and dtype is None:
-                # If we see a bool and dtype not specified then assume bool for
-                # the entire array. Not perfect but in most practical cases OK.
-                # Unfortunately numpy types [False, 0] as int, not bool (and
-                # [False, np.ma.masked] => array([0.0, np.nan])).
-                dtype = bool
-
-        # If no dtype is provided then need to convert back to list so np.array
-        # does type autodetection.
-        if dtype is None:
-            data_filled = data_filled.tolist()
-
-        # Use np.array first to convert `data` to ndarray (fast) and then make
-        # masked array from an ndarray with mask (fast) instead of from `data`.
-        np_data = np.ma.array(np.array(data_filled, dtype=dtype), mask=mask)
-
-    return np_data
-
-
-def _make_compare(oper):
-    """
-    Make Column comparison methods which encode the ``other`` object to utf-8
-    in the case of a bytestring dtype for Py3+.
-
-    Parameters
-    ----------
-    oper : str
-        Operator name
-    """
-
-    def _compare(self, other):
-        op = oper  # copy enclosed ref to allow swap below
-
-        # If other is a Quantity, we should let it do the work, since
-        # it can deal with our possible unit (which, for MaskedColumn,
-        # would get dropped below, as '.data' is accessed in super()).
-        if isinstance(other, Quantity):
-            return NotImplemented
-
-        # If we are unicode and other is a column with bytes, defer to it for
-        # doing the unicode sandwich.  This avoids problems like those
-        # discussed in #6838 and #6899.
-        if (
-            self.dtype.kind == "U"
-            and isinstance(other, Column)
-            and other.dtype.kind == "S"
-        ):
-            return NotImplemented
-
-        # If we are bytes, encode other as needed.
-        if self.dtype.char == "S":
-            other = self._encode_str(other)
-
-        # Now just let the regular ndarray.__eq__, etc., take over.
-        result = getattr(super(Column, self), op)(other)
-        # But we should not return Column instances for this case.
-        return result.data if isinstance(result, Column) else result
-
-    return _compare
+            raise ValueError('Cannot set any element of {0} class to True'
+                             .format(self.__class__.__name__))
 
 
 class ColumnInfo(BaseColumnInfo):
@@ -356,105 +141,10 @@ class ColumnInfo(BaseColumnInfo):
     This is required when the object is used as a mixin column within a table,
     but can be used as a general way to store meta information.
     """
-
-    attr_names = BaseColumnInfo.attr_names | {"groups"}
-    _attrs_no_copy = BaseColumnInfo._attrs_no_copy | {"groups"}
-    attrs_from_parent = attr_names
+    attrs_from_parent = BaseColumnInfo.attr_names
     _supports_indexing = True
-    # For structured columns, data is used to store a dict of columns.
-    # Store entries in that dict as name.key instead of name.data.key.
-    _represent_as_dict_primary_data = "data"
 
-    def _represent_as_dict(self):
-        result = super()._represent_as_dict()
-        names = self._parent.dtype.names
-        # For a regular column, we are done, but for a structured
-        # column, we use a SerializedColumns to store the pieces.
-        if names is None:
-            return result
-
-        from .serialize import SerializedColumn
-
-        data = SerializedColumn()
-        # If this column has a StructuredUnit, we split it and store
-        # it on the corresponding part. Otherwise, we just store it
-        # as an attribute below.  All other attributes we remove from
-        # the parts, so that we do not store them multiple times.
-        # (Note that attributes are not linked to the parent, so it
-        # is safe to reset them.)
-        # TODO: deal with (some of) this in Column.__getitem__?
-        # Alternatively: should we store info on the first part?
-        # TODO: special-case format somehow? Can we have good formats
-        # for structured columns?
-        unit = self.unit
-        if isinstance(unit, StructuredUnit) and len(unit) == len(names):
-            units = unit.values()
-            unit = None  # No need to store as an attribute as well.
-        else:
-            units = [None] * len(names)
-        for name, part_unit in zip(names, units):
-            part = Column(self._parent[name])
-            part.unit = part_unit
-            part.description = None
-            part.meta = {}
-            part.format = None
-            data[name] = part
-
-        # Create the attributes required to reconstruct the column.
-        result["data"] = data
-        # Store the shape if needed. Just like scalar data, a structured data
-        # column (e.g. with dtype `f8,i8`) can be multidimensional within each
-        # row and have a shape, and that needs to be distinguished from the
-        # case that each entry in the structure has the same shape (e.g.,
-        # distinguist a column with dtype='f8,i8' and 2 elements per row from
-        # one with dtype '2f8,2i8' and just one element per row).
-        if shape := self._parent.shape[1:]:
-            result["shape"] = list(shape)
-        # Also store the standard info attributes since these are
-        # stored on the parent and can thus just be passed on as
-        # arguments.  TODO: factor out with essentially the same
-        # code in serialize._represent_mixin_as_column.
-        if unit is not None and unit != "":
-            result["unit"] = unit
-        if self.format is not None:
-            result["format"] = self.format
-        if self.description is not None:
-            result["description"] = self.description
-        if self.meta:
-            result["meta"] = self.meta
-
-        return result
-
-    def _construct_from_dict(self, map):
-        if not isinstance(map.get("data"), dict):
-            return super()._construct_from_dict(map)
-
-        # Reconstruct a structured Column, by first making an empty column
-        # and then filling it with the structured data.
-        data = map.pop("data")
-        shape = tuple(map.pop("shape", ()))
-        # There are three elements in the shape of `part`:
-        # (table length, shape of structured column, shape of part like '3f8')
-        # The column `shape` only includes the second, so by adding one to its
-        # length to include the table length, we pick off a possible last bit.
-        dtype = np.dtype(
-            [
-                (name, part.dtype, part.shape[len(shape) + 1 :])
-                for name, part in data.items()
-            ]
-        )
-        units = tuple(col.info.unit for col in data.values())
-        if all(unit is not None for unit in units):
-            map["unit"] = StructuredUnit(units, dtype)
-        map.update(dtype=dtype, shape=shape, length=len(data[dtype.names[0]]))
-        # Construct the empty column from `map` (note: 'data' removed above).
-        result = super()._construct_from_dict(map)
-        # Fill it with the structured data.
-        for name in dtype.names:
-            result[name] = data[name]
-        return result
-
-    def new_like(self, cols, length, metadata_conflicts="warn", name=None):
+    def new_like(self, cols, length, metadata_conflicts='warn', name=None):
         """
         Return a new Column instance which is consistent with the
         input ``cols`` and has ``length`` rows.
@@ -479,46 +169,24 @@ class ColumnInfo(BaseColumnInfo):
             New instance of this class consistent with ``cols``
 
         """
-        attrs = self.merge_cols_attributes(
-            cols, metadata_conflicts, name, ("meta", "unit", "format", "description")
-        )
+        attrs = self.merge_cols_attributes(cols, metadata_conflicts, name,
+                                           ('meta', 'unit', 'format', 'description'))
 
         return self._parent_cls(length=length, **attrs)
 
-    def get_sortable_arrays(self):
-        """
-        Return a list of arrays which can be lexically sorted to represent
-        the order of the parent column.
-
-        For Column this is just the column itself.
-
-        Returns
-        -------
-        arrays : list of ndarray
-        """
-        return [self._parent]
-
 
 class BaseColumn(_ColumnGetitemShim, np.ndarray):
+
     meta = MetaData()
 
-    def __new__(
-        cls,
-        data=None,
-        name=None,
-        dtype=None,
-        shape=(),
-        length=0,
-        description=None,
-        unit=None,
-        format=None,
-        meta=None,
-        copy=False,
-        copy_indices=True,
-    ):
+    def __new__(cls, data=None, name=None,
+                dtype=None, shape=(), length=0,
+                description=None, unit=None, format=None, meta=None,
+                copy=False, copy_indices=True):
         if data is None:
-            self_data = np.zeros((length,) + shape, dtype=dtype)
-        elif isinstance(data, BaseColumn) and hasattr(data, "_name"):
+            dtype = (np.dtype(dtype).str, shape)
+            self_data = np.zeros(length, dtype=dtype)
+        elif isinstance(data, BaseColumn) and hasattr(data, '_name'):
             # When unpickling a MaskedColumn, ``data`` will be a bare
             # BaseColumn with none of the expected attributes.  In this case
             # do NOT execute this block which initializes from ``data``
@@ -531,7 +199,7 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
             if format is None:
                 format = data.format
             if meta is None:
-                meta = data.meta
+                meta = deepcopy(data.meta)
             if name is None:
                 name = data.name
         elif isinstance(data, Quantity):
@@ -539,29 +207,28 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
                 self_data = np.array(data, dtype=dtype, copy=copy)
                 unit = data.unit
             else:
-                self_data = Quantity(data, unit, dtype=dtype, copy=copy).value
-            # If 'info' has been defined, copy basic properties (if needed).
-            if "info" in data.__dict__:
-                if description is None:
-                    description = data.info.description
-                if format is None:
-                    format = data.info.format
-                if meta is None:
-                    meta = data.info.meta
+                self_data = np.array(data.to(unit), dtype=dtype, copy=copy)
+            if description is None:
+                description = data.info.description
+            if format is None:
+                format = data.info.format
+            if meta is None:
+                meta = deepcopy(data.info.meta)
 
         else:
-            if np.dtype(dtype).char == "S":
+            if np.dtype(dtype).char == 'S':
                 data = cls._encode_str(data)
             self_data = np.array(data, dtype=dtype, copy=copy)
 
         self = self_data.view(cls)
-        self._name = None if name is None else str(name)
+        self._name = fix_column_name(name)
         self._parent_table = None
         self.unit = unit
         self._format = format
         self.description = description
         self.meta = meta
-        self.indices = deepcopy(getattr(data, "indices", [])) if copy_indices else []
+        self.indices = deepcopy(getattr(data, 'indices', [])) if \
+                       copy_indices else []
         for index in self.indices:
             index.replace_col(data, self)
 
@@ -572,18 +239,11 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         return self.view(np.ndarray)
 
     @property
-    def value(self):
-        """
-        An alias for the existing ``data`` attribute.
-        """
-        return self.data
-
-    @property
     def parent_table(self):
         # Note: It seems there are some cases where _parent_table is not set,
         # such after restoring from a pickled Column.  Perhaps that should be
         # fixed, but this is also okay for now.
-        if getattr(self, "_parent_table", None) is None:
+        if getattr(self, '_parent_table', None) is None:
             return None
         else:
             return self._parent_table()
@@ -597,7 +257,7 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
     info = ColumnInfo()
 
-    def copy(self, order="C", data=None, copy_data=True):
+    def copy(self, order='C', data=None, copy_data=True):
         """
         Return a copy of the current instance.
 
@@ -632,13 +292,6 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
         out = data.view(self.__class__)
         out.__array_finalize__(self)
-
-        # If there is meta on the original column then deepcopy (since "copy" of column
-        # implies complete independence from original).  __array_finalize__ will have already
-        # made a light copy.  I'm not sure how to avoid that initial light copy.
-        if self.meta is not None:
-            out.meta = self.meta  # MetaData descriptor does a deepcopy here
-
         # for MaskedColumn, MaskedArray.__array_finalize__ also copies mask
         # from self, which is not the idea here, so undo
         if isinstance(self, MaskedColumn):
@@ -655,8 +308,8 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         5-tuple that has Column-specific state values.
         """
         # Get the Column attributes
-        names = ("_name", "_unit", "_format", "description", "meta", "indices")
-        attrs = dict(zip(names, state[-1]))
+        names = ('_name', '_unit', '_format', 'description', 'meta', 'indices')
+        attrs = {name: val for name, val in zip(names, state[-1])}
 
         state = state[:-1]
 
@@ -684,14 +337,8 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         reconstruct_func, reconstruct_func_args, state = super_class.__reduce__(self)
 
         # Define Column-specific attrs and meta that gets added to state.
-        column_state = (
-            self.name,
-            self.unit,
-            self.format,
-            self.description,
-            self.meta,
-            self.indices,
-        )
+        column_state = (self.name, self.unit, self.format, self.description,
+                        self.meta, self.indices)
         state = state + (column_state,)
 
         return reconstruct_func, reconstruct_func_args, state
@@ -708,11 +355,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         # or viewcast e.g. obj.view(Column).  In either case we want to
         # init Column attributes for self from obj if possible.
         self.parent_table = None
-        if not hasattr(self, "indices"):  # may have been copied in __new__
+        if not hasattr(self, 'indices'):  # may have been copied in __new__
             self.indices = []
         self._copy_attrs(obj)
-        if "info" in getattr(obj, "__dict__", {}):
-            self.info = obj.info
 
     def __array_wrap__(self, out_arr, context=None):
         """
@@ -735,10 +380,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
            (see #1446 and #1685)
         """
         out_arr = super().__array_wrap__(out_arr, context)
-        if self.shape != out_arr.shape or (
-            isinstance(out_arr, BaseColumn)
-            and (context is not None and context[0] in _comparison_functions)
-        ):
+        if (self.shape != out_arr.shape or
+            (isinstance(out_arr, BaseColumn) and
+             (context is not None and context[0] in _comparison_functions))):
             return out_arr.data[()]
         else:
             return out_arr
@@ -752,8 +396,7 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
     @name.setter
     def name(self, val):
-        if val is not None:
-            val = str(val)
+        val = fix_column_name(val)
 
         if self.parent_table is not None:
             table = self.parent_table
@@ -766,11 +409,13 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         """
         Format string for displaying values in this column.
         """
+
         return self._format
 
     @format.setter
     def format(self, format_string):
-        prev_format = getattr(self, "_format", None)
+
+        prev_format = getattr(self, '_format', None)
 
         self._format = format_string  # set new format string
 
@@ -781,9 +426,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
             # revert to restore previous format if there was one
             self._format = prev_format
             raise ValueError(
-                "Invalid format for column '{}': could not display "
-                "values in this column using this format".format(self.name)
-            ) from err
+                "Invalid format for column '{0}': could not display "
+                "values in this column using this format ({1})".format(
+                    self.name, err.args[0]))
 
     @property
     def descr(self):
@@ -807,9 +452,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         # Iterate over formatted values with no max number of lines, no column
         # name, no unit, and ignoring the returned header info in outs.
         _pformat_col_iter = self._formatter._pformat_col_iter
-        yield from _pformat_col_iter(
-            self, -1, show_name=False, show_unit=False, show_dtype=False, outs={}
-        )
+        for str_val in _pformat_col_iter(self, -1, show_name=False, show_unit=False,
+                                         show_dtype=False, outs={}):
+            yield str_val
 
     def attrs_equal(self, col):
         """Compare the column attributes of ``col`` to this object.
@@ -824,13 +469,14 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
         Returns
         -------
-        equal : bool
+        equal : boolean
             True if all attributes are equal
         """
         if not isinstance(col, BaseColumn):
-            raise ValueError("Comparison `col` must be a Column or MaskedColumn object")
+            raise ValueError('Comparison `col` must be a Column or '
+                             'MaskedColumn object')
 
-        attrs = ("name", "unit", "dtype", "format", "description", "meta")
+        attrs = ('name', 'unit', 'dtype', 'format', 'description', 'meta')
         equal = all(getattr(self, x) == getattr(col, x) for x in attrs)
 
         return equal
@@ -839,14 +485,8 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
     def _formatter(self):
         return FORMATTER if (self.parent_table is None) else self.parent_table.formatter
 
-    def pformat(
-        self,
-        max_lines=None,
-        show_name=True,
-        show_unit=False,
-        show_dtype=False,
-        html=False,
-    ):
+    def pformat(self, max_lines=None, show_name=True, show_unit=False, show_dtype=False,
+                html=False):
         """Return a list of formatted string representation of column values.
 
         If no value of ``max_lines`` is supplied then the height of the
@@ -880,14 +520,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
         """
         _pformat_col = self._formatter._pformat_col
-        lines, outs = _pformat_col(
-            self,
-            max_lines,
-            show_name=show_name,
-            show_unit=show_unit,
-            show_dtype=show_dtype,
-            html=html,
-        )
+        lines, outs = _pformat_col(self, max_lines, show_name=show_name,
+                                   show_unit=show_unit, show_dtype=show_dtype,
+                                   html=html)
         return lines
 
     def pprint(self, max_lines=None, show_name=True, show_unit=False, show_dtype=False):
@@ -915,18 +550,13 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
             Include column dtype. Default is True.
         """
         _pformat_col = self._formatter._pformat_col
-        lines, outs = _pformat_col(
-            self,
-            max_lines,
-            show_name=show_name,
-            show_unit=show_unit,
-            show_dtype=show_dtype,
-        )
+        lines, outs = _pformat_col(self, max_lines, show_name=show_name, show_unit=show_unit,
+                                   show_dtype=show_dtype)
 
-        n_header = outs["n_header"]
+        n_header = outs['n_header']
         for i, line in enumerate(lines):
             if i < n_header:
-                color_print(line, "red")
+                color_print(line, 'red')
             else:
                 print(line)
 
@@ -958,9 +588,8 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
         """
         _more_tabcol = self._formatter._more_tabcol
-        _more_tabcol(
-            self, max_lines=max_lines, show_name=show_name, show_unit=show_unit
-        )
+        _more_tabcol(self, max_lines=max_lines, show_name=show_name,
+                     show_unit=show_unit)
 
     @property
     def unit(self):
@@ -978,24 +607,11 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         if unit is None:
             self._unit = None
         else:
-            self._unit = Unit(unit, parse_strict="silent")
+            self._unit = Unit(unit, parse_strict='silent')
 
     @unit.deleter
     def unit(self):
         self._unit = None
-
-    def searchsorted(self, v, side="left", sorter=None):
-        # For bytes type data, encode the `v` value as UTF-8 (if necessary) before
-        # calling searchsorted. This prevents a factor of 1000 slowdown in
-        # searchsorted in this case.
-        a = self.data
-        if a.dtype.kind == "S" and not isinstance(v, bytes):
-            v = np.asarray(v)
-            if v.dtype.kind == "U":
-                v = np.char.encode(v, "utf-8")
-        return np.searchsorted(a, v, side=side, sorter=sorter)
-
-    searchsorted.__doc__ = np.ndarray.searchsorted.__doc__
 
     def convert_unit_to(self, new_unit, equivalencies=[]):
         """
@@ -1011,9 +627,9 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         new_unit : str or `astropy.units.UnitBase` instance
             The unit to convert to.
 
-        equivalencies : list of tuple
+        equivalencies : list of equivalence pairs, optional
            A list of equivalence pairs to try if the unit are not
-           directly convertible.  See :ref:`astropy:unit_equivalencies`.
+           directly convertible.  See :ref:`unit_equivalencies`.
 
         Raises
         ------
@@ -1022,18 +638,19 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         """
         if self.unit is None:
             raise ValueError("No unit set on column")
-        self.data[:] = self.unit.to(new_unit, self.data, equivalencies=equivalencies)
+        self.data[:] = self.unit.to(
+            new_unit, self.data, equivalencies=equivalencies)
         self.unit = new_unit
 
     @property
     def groups(self):
-        if not hasattr(self, "_groups"):
+        if not hasattr(self, '_groups'):
             self._groups = groups.ColumnGroups(self)
         return self._groups
 
     def group_by(self, keys):
         """
-        Group this column by the specified ``keys``.
+        Group this column by the specified ``keys``
 
         This effectively splits the column into groups which correspond to
         unique values of the ``keys`` grouping object.  The output is a new
@@ -1057,14 +674,12 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
     def _copy_groups(self, out):
         """
-        Copy current groups into a copy of self ``out``.
+        Copy current groups into a copy of self ``out``
         """
         if self.parent_table:
-            if hasattr(self.parent_table, "_groups"):
-                out._groups = groups.ColumnGroups(
-                    out, indices=self.parent_table._groups._indices
-                )
-        elif hasattr(self, "_groups"):
+            if hasattr(self.parent_table, '_groups'):
+                out._groups = groups.ColumnGroups(out, indices=self.parent_table._groups._indices)
+        elif hasattr(self, '_groups'):
             out._groups = groups.ColumnGroups(out, indices=self._groups._indices)
 
     # Strip off the BaseColumn-ness for repr and str so that
@@ -1082,9 +697,7 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         # the Quantity initializer is used here because it correctly fails
         # if the column's values are non-numeric (like strings), while .view
         # will happily return a quantity with gibberish for numerical values
-        return Quantity(
-            self, self.unit, copy=False, dtype=self.dtype, order="A", subok=True
-        )
+        return Quantity(self, copy=False, dtype=self.dtype, order='A')
 
     def to(self, unit, equivalencies=[], **kwargs):
         """
@@ -1093,10 +706,10 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
         Parameters
         ----------
-        unit : unit-like
+        unit : `~astropy.units.Unit` or str
             The unit to convert to (i.e., a valid argument to the
             :meth:`astropy.units.Quantity.to` method).
-        equivalencies : list of tuple
+        equivalencies : list of equivalence pairs, optional
             Equivalencies to use for this conversion.  See
             :meth:`astropy.units.Quantity.to` for more details.
 
@@ -1110,16 +723,12 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
 
     def _copy_attrs(self, obj):
         """
-        Copy key column attributes from ``obj`` to self.
+        Copy key column attributes from ``obj`` to self
         """
-        for attr in ("name", "unit", "_format", "description"):
+        for attr in ('name', 'unit', '_format', 'description'):
             val = getattr(obj, attr, None)
             setattr(self, attr, val)
-
-        # Light copy of meta if it is not empty
-        obj_meta = getattr(obj, "meta", None)
-        if obj_meta:
-            self.meta = obj_meta.copy()
+        self.meta = deepcopy(getattr(obj, 'meta', {}))
 
     @staticmethod
     def _encode_str(value):
@@ -1128,24 +737,18 @@ class BaseColumn(_ColumnGetitemShim, np.ndarray):
         called for Py3+.
         """
         if isinstance(value, str):
-            value = value.encode("utf-8")
+            value = value.encode('utf-8')
         elif isinstance(value, bytes) or value is np.ma.masked:
             pass
         else:
             arr = np.asarray(value)
-            if arr.dtype.char == "U":
-                arr = np.char.encode(arr, encoding="utf-8")
+            if arr.dtype.char == 'U':
+                arr = np.char.encode(arr, encoding='utf-8')
                 if isinstance(value, np.ma.MaskedArray):
                     arr = np.ma.array(arr, mask=value.mask, copy=False)
             value = arr
 
         return value
-
-    def tolist(self):
-        if self.dtype.kind == "S":
-            return np.chararray.decode(self, encoding="utf-8").tolist()
-        else:
-            return super().tolist()
 
 
 class Column(BaseColumn):
@@ -1153,11 +756,11 @@ class Column(BaseColumn):
 
     Parameters
     ----------
-    data : list, ndarray, or None
+    data : list, ndarray or None
         Column data values
     name : str
         Column name and key for reference within Table
-    dtype : `~numpy.dtype`-like
+    dtype : numpy.dtype compatible value
         Data type for column
     shape : tuple or ()
         Dimensions of a single row element in the column data
@@ -1167,7 +770,7 @@ class Column(BaseColumn):
         Full description of column
     unit : str or None
         Physical unit
-    format : str, None, or callable
+    format : str or None or function or callable
         Format string for outputting column values.  This can be an
         "old-style" (``format % value``) or "new-style" (`str.format`)
         format specification string or a function or any callable object that
@@ -1192,7 +795,7 @@ class Column(BaseColumn):
 
       The ``dtype`` argument can be any value which is an acceptable
       fixed-size data-type initializer for the numpy.dtype() method.  See
-      `<https://numpy.org/doc/stable/reference/arrays.dtypes.html>`_.
+      `<https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html>`_.
       Examples include:
 
       - Python non-string type (float, int, bool)
@@ -1211,57 +814,28 @@ class Column(BaseColumn):
 
       The default ``dtype`` is ``np.float64``.  The ``shape`` argument is the
       array shape of a single cell in the column.
-
-    To access the ``Column`` data as a raw `numpy.ndarray` object, you can use
-    one of the ``data`` or ``value`` attributes (which are equivalent)::
-
-        col.data
-        col.value
     """
 
-    def __new__(
-        cls,
-        data=None,
-        name=None,
-        dtype=None,
-        shape=(),
-        length=0,
-        description=None,
-        unit=None,
-        format=None,
-        meta=None,
-        copy=False,
-        copy_indices=True,
-    ):
+    def __new__(cls, data=None, name=None,
+                dtype=None, shape=(), length=0,
+                description=None, unit=None, format=None, meta=None,
+                copy=False, copy_indices=True):
+
         if isinstance(data, MaskedColumn) and np.any(data.mask):
-            raise TypeError(
-                "Cannot convert a MaskedColumn with masked value to a Column"
-            )
+            raise TypeError("Cannot convert a MaskedColumn with masked value to a Column")
 
         self = super().__new__(
-            cls,
-            data=data,
-            name=name,
-            dtype=dtype,
-            shape=shape,
-            length=length,
-            description=description,
-            unit=unit,
-            format=format,
-            meta=meta,
-            copy=copy,
-            copy_indices=copy_indices,
-        )
+            cls, data=data, name=name, dtype=dtype, shape=shape, length=length,
+            description=description, unit=unit, format=format, meta=meta,
+            copy=copy, copy_indices=copy_indices)
         return self
 
     def __setattr__(self, item, value):
         if not isinstance(self, MaskedColumn) and item == "mask":
-            raise AttributeError(
-                "cannot set mask value to a column in non-masked Table"
-            )
+            raise AttributeError("cannot set mask value to a column in non-masked Table")
         super().__setattr__(item, value)
 
-        if item == "unit" and issubclass(self.dtype.type, np.number):
+        if item == 'unit' and issubclass(self.dtype.type, np.number):
             try:
                 converted = self.parent_table._convert_col_for_table(self)
             except AttributeError:  # Either no parent table or parent table is None
@@ -1278,30 +852,27 @@ class Column(BaseColumn):
         descr_vals = [self.__class__.__name__]
         unit = None if self.unit is None else str(self.unit)
         shape = None if self.ndim <= 1 else self.shape[1:]
-        for attr, val in (
-            ("name", self.name),
-            ("dtype", dtype_info_name(self.dtype)),
-            ("shape", shape),
-            ("unit", unit),
-            ("format", self.format),
-            ("description", self.description),
-            ("length", len(self)),
-        ):
-            if val is not None:
-                descr_vals.append(f"{attr}={val!r}")
+        for attr, val in (('name', self.name),
+                          ('dtype', dtype_info_name(self.dtype)),
+                          ('shape', shape),
+                          ('unit', unit),
+                          ('format', self.format),
+                          ('description', self.description),
+                          ('length', len(self))):
 
-        descr = "<" + " ".join(descr_vals) + ">\n"
+            if val is not None:
+                descr_vals.append('{0}={1!r}'.format(attr, val))
+
+        descr = '<' + ' '.join(descr_vals) + '>\n'
 
         if html:
-            from astropy.utils.xml.writer import xml_escape
-
+            from ..utils.xml.writer import xml_escape
             descr = xml_escape(descr)
 
         data_lines, outs = self._formatter._pformat_col(
-            self, show_name=False, show_unit=False, show_length=False, html=html
-        )
+            self, show_name=False, show_unit=False, show_length=False, html=html)
 
-        out = descr + "\n".join(data_lines)
+        out = descr + '\n'.join(data_lines)
 
         return out
 
@@ -1317,10 +888,10 @@ class Column(BaseColumn):
             return str(self.item())
 
         lines, outs = self._formatter._pformat_col(self)
-        return "\n".join(lines)
+        return '\n'.join(lines)
 
     def __bytes__(self):
-        return str(self).encode("utf-8")
+        return str(self).encode('utf-8')
 
     def _check_string_truncate(self, value):
         """
@@ -1339,15 +910,14 @@ class Column(BaseColumn):
         self_str_len = dtype_bytes_or_chars(self.dtype)
 
         if value_str_len > self_str_len:
-            warnings.warn(
-                "truncated right side string(s) longer than {} "
-                "character(s) during assignment".format(self_str_len),
-                StringTruncateWarning,
-                stacklevel=3,
-            )
+            warnings.warn('truncated right side string(s) longer than {} '
+                          'character(s) during assignment'
+                          .format(self_str_len),
+                          StringTruncateWarning,
+                          stacklevel=3)
 
     def __setitem__(self, index, value):
-        if self.dtype.char == "S":
+        if self.dtype.char == 'S':
             value = self._encode_str(value)
 
         # Issue warning for string assignment that truncates ``value``
@@ -1361,12 +931,47 @@ class Column(BaseColumn):
         # order-of-magnitude speed-up. [#2994]
         self.data[index] = value
 
-    __eq__ = _make_compare("__eq__")
-    __ne__ = _make_compare("__ne__")
-    __gt__ = _make_compare("__gt__")
-    __lt__ = _make_compare("__lt__")
-    __ge__ = _make_compare("__ge__")
-    __le__ = _make_compare("__le__")
+    def _make_compare(oper):
+        """
+        Make comparison methods which encode the ``other`` object to utf-8
+        in the case of a bytestring dtype for Py3+.
+        """
+        swapped_oper = {'__eq__': '__eq__',
+                        '__ne__': '__ne__',
+                        '__gt__': '__lt__',
+                        '__lt__': '__gt__',
+                        '__ge__': '__le__',
+                        '__le__': '__ge__'}[oper]
+
+        def _compare(self, other):
+            op = oper  # copy enclosed ref to allow swap below
+
+            # Special case to work around #6838.  Other combinations work OK,
+            # see tests.test_column.test_unicode_sandwich_compare().  In this
+            # case just swap self and other.
+            #
+            # This is related to an issue in numpy that was addressed in np 1.13.
+            # However that fix does not make this problem go away, but maybe
+            # future numpy versions will do so.  NUMPY_LT_1_13 to get the
+            # attention of future maintainers to check (by deleting or versioning
+            # the if block below).  See #6899 discussion.
+            if (isinstance(self, MaskedColumn) and self.dtype.kind == 'U' and
+                    isinstance(other, MaskedColumn) and other.dtype.kind == 'S'):
+                self, other = other, self
+                op = swapped_oper
+
+            if self.dtype.char == 'S':
+                other = self._encode_str(other)
+            return getattr(self.data, op)(other)
+
+        return _compare
+
+    __eq__ = _make_compare('__eq__')
+    __ne__ = _make_compare('__ne__')
+    __gt__ = _make_compare('__gt__')
+    __lt__ = _make_compare('__lt__')
+    __ge__ = _make_compare('__ge__')
+    __le__ = _make_compare('__le__')
 
     def insert(self, obj, values, axis=0):
         """
@@ -1375,13 +980,13 @@ class Column(BaseColumn):
 
         Parameters
         ----------
-        obj : int, slice or sequence of int
+        obj : int, slice or sequence of ints
             Object that defines the index or indices before which ``values`` is
             inserted.
-        values : array-like
-            Value(s) to insert.  If the type of ``values`` is different from
-            that of the column, ``values`` is converted to the matching type.
-            ``values`` should be shaped so that it can be broadcast appropriately.
+        values : array_like
+            Value(s) to insert.  If the type of ``values`` is different
+            from that of quantity, ``values`` is converted to the matching type.
+            ``values`` should be shaped so that it can be broadcast appropriately
         axis : int, optional
             Axis along which to insert ``values``.  If ``axis`` is None then
             the column array is flattened before insertion.  Default is 0,
@@ -1393,16 +998,17 @@ class Column(BaseColumn):
             A copy of column with ``values`` and ``mask`` inserted.  Note that the
             insertion does not occur in-place: a new column is returned.
         """
-        if self.dtype.kind == "O":
+        if self.dtype.kind == 'O':
             # Even if values is array-like (e.g. [1,2,3]), insert as a single
             # object.  Numpy.insert instead inserts each element in an array-like
             # input individually.
             data = np.insert(self, obj, None, axis=axis)
             data[obj] = values
         else:
-            self_for_insert = _expand_string_array_for_values(self, values)
-            data = np.insert(self_for_insert, obj, values, axis=axis)
-
+            # Explicitly convert to dtype of this column.  Needed because numpy 1.7
+            # enforces safe casting by default, so .  This isn't the case for 1.6 or 1.8+.
+            values = np.asarray(values, dtype=self.dtype)
+            data = np.insert(self, obj, values, axis=axis)
         out = data.view(self.__class__)
         out.__array_finalize__(self)
         return out
@@ -1419,97 +1025,20 @@ class Column(BaseColumn):
     to = BaseColumn.to
 
 
-class MaskedColumnInfo(ColumnInfo):
-    """
-    Container for meta information like name, description, format.
-
-    This is required when the object is used as a mixin column within a table,
-    but can be used as a general way to store meta information.  In this case
-    it just adds the ``mask_val`` attribute.
-    """
-
-    # Add `serialize_method` attribute to the attrs that MaskedColumnInfo knows
-    # about.  This allows customization of the way that MaskedColumn objects
-    # get written to file depending on format.  The default is to use whatever
-    # the writer would normally do, which in the case of FITS or ECSV is to use
-    # a NULL value within the data itself.  If serialize_method is 'data_mask'
-    # then the mask is explicitly written out as a separate column if there
-    # are any masked values.  See also code below.
-    attr_names = ColumnInfo.attr_names | {"serialize_method"}
-
-    # When `serialize_method` is 'data_mask', and data and mask are being written
-    # as separate columns, use column names <name> and <name>.mask (instead
-    # of default encoding as <name>.data and <name>.mask).
-    _represent_as_dict_primary_data = "data"
-
-    mask_val = np.ma.masked
-
-    def __init__(self, bound=False):
-        super().__init__(bound)
-
-        # If bound to a data object instance then create the dict of attributes
-        # which stores the info attribute values.
-        if bound:
-            # Specify how to serialize this object depending on context.
-            self.serialize_method = {
-                "fits": "null_value",
-                "ecsv": "null_value",
-                "hdf5": "data_mask",
-                "parquet": "data_mask",
-                None: "null_value",
-            }
-
-    def _represent_as_dict(self):
-        out = super()._represent_as_dict()
-        # If we are a structured masked column, then our parent class,
-        # ColumnInfo, will already have set up a dict with masked parts,
-        # which will be serialized later, so no further work needed here.
-        if self._parent.dtype.names is not None:
-            return out
-
-        col = self._parent
-
-        # If the serialize method for this context (e.g. 'fits' or 'ecsv') is
-        # 'data_mask', that means to serialize using an explicit mask column.
-        method = self.serialize_method[self._serialize_context]
-
-        if method == "data_mask":
-            # Note: a driver here is a performance issue in #8443 where repr() of a
-            # np.ma.MaskedArray value is up to 10 times slower than repr of a normal array
-            # value.  So regardless of whether there are masked elements it is useful to
-            # explicitly define this as a serialized column and use col.data.data (ndarray)
-            # instead of letting it fall through to the "standard" serialization machinery.
-            out["data"] = col.data.data
-
-            if np.any(col.mask):
-                # Only if there are actually masked elements do we add the ``mask`` column
-                out["mask"] = col.mask
-
-        elif method == "null_value":
-            pass
-
-        else:
-            raise ValueError(
-                'serialize method must be either "data_mask" or "null_value"'
-            )
-
-        return out
-
-
 class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
     """Define a masked data column for use in a Table object.
 
     Parameters
     ----------
-    data : list, ndarray, or None
+    data : list, ndarray or None
         Column data values
     name : str
         Column name and key for reference within Table
     mask : list, ndarray or None
         Boolean mask for which True indicates missing or invalid data
-    fill_value : float, int, str, or None
+    fill_value : float, int, str or None
         Value used when filling masked column elements
-    dtype : `~numpy.dtype`-like
+    dtype : numpy.dtype compatible value
         Data type for column
     shape : tuple or ()
         Dimensions of a single row element in the column data
@@ -1519,7 +1048,7 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
         Full description of column
     unit : str or None
         Physical unit
-    format : str, None, or callable
+    format : str or None or function or callable
         Format string for outputting column values.  This can be an
         "old-style" (``format % value``) or "new-style" (`str.format`)
         format specification string or a function or any callable object that
@@ -1546,7 +1075,7 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
       The ``dtype`` argument can be any value which is an acceptable
       fixed-size data-type initializer for the numpy.dtype() method.  See
-      `<https://numpy.org/doc/stable/reference/arrays.dtypes.html>`_.
+      `<https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html>`_.
       Examples include:
 
       - Python non-string type (float, int, bool)
@@ -1566,48 +1095,15 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
       The default ``dtype`` is ``np.float64``.  The ``shape`` argument is the
       array shape of a single cell in the column.
-
-    To access the ``Column`` data as a raw `numpy.ma.MaskedArray` object, you can
-    use one of the ``data`` or ``value`` attributes (which are equivalent)::
-
-        col.data
-        col.value
     """
 
-    info = MaskedColumnInfo()
+    def __new__(cls, data=None, name=None, mask=None, fill_value=None,
+                dtype=None, shape=(), length=0,
+                description=None, unit=None, format=None, meta=None,
+                copy=False, copy_indices=True):
 
-    def __new__(
-        cls,
-        data=None,
-        name=None,
-        mask=None,
-        fill_value=None,
-        dtype=None,
-        shape=(),
-        length=0,
-        description=None,
-        unit=None,
-        format=None,
-        meta=None,
-        copy=False,
-        copy_indices=True,
-    ):
-        if mask is None:
-            # If mask is None then we need to determine the mask (if any) from the data.
-            # The naive method is looking for a mask attribute on data, but this can fail,
-            # see #8816.  Instead use ``MaskedArray`` to do the work.
-            mask = ma.MaskedArray(data).mask
-            if mask is np.ma.nomask:
-                # Handle odd-ball issue with np.ma.nomask (numpy #13758), and see below.
-                mask = False
-            elif copy:
-                mask = mask.copy()
-
-        elif mask is np.ma.nomask:
-            # Force the creation of a full mask array as nomask is tricky to
-            # use and will fail in an unexpected manner when setting a value
-            # to the mask.
-            mask = False
+        if mask is None and hasattr(data, 'mask'):
+            mask = data.mask
         else:
             mask = deepcopy(mask)
 
@@ -1619,35 +1115,17 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
         # First just pass through all args and kwargs to BaseColumn, then wrap that object
         # with MaskedArray.
-        self_data = BaseColumn(
-            data,
-            dtype=dtype,
-            shape=shape,
-            length=length,
-            name=name,
-            unit=unit,
-            format=format,
-            description=description,
-            meta=meta,
-            copy=copy,
-            copy_indices=copy_indices,
-        )
+        self_data = BaseColumn(data, dtype=dtype, shape=shape, length=length, name=name,
+                               unit=unit, format=format, description=description,
+                               meta=meta, copy=copy, copy_indices=copy_indices)
         self = ma.MaskedArray.__new__(cls, data=self_data, mask=mask)
-        # The above process preserves info relevant for Column, but this does
-        # not include serialize_method (and possibly other future attributes)
-        # relevant for MaskedColumn, so we set info explicitly.
-        if "info" in getattr(data, "__dict__", {}):
-            self.info = data.info
 
         # Note: do not set fill_value in the MaskedArray constructor because this does not
         # go through the fill_value workarounds.
-        if fill_value is None:
-            data_fill_value = getattr(data, "fill_value", None)
-            if (
-                data_fill_value is not None
-                and data_fill_value != np.ma.default_fill_value(data.dtype)
-            ):
-                fill_value = np.array(data_fill_value, self.dtype)[()]
+        if fill_value is None and getattr(data, 'fill_value', None) is not None:
+            # Coerce the fill_value to the correct type since `data` may be a
+            # different dtype than self.
+            fill_value = self.dtype.type(data.fill_value)
         self.fill_value = fill_value
 
         self.parent_table = None
@@ -1665,8 +1143,8 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
     @fill_value.setter
     def fill_value(self, val):
         """Set fill value both in the masked column view and in the parent table
-        if it exists.  Setting one or the other alone doesn't work.
-        """
+        if it exists.  Setting one or the other alone doesn't work."""
+
         # another ma bug workaround: If the value of fill_value for a string array is
         # requested but not yet set then it gets created as 'N/A'.  From this point onward
         # any new fill_values are truncated to 3 characters.  Note that this does not
@@ -1687,12 +1165,10 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
     @property
     def data(self):
-        """The plain MaskedArray data held by this column."""
-        out = self.view(np.ma.MaskedArray)
-        # By default, a MaskedArray view will set the _baseclass to be the
-        # same as that of our own class, i.e., BaseColumn.  Since we want
-        # to return a plain MaskedArray, we reset the baseclass accordingly.
-        out._baseclass = np.ndarray
+        out = self.view(ma.MaskedArray)
+        # The following is necessary because of a bug in Numpy, which was
+        # fixed in numpy/numpy#2703. The fix should be included in Numpy 1.8.0.
+        out.fill_value = self.fill_value
         return out
 
     def filled(self, fill_value=None):
@@ -1716,18 +1192,10 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
         data = super().filled(fill_value)
         # Use parent table definition of Column if available
-        column_cls = (
-            self.parent_table.Column if (self.parent_table is not None) else Column
-        )
-
-        out = column_cls(
-            name=self.name,
-            data=data,
-            unit=self.unit,
-            format=self.format,
-            description=self.description,
-            meta=deepcopy(self.meta),
-        )
+        column_cls = self.parent_table.Column if (self.parent_table is not None) else Column
+        out = column_cls(name=self.name, data=data, unit=self.unit,
+                         format=self.format, description=self.description,
+                         meta=deepcopy(self.meta))
         return out
 
     def insert(self, obj, values, mask=None, axis=0):
@@ -1737,16 +1205,15 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
         Parameters
         ----------
-        obj : int, slice or sequence of int
+        obj : int, slice or sequence of ints
             Object that defines the index or indices before which ``values`` is
             inserted.
-        values : array-like
-            Value(s) to insert.  If the type of ``values`` is different from
-            that of the column, ``values`` is converted to the matching type.
-            ``values`` should be shaped so that it can be broadcast appropriately.
-        mask : bool or array-like
-            Mask value(s) to insert.  If not supplied, and values does not have
-            a mask either, then False is used.
+        values : array_like
+            Value(s) to insert.  If the type of ``values`` is different
+            from that of quantity, ``values`` is converted to the matching type.
+            ``values`` should be shaped so that it can be broadcast appropriately
+        mask : boolean array_like
+            Mask value(s) to insert.  If not supplied then False is used.
         axis : int, optional
             Axis along which to insert ``values``.  If ``axis`` is None then
             the column array is flattened before insertion.  Default is 0,
@@ -1760,24 +1227,23 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
         """
         self_ma = self.data  # self viewed as MaskedArray
 
-        if self.dtype.kind == "O":
+        if self.dtype.kind == 'O':
             # Even if values is array-like (e.g. [1,2,3]), insert as a single
             # object.  Numpy.insert instead inserts each element in an array-like
             # input individually.
             new_data = np.insert(self_ma.data, obj, None, axis=axis)
             new_data[obj] = values
         else:
-            self_ma = _expand_string_array_for_values(self_ma, values)
+            # Explicitly convert to dtype of this column.  Needed because numpy 1.7
+            # enforces safe casting by default, so .  This isn't the case for 1.6 or 1.8+.
+            values = np.asarray(values, dtype=self.dtype)
             new_data = np.insert(self_ma.data, obj, values, axis=axis)
 
         if mask is None:
-            mask = getattr(values, "mask", np.ma.nomask)
-            if mask is np.ma.nomask:
-                if self.dtype.kind == "O":
-                    mask = False
-                else:
-                    mask = np.zeros(np.shape(values), dtype=bool)
-
+            if self.dtype.kind == 'O':
+                mask = False
+            else:
+                mask = np.zeros(values.shape, dtype=bool)
         new_mask = np.insert(self_ma.mask, obj, mask, axis=axis)
         new_ma = np.ma.array(new_data, mask=new_mask, copy=False)
 
@@ -1785,7 +1251,6 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
         out.parent_table = None
         out.indices = []
         out._copy_attrs(self)
-        out.fill_value = self.fill_value
 
         return out
 
@@ -1793,11 +1258,6 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
         # Fixes issue #3023: when calling getitem with a MaskedArray subclass
         # the original object attributes are not copied.
         if out.__class__ is self.__class__:
-            # TODO: this part is essentially the same as what is done in
-            # __array_finalize__ and could probably be called directly in our
-            # override of __getitem__ in _columns_mixins.pyx). Refactor?
-            if "info" in self.__dict__:
-                out.info = self.info
             out.parent_table = None
             # we need this because __getitem__ does a shallow copy of indices
             if out.indices is self.indices:
@@ -1807,7 +1267,7 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
 
     def __setitem__(self, index, value):
         # Issue warning for string assignment that truncates ``value``
-        if self.dtype.char == "S":
+        if self.dtype.char == 'S':
             value = self._encode_str(value)
 
         if issubclass(self.dtype.type, np.character):
@@ -1818,12 +1278,20 @@ class MaskedColumn(Column, _MaskedColumnGetitemShim, ma.MaskedArray):
             # Check for string truncation after filling masked items with
             # empty (zero-length) string.  Note that filled() does not make
             # a copy if there are no masked items.
-            self._check_string_truncate(value.filled(""))
+            self._check_string_truncate(value.filled(''))
 
         # update indices
         self.info.adjust_indices(index, value, len(self))
 
-        ma.MaskedArray.__setitem__(self, index, value)
+        # Remove this when Numpy no longer emits this warning and that
+        # Numpy version becomes the minimum required version for Astropy.
+        # https://github.com/astropy/astropy/issues/6285
+        if MaskedArrayFutureWarning is None:
+            ma.MaskedArray.__setitem__(self, index, value)
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', MaskedArrayFutureWarning)
+                ma.MaskedArray.__setitem__(self, index, value)
 
     # We do this to make the methods show up in the API docs
     name = BaseColumn.name

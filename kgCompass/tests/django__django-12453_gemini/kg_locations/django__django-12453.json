@@ -89,35 +89,6 @@
                 "signature": "django.core.serializers.base.Serializer.serialize(self, queryset)"
             },
             {
-                "start_line": 379,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def delete(self):\n        # sort instance collections\n        for model, instances in self.data.items():\n            self.data[model] = sorted(instances, key=attrgetter(\"pk\"))\n\n        # if possible, bring the models in an order suitable for databases that\n        # don't support transactions or cannot defer constraint checks until the\n        # end of a transaction.\n        self.sort()\n        # number of objects deleted for each model label\n        deleted_counter = Counter()\n\n        # Optimize for the case with a single obj and no dependencies\n        if len(self.data) == 1 and len(instances) == 1:\n            instance = list(instances)[0]\n            if self.can_fast_delete(instance):\n                with transaction.mark_for_rollback_on_error():\n                    count = sql.DeleteQuery(model).delete_batch([instance.pk], self.using)\n                setattr(instance, model._meta.pk.attname, None)\n                return count, {model._meta.label: count}\n\n        with transaction.atomic(using=self.using, savepoint=False):\n            # send pre_delete signals\n            for model, obj in self.instances_with_model():\n                if not model._meta.auto_created:\n                    signals.pre_delete.send(\n                        sender=model, instance=obj, using=self.using\n                    )\n\n            # fast deletes\n            for qs in self.fast_deletes:\n                count = qs._raw_delete(using=self.using)\n                deleted_counter[qs.model._meta.label] += count\n\n            # update fields\n            for model, instances_for_fieldvalues in self.field_updates.items():\n                for (field, value), instances in instances_for_fieldvalues.items():\n                    query = sql.UpdateQuery(model)\n                    query.update_batch([obj.pk for obj in instances],\n                                       {field.name: value}, self.using)\n\n            # reverse instance collections\n            for instances in self.data.values():\n                instances.reverse()\n\n            # delete instances\n            for model, instances in self.data.items():\n                query = sql.DeleteQuery(model)\n                pk_list = [obj.pk for obj in instances]\n                count = query.delete_batch(pk_list, self.using)\n                deleted_counter[model._meta.label] += count\n\n                if not model._meta.auto_created:\n                    for obj in instances:\n                        signals.post_delete.send(\n                            sender=model, instance=obj, using=self.using\n                        )\n\n        # update collected instances\n        for instances_for_fieldvalues in self.field_updates.values():\n            for (field, value), instances in instances_for_fieldvalues.items():\n                for obj in instances:\n                    setattr(obj, field.attname, value)\n        for model, instances in self.data.items():\n            for instance in instances:\n                setattr(instance, model._meta.pk.attname, None)\n        return sum(deleted_counter.values()), dict(deleted_counter)",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.delete",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.delete"
-                    }
-                ],
-                "similarity": 0.20124717775505035,
-                "end_line": 445,
-                "signature": "django.db.models.deletion.Collector.delete(self)"
-            },
-            {
                 "start_line": 168,
                 "file_path": "django/db/transaction.py",
                 "issue_id": null,
@@ -137,7 +108,7 @@
                     },
                     {
                         "start_node": "django/db/transaction.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.transaction.Atomic.__enter__"
                     }
@@ -203,35 +174,6 @@
                 "similarity": 0.19670900149120962,
                 "end_line": 503,
                 "signature": "django.db.models.base.Model.__init__(self)"
-            },
-            {
-                "start_line": 80,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(self, using):\n        self.using = using\n        # Initially, {model: {instances}}, later values become lists.\n        self.data = defaultdict(set)\n        # {model: {(field, value): {instances}}}\n        self.field_updates = defaultdict(partial(defaultdict, set))\n        # {model: {field: {instances}}}\n        self.restricted_objects = defaultdict(partial(defaultdict, set))\n        # fast_deletes is a list of queryset-likes that can be deleted without\n        # fetching the objects into memory.\n        self.fast_deletes = []\n\n        # Tracks deletion-order dependency for databases without transactions\n        # or ability to defer constraint checks. Only concrete model classes\n        # should be included, as the dependencies exist only between actual\n        # database tables; proxy models are represented here by their concrete\n        # parent.\n        self.dependencies = defaultdict(set)",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.__init__"
-                    }
-                ],
-                "similarity": 0.195360939572219,
-                "end_line": 97,
-                "signature": "django.db.models.deletion.Collector.__init__(self, using)"
             },
             {
                 "start_line": 358,
@@ -321,35 +263,6 @@
                 "signature": "django.db.backends.base.base.BaseDatabaseWrapper.set_autocommit(self, autocommit, force_begin_transaction_with_broken_autocommit)"
             },
             {
-                "start_line": 214,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def collect(self, objs, source=None, nullable=False, collect_related=True,\n                source_attr=None, reverse_dependency=False, keep_parents=False,\n                fail_on_restricted=True):\n        \"\"\"\n        Add 'objs' to the collection of objects to be deleted as well as all\n        parent instances.  'objs' must be a homogeneous iterable collection of\n        model instances (e.g. a QuerySet).  If 'collect_related' is True,\n        related objects will be handled by their respective on_delete handler.\n\n        If the call is the result of a cascade, 'source' should be the model\n        that caused it and 'nullable' should be set to True, if the relation\n        can be null.\n\n        If 'reverse_dependency' is True, 'source' will be deleted before the\n        current model, rather than after. (Needed for cascading to parent\n        models, the one case in which the cascade follows the forwards\n        direction of an FK rather than the reverse direction.)\n\n        If 'keep_parents' is True, data of parent model's will be not deleted.\n\n        If 'fail_on_restricted' is False, error won't be raised even if it's\n        prohibited to delete such objects due to RESTRICT, that defers\n        restricted object checking in recursive calls where the top-level call\n        may need to collect more objects to determine whether restricted ones\n        can be deleted.\n        \"\"\"\n        if self.can_fast_delete(objs):\n            self.fast_deletes.append(objs)\n            return\n        new_objs = self.add(objs, source, nullable,\n                            reverse_dependency=reverse_dependency)\n        if not new_objs:\n            return\n\n        model = new_objs[0].__class__\n\n        if not keep_parents:\n            # Recursively collect concrete model's parent models, but not their\n            # related objects. These will be found by meta.get_fields()\n            concrete_model = model._meta.concrete_model\n            for ptr in concrete_model._meta.parents.values():\n                if ptr:\n                    parent_objs = [getattr(obj, ptr.name) for obj in new_objs]\n                    self.collect(parent_objs, source=model,\n                                 source_attr=ptr.remote_field.related_name,\n                                 collect_related=False,\n                                 reverse_dependency=True,\n                                 fail_on_restricted=False)\n        if not collect_related:\n            return\n\n        if keep_parents:\n            parents = set(model._meta.get_parent_list())\n        model_fast_deletes = defaultdict(list)\n        protected_objects = defaultdict(list)\n        for related in get_candidate_relations_to_delete(model._meta):\n            # Preserve parent reverse relationships if keep_parents=True.\n            if keep_parents and related.model in parents:\n                continue\n            field = related.field\n            if field.remote_field.on_delete == DO_NOTHING:\n                continue\n            related_model = related.related_model\n            if self.can_fast_delete(related_model, from_field=field):\n                model_fast_deletes[related_model].append(field)\n                continue\n            batches = self.get_del_batches(new_objs, [field])\n            for batch in batches:\n                sub_objs = self.related_objects(related_model, [field], batch)\n                # Non-referenced fields can be deferred if no signal receivers\n                # are connected for the related model as they'll never be\n                # exposed to the user. Skip field deferring when some\n                # relationships are select_related as interactions between both\n                # features are hard to get right. This should only happen in\n                # the rare cases where .related_objects is overridden anyway.\n                if not (sub_objs.query.select_related or self._has_signal_listeners(related_model)):\n                    referenced_fields = set(chain.from_iterable(\n                        (rf.attname for rf in rel.field.foreign_related_fields)\n                        for rel in get_candidate_relations_to_delete(related_model._meta)\n                    ))\n                    sub_objs = sub_objs.only(*tuple(referenced_fields))\n                if sub_objs:\n                    try:\n                        field.remote_field.on_delete(self, field, sub_objs, self.using)\n                    except ProtectedError as error:\n                        key = \"'%s.%s'\" % (field.model.__name__, field.name)\n                        protected_objects[key] += error.protected_objects\n        if protected_objects:\n            raise ProtectedError(\n                'Cannot delete some instances of model %r because they are '\n                'referenced through protected foreign keys: %s.' % (\n                    model.__name__,\n                    ', '.join(protected_objects),\n                ),\n                chain.from_iterable(protected_objects.values()),\n            )\n        for related_model, related_fields in model_fast_deletes.items():\n            batches = self.get_del_batches(new_objs, related_fields)\n            for batch in batches:\n                sub_objs = self.related_objects(related_model, related_fields, batch)\n                self.fast_deletes.append(sub_objs)\n        for field in model._meta.private_fields:\n            if hasattr(field, 'bulk_related_objects'):\n                # It's something like generic foreign key.\n                sub_objs = field.bulk_related_objects(new_objs, self.using)\n                self.collect(sub_objs, source=model, nullable=True, fail_on_restricted=False)\n\n        if fail_on_restricted:\n            # Raise an error if collected restricted objects (RESTRICT) aren't\n            # candidates for deletion also collected via CASCADE.\n            for related_model, instances in self.data.items():\n                self.clear_restricted_objects_from_set(related_model, instances)\n            for qs in self.fast_deletes:\n                self.clear_restricted_objects_from_queryset(qs.model, qs)\n            if self.restricted_objects.values():\n                restricted_objects = defaultdict(list)\n                for related_model, fields in self.restricted_objects.items():\n                    for field, objs in fields.items():\n                        if objs:\n                            key = \"'%s.%s'\" % (related_model.__name__, field.name)\n                            restricted_objects[key] += objs\n                if restricted_objects:\n                    raise RestrictedError(\n                        'Cannot delete some instances of model %r because '\n                        'they are referenced through restricted foreign keys: '\n                        '%s.' % (\n                            model.__name__,\n                            ', '.join(restricted_objects),\n                        ),\n                        chain.from_iterable(restricted_objects.values()),\n                    )",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.collect",
-                "documentation": "Add 'objs' to the collection of objects to be deleted as well as all\nparent instances.  'objs' must be a homogeneous iterable collection of\nmodel instances (e.g. a QuerySet).  If 'collect_related' is True,\nrelated objects will be handled by their respective on_delete handler.\n\nIf the call is the result of a cascade, 'source' should be the model\nthat caused it and 'nullable' should be set to True, if the relation\ncan be null.\n\nIf 'reverse_dependency' is True, 'source' will be deleted before the\ncurrent model, rather than after. (Needed for cascading to parent\nmodels, the one case in which the cascade follows the forwards\ndirection of an FK rather than the reverse direction.)\n\nIf 'keep_parents' is True, data of parent model's will be not deleted.\n\nIf 'fail_on_restricted' is False, error won't be raised even if it's\nprohibited to delete such objects due to RESTRICT, that defers\nrestricted object checking in recursive calls where the top-level call\nmay need to collect more objects to determine whether restricted ones\ncan be deleted.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.collect"
-                    }
-                ],
-                "similarity": 0.1892975100571655,
-                "end_line": 344,
-                "signature": "django.db.models.deletion.Collector.collect(self, objs, source, nullable, collect_related, source_attr, reverse_dependency, keep_parents, fail_on_restricted)"
-            },
-            {
                 "start_line": 146,
                 "file_path": "django/db/models/sql/query.py",
                 "issue_id": null,
@@ -377,35 +290,6 @@
                 "similarity": 0.18677674872802333,
                 "end_line": 231,
                 "signature": "django.db.models.sql.query.Query.__init__(self, model, where, alias_cols)"
-            },
-            {
-                "start_line": 361,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def sort(self):\n        sorted_models = []\n        concrete_models = set()\n        models = list(self.data)\n        while len(sorted_models) < len(models):\n            found = False\n            for model in models:\n                if model in sorted_models:\n                    continue\n                dependencies = self.dependencies.get(model._meta.concrete_model)\n                if not (dependencies and dependencies.difference(concrete_models)):\n                    sorted_models.append(model)\n                    concrete_models.add(model._meta.concrete_model)\n                    found = True\n            if not found:\n                return\n        self.data = {model: self.data[model] for model in sorted_models}",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.sort",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains method",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.sort"
-                    }
-                ],
-                "similarity": 0.18457166632867417,
-                "end_line": 377,
-                "signature": "django.db.models.deletion.Collector.sort(self)"
             },
             {
                 "start_line": 666,
@@ -464,35 +348,6 @@
                 "similarity": 0.17874183028105994,
                 "end_line": 355,
                 "signature": "django.db.models.options.Options.swapped(self)"
-            },
-            {
-                "start_line": 165,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def can_fast_delete(self, objs, from_field=None):\n        \"\"\"\n        Determine if the objects in the given queryset-like or single object\n        can be fast-deleted. This can be done if there are no cascades, no\n        parents and no signal listeners for the object class.\n\n        The 'from_field' tells where we are coming from - we need this to\n        determine if the objects are in fact to be deleted. Allow also\n        skipping parent -> child -> parent chain preventing fast delete of\n        the child.\n        \"\"\"\n        if from_field and from_field.remote_field.on_delete is not CASCADE:\n            return False\n        if hasattr(objs, '_meta'):\n            model = objs._meta.model\n        elif hasattr(objs, 'model') and hasattr(objs, '_raw_delete'):\n            model = objs.model\n        else:\n            return False\n        if self._has_signal_listeners(model):\n            return False\n        # The use of from_field comes from the need to avoid cascade back to\n        # parent when parent delete is cascading to child.\n        opts = model._meta\n        return (\n            all(link == from_field for link in opts.concrete_model._meta.parents.values()) and\n            # Foreign keys pointing to this model.\n            all(\n                related.field.remote_field.on_delete is DO_NOTHING\n                for related in get_candidate_relations_to_delete(opts)\n            ) and (\n                # Something like generic foreign key.\n                not any(hasattr(field, 'bulk_related_objects') for field in opts.private_fields)\n            )\n        )",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.can_fast_delete",
-                "documentation": "Determine if the objects in the given queryset-like or single object\ncan be fast-deleted. This can be done if there are no cascades, no\nparents and no signal listeners for the object class.\n\nThe 'from_field' tells where we are coming from - we need this to\ndetermine if the objects are in fact to be deleted. Allow also\nskipping parent -> child -> parent chain preventing fast delete of\nthe child.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.can_fast_delete"
-                    }
-                ],
-                "similarity": 0.17824531324837745,
-                "end_line": 199,
-                "signature": "django.db.models.deletion.Collector.can_fast_delete(self, objs, from_field)"
             },
             {
                 "start_line": 710,
@@ -667,35 +522,6 @@
                 "similarity": 0.16624458586071655,
                 "end_line": 91,
                 "signature": "django.db.models.query.ModelIterable.__iter__(self)"
-            },
-            {
-                "start_line": 99,
-                "file_path": "django/db/models/deletion.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def add(self, objs, source=None, nullable=False, reverse_dependency=False):\n        \"\"\"\n        Add 'objs' to the collection of objects to be deleted.  If the call is\n        the result of a cascade, 'source' should be the model that caused it,\n        and 'nullable' should be set to True if the relation can be null.\n\n        Return a list of all objects that were not already collected.\n        \"\"\"\n        if not objs:\n            return []\n        new_objs = []\n        model = objs[0].__class__\n        instances = self.data[model]\n        for obj in objs:\n            if obj not in instances:\n                new_objs.append(obj)\n        instances.update(new_objs)\n        # Nullable relationships can be ignored -- they are nulled out before\n        # deleting, and therefore do not affect the order in which objects have\n        # to be deleted.\n        if source is not None and not nullable:\n            self.add_dependency(source, model, reverse_dependency=reverse_dependency)\n        return new_objs",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.deletion.Collector.add",
-                "documentation": "Add 'objs' to the collection of objects to be deleted.  If the call is\nthe result of a cascade, 'source' should be the model that caused it,\nand 'nullable' should be set to True if the relation can be null.\n\nReturn a list of all objects that were not already collected.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/deletion.py"
-                    },
-                    {
-                        "start_node": "django/db/models/deletion.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.deletion.Collector.add"
-                    }
-                ],
-                "similarity": 0.1638392834218635,
-                "end_line": 121,
-                "signature": "django.db.models.deletion.Collector.add(self, objs, source, nullable, reverse_dependency)"
             },
             {
                 "start_line": 679,
@@ -988,6 +814,35 @@
                 "signature": "django.db.__init__.DefaultConnectionProxy.__getattr__(self, item)"
             },
             {
+                "start_line": 197,
+                "file_path": "django/db/migrations/loader.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def build_graph(self):\n        \"\"\"\n        Build a migration dependency graph using both the disk and database.\n        You'll need to rebuild the graph if you apply migrations. This isn't\n        usually a problem as generally migration stuff runs in a one-shot process.\n        \"\"\"\n        # Load disk data\n        self.load_disk()\n        # Load database data\n        if self.connection is None:\n            self.applied_migrations = {}\n        else:\n            recorder = MigrationRecorder(self.connection)\n            self.applied_migrations = recorder.applied_migrations()\n        # To start, populate the migration graph with nodes for ALL migrations\n        # and their dependencies. Also make note of replacing migrations at this step.\n        self.graph = MigrationGraph()\n        self.replacements = {}\n        for key, migration in self.disk_migrations.items():\n            self.graph.add_node(key, migration)\n            # Replacing migrations.\n            if migration.replaces:\n                self.replacements[key] = migration\n        for key, migration in self.disk_migrations.items():\n            # Internal (same app) dependencies.\n            self.add_internal_dependencies(key, migration)\n        # Add external dependencies now that the internal ones have been resolved.\n        for key, migration in self.disk_migrations.items():\n            self.add_external_dependencies(key, migration)\n        # Carry out replacements where possible.\n        for key, migration in self.replacements.items():\n            # Get applied status of each of this migration's replacement targets.\n            applied_statuses = [(target in self.applied_migrations) for target in migration.replaces]\n            # Ensure the replacing migration is only marked as applied if all of\n            # its replacement targets are.\n            if all(applied_statuses):\n                self.applied_migrations[key] = migration\n            else:\n                self.applied_migrations.pop(key, None)\n            # A replacing migration can be used if either all or none of its\n            # replacement targets have been applied.\n            if all(applied_statuses) or (not any(applied_statuses)):\n                self.graph.remove_replaced_nodes(key, migration.replaces)\n            else:\n                # This replacing migration cannot be used because it is partially applied.\n                # Remove it from the graph and remap dependencies to it (#25945).\n                self.graph.remove_replacement_node(key, migration.replaces)\n        # Ensure the graph is consistent.\n        try:\n            self.graph.validate_consistency()\n        except NodeNotFoundError as exc:\n            # Check if the missing node could have been replaced by any squash\n            # migration but wasn't because the squash migration was partially\n            # applied before. In that case raise a more understandable exception\n            # (#23556).\n            # Get reverse replacements.\n            reverse_replacements = {}\n            for key, migration in self.replacements.items():\n                for replaced in migration.replaces:\n                    reverse_replacements.setdefault(replaced, set()).add(key)\n            # Try to reraise exception with more detail.\n            if exc.node in reverse_replacements:\n                candidates = reverse_replacements.get(exc.node, set())\n                is_replaced = any(candidate in self.graph.nodes for candidate in candidates)\n                if not is_replaced:\n                    tries = ', '.join('%s.%s' % c for c in candidates)\n                    raise NodeNotFoundError(\n                        \"Migration {0} depends on nonexistent node ('{1}', '{2}'). \"\n                        \"Django tried to replace migration {1}.{2} with any of [{3}] \"\n                        \"but wasn't able to because some of the replaced migrations \"\n                        \"are already applied.\".format(\n                            exc.origin, exc.node[0], exc.node[1], tries\n                        ),\n                        exc.node\n                    ) from exc\n            raise\n        self.graph.ensure_not_cyclic()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.migrations.loader.MigrationLoader.build_graph",
+                "documentation": "Build a migration dependency graph using both the disk and database.\nYou'll need to rebuild the graph if you apply migrations. This isn't\nusually a problem as generally migration stuff runs in a one-shot process.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/migrations/loader.py"
+                    },
+                    {
+                        "start_node": "django/db/migrations/loader.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "django.db.migrations.loader.MigrationLoader.build_graph"
+                    }
+                ],
+                "similarity": 0.15391354837214222,
+                "end_line": 273,
+                "signature": "django.db.migrations.loader.MigrationLoader.build_graph(self)"
+            },
+            {
                 "start_line": 1513,
                 "file_path": "django/db/models/sql/compiler.py",
                 "issue_id": null,
@@ -1249,6 +1104,35 @@
                 "signature": "django.db.models.fields.related_descriptors.ForwardOneToOneDescriptor.__set__(self, instance, value)"
             },
             {
+                "start_line": 294,
+                "file_path": "django/core/management/commands/migrate.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def sync_apps(self, connection, app_labels):\n        \"\"\"Run the old syncdb-style operation on a list of app_labels.\"\"\"\n        with connection.cursor() as cursor:\n            tables = connection.introspection.table_names(cursor)\n\n        # Build the manifest of apps and models that are to be synchronized.\n        all_models = [\n            (\n                app_config.label,\n                router.get_migratable_models(app_config, connection.alias, include_auto_created=False),\n            )\n            for app_config in apps.get_app_configs()\n            if app_config.models_module is not None and app_config.label in app_labels\n        ]\n\n        def model_installed(model):\n            opts = model._meta\n            converter = connection.introspection.identifier_converter\n            return not (\n                (converter(opts.db_table) in tables) or\n                (opts.auto_created and converter(opts.auto_created._meta.db_table) in tables)\n            )\n\n        manifest = {\n            app_name: list(filter(model_installed, model_list))\n            for app_name, model_list in all_models\n        }\n\n        # Create the tables for each model\n        if self.verbosity >= 1:\n            self.stdout.write(\"  Creating tables...\\n\")\n        with connection.schema_editor() as editor:\n            for app_name, model_list in manifest.items():\n                for model in model_list:\n                    # Never install unmanaged models, etc.\n                    if not model._meta.can_migrate(connection):\n                        continue\n                    if self.verbosity >= 3:\n                        self.stdout.write(\n                            \"    Processing %s.%s model\\n\" % (app_name, model._meta.object_name)\n                        )\n                    if self.verbosity >= 1:\n                        self.stdout.write(\"    Creating table %s\\n\" % model._meta.db_table)\n                    editor.create_model(model)\n\n            # Deferred SQL is executed when exiting the editor's context.\n            if self.verbosity >= 1:\n                self.stdout.write(\"    Running deferred SQL...\\n\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.management.commands.migrate.Command.sync_apps",
+                "documentation": "Run the old syncdb-style operation on a list of app_labels.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/management/commands/migrate.py"
+                    },
+                    {
+                        "start_node": "django/core/management/commands/migrate.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "django.core.management.commands.migrate.Command.sync_apps"
+                    }
+                ],
+                "similarity": 0.14989085434897503,
+                "end_line": 341,
+                "signature": "django.core.management.commands.migrate.Command.sync_apps(self, connection, app_labels)"
+            },
+            {
                 "start_line": 430,
                 "file_path": "django/db/models/fields/related_descriptors.py",
                 "issue_id": null,
@@ -1326,7 +1210,7 @@
                     },
                     {
                         "start_node": "django/db/models/manager.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.manager.BaseManager.all"
                     }
@@ -1450,6 +1334,122 @@
                 "similarity": 0.14753660582271033,
                 "end_line": 1554,
                 "signature": "django.db.models.query.Prefetch.__init__(self, lookup, queryset, to_attr)"
+            },
+            {
+                "start_line": 48,
+                "file_path": "django/db/backends/base/base.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, settings_dict, alias=DEFAULT_DB_ALIAS):\n        # Connection related attributes.\n        # The underlying database connection.\n        self.connection = None\n        # `settings_dict` should be a dictionary containing keys such as\n        # NAME, USER, etc. It's called `settings_dict` instead of `settings`\n        # to disambiguate it from Django settings modules.\n        self.settings_dict = settings_dict\n        self.alias = alias\n        # Query logging in debug mode or when explicitly enabled.\n        self.queries_log = deque(maxlen=self.queries_limit)\n        self.force_debug_cursor = False\n\n        # Transaction related attributes.\n        # Tracks if the connection is in autocommit mode. Per PEP 249, by\n        # default, it isn't.\n        self.autocommit = False\n        # Tracks if the connection is in a transaction managed by 'atomic'.\n        self.in_atomic_block = False\n        # Increment to generate unique savepoint ids.\n        self.savepoint_state = 0\n        # List of savepoints created by 'atomic'.\n        self.savepoint_ids = []\n        # Tracks if the outermost 'atomic' block should commit on exit,\n        # ie. if autocommit was active on entry.\n        self.commit_on_exit = True\n        # Tracks if the transaction should be rolled back to the next\n        # available savepoint because of an exception in an inner block.\n        self.needs_rollback = False\n\n        # Connection termination related attributes.\n        self.close_at = None\n        self.closed_in_transaction = False\n        self.errors_occurred = False\n\n        # Thread-safety related attributes.\n        self._thread_sharing_lock = threading.Lock()\n        self._thread_sharing_count = 0\n        self._thread_ident = _thread.get_ident()\n\n        # A list of no-argument functions to run when the transaction commits.\n        # Each entry is an (sids, func) tuple, where sids is a set of the\n        # active savepoint IDs when this function was registered.\n        self.run_on_commit = []\n\n        # Should we run the on-commit hooks the next time set_autocommit(True)\n        # is called?\n        self.run_commit_hooks_on_set_autocommit_on = False\n\n        # A stack of wrappers to be invoked around execute()/executemany()\n        # calls. Each entry is a function taking five arguments: execute, sql,\n        # params, many, and context. It's the function's responsibility to\n        # call execute(sql, params, many, context).\n        self.execute_wrappers = []\n\n        self.client = self.client_class(self)\n        self.creation = self.creation_class(self)\n        self.features = self.features_class(self)\n        self.introspection = self.introspection_class(self)\n        self.ops = self.ops_class(self)\n        self.validation = self.validation_class(self)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.backends.base.base.BaseDatabaseWrapper.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/backends/base/base.py"
+                    },
+                    {
+                        "start_node": "django/db/backends/base/base.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.backends.base.base.BaseDatabaseWrapper.__init__"
+                    }
+                ],
+                "similarity": 0.14730074398781606,
+                "end_line": 108,
+                "signature": "django.db.backends.base.base.BaseDatabaseWrapper.__init__(self, settings_dict, alias)"
+            },
+            {
+                "start_line": 337,
+                "file_path": "django/db/migrations/autodetector.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _sort_migrations(self):\n        \"\"\"\n        Reorder to make things possible. Reordering may be needed so FKs work\n        nicely inside the same app.\n        \"\"\"\n        for app_label, ops in sorted(self.generated_operations.items()):\n            # construct a dependency graph for intra-app dependencies\n            dependency_graph = {op: set() for op in ops}\n            for op in ops:\n                for dep in op._auto_deps:\n                    # Resolve intra-app dependencies to handle circular\n                    # references involving a swappable model.\n                    dep = self._resolve_dependency(dep)[0]\n                    if dep[0] == app_label:\n                        for op2 in ops:\n                            if self.check_dependency(op2, dep):\n                                dependency_graph[op].add(op2)\n\n            # we use a stable sort for deterministic tests & general behavior\n            self.generated_operations[app_label] = stable_topological_sort(ops, dependency_graph)",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.migrations.autodetector.MigrationAutodetector._sort_migrations",
+                "documentation": "Reorder to make things possible. Reordering may be needed so FKs work\nnicely inside the same app.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/migrations/autodetector.py"
+                    },
+                    {
+                        "start_node": "django/db/migrations/autodetector.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.migrations.autodetector.MigrationAutodetector._sort_migrations"
+                    }
+                ],
+                "similarity": 0.14721741535299573,
+                "end_line": 356,
+                "signature": "django.db.migrations.autodetector.MigrationAutodetector._sort_migrations(self)"
+            },
+            {
+                "start_line": 438,
+                "file_path": "django/core/validators.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __call__(self, value):\n        digit_tuple, exponent = value.as_tuple()[1:]\n        if exponent in {'F', 'n', 'N'}:\n            raise ValidationError(self.messages['invalid'], code='invalid', params={'value': value})\n        if exponent >= 0:\n            # A positive exponent adds that many trailing zeros.\n            digits = len(digit_tuple) + exponent\n            decimals = 0\n        else:\n            # If the absolute value of the negative exponent is larger than the\n            # number of digits, then it's the same as the number of digits,\n            # because it'll consume all of the digits in digit_tuple and then\n            # add abs(exponent) - len(digit_tuple) leading zeros after the\n            # decimal point.\n            if abs(exponent) > len(digit_tuple):\n                digits = decimals = abs(exponent)\n            else:\n                digits = len(digit_tuple)\n                decimals = abs(exponent)\n        whole_digits = digits - decimals\n\n        if self.max_digits is not None and digits > self.max_digits:\n            raise ValidationError(\n                self.messages['max_digits'],\n                code='max_digits',\n                params={'max': self.max_digits, 'value': value},\n            )\n        if self.decimal_places is not None and decimals > self.decimal_places:\n            raise ValidationError(\n                self.messages['max_decimal_places'],\n                code='max_decimal_places',\n                params={'max': self.decimal_places, 'value': value},\n            )\n        if (self.max_digits is not None and self.decimal_places is not None and\n                whole_digits > (self.max_digits - self.decimal_places)):\n            raise ValidationError(\n                self.messages['max_whole_digits'],\n                code='max_whole_digits',\n                params={'max': (self.max_digits - self.decimal_places), 'value': value},\n            )",
+                "distance": 0.5,
+                "title": null,
+                "name": "django.core.validators.DecimalValidator.__call__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/validators.py"
+                    },
+                    {
+                        "start_node": "django/core/validators.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.validators.DecimalValidator.__call__"
+                    }
+                ],
+                "similarity": 0.14666938422077824,
+                "end_line": 477,
+                "signature": "django.core.validators.DecimalValidator.__call__(self, value)"
+            },
+            {
+                "start_line": 1450,
+                "file_path": "django/db/models/query.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def iterator(self):\n        # Cache some things for performance reasons outside the loop.\n        db = self.db\n        compiler = connections[db].ops.compiler('SQLCompiler')(\n            self.query, connections[db], db\n        )\n\n        query = iter(self.query)\n\n        try:\n            model_init_names, model_init_pos, annotation_fields = self.resolve_model_init_order()\n            if self.model._meta.pk.attname not in model_init_names:\n                raise exceptions.FieldDoesNotExist(\n                    'Raw query must include the primary key'\n                )\n            model_cls = self.model\n            fields = [self.model_fields.get(c) for c in self.columns]\n            converters = compiler.get_converters([\n                f.get_col(f.model._meta.db_table) if f else None for f in fields\n            ])\n            if converters:\n                query = compiler.apply_converters(query, converters)\n            for values in query:\n                # Associate fields to values\n                model_init_values = [values[pos] for pos in model_init_pos]\n                instance = model_cls.from_db(db, model_init_names, model_init_values)\n                if annotation_fields:\n                    for column, pos in annotation_fields:\n                        setattr(instance, column, values[pos])\n                yield instance\n        finally:\n            # Done iterating the Query. If it has its own cursor, close it.\n            if hasattr(self.query, 'cursor') and self.query.cursor:\n                self.query.cursor.close()",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.query.RawQuerySet.iterator",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/query.py"
+                    },
+                    {
+                        "start_node": "django/db/models/query.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.query.RawQuerySet.iterator"
+                    }
+                ],
+                "similarity": 0.1464110322333907,
+                "end_line": 1483,
+                "signature": "django.db.models.query.RawQuerySet.iterator(self)"
             }
         ],
         "classes": [
@@ -1473,7 +1473,7 @@
                     },
                     {
                         "start_node": "django/db/transaction.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.db.transaction.TransactionManagementError"
                     }
@@ -1502,7 +1502,7 @@
                     },
                     {
                         "start_node": "django/db/backends/dummy/base.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.db.backends.dummy.base.DatabaseCreation"
                     }
@@ -1531,13 +1531,42 @@
                     },
                     {
                         "start_node": "django/contrib/admin/migrations/0002_logentry_remove_auto_add.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.contrib.admin.migrations.0002_logentry_remove_auto_add.Migration"
                     }
                 ],
                 "similarity": 0.0943433209113492,
                 "end_line": 22,
+                "signature": null
+            },
+            {
+                "start_line": 17,
+                "file_path": "django/core/management/base.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class CommandError(Exception):\n    \"\"\"\n    Exception class indicating a problem while executing a management\n    command.\n\n    If this exception is raised during the execution of a management\n    command, it will be caught and turned into a nicely-printed error\n    message to the appropriate output stream (i.e., stderr); as a\n    result, raising this exception (with a sensible description of the\n    error) is the preferred way to indicate that something has gone\n    wrong in the execution of a command.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.management.base.CommandError",
+                "documentation": "Exception class indicating a problem while executing a management\ncommand.\n\nIf this exception is raised during the execution of a management\ncommand, it will be caught and turned into a nicely-printed error\nmessage to the appropriate output stream (i.e., stderr); as a\nresult, raising this exception (with a sensible description of the\nerror) is the preferred way to indicate that something has gone\nwrong in the execution of a command.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/management/base.py"
+                    },
+                    {
+                        "start_node": "django/core/management/base.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.management.base.CommandError"
+                    }
+                ],
+                "similarity": 0.09119740941358565,
+                "end_line": 29,
                 "signature": null
             },
             {
@@ -1560,7 +1589,7 @@
                     },
                     {
                         "start_node": "django/db/backends/dummy/base.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.backends.dummy.base.DatabaseIntrospection"
                     }
@@ -1618,7 +1647,7 @@
                     },
                     {
                         "start_node": "django/contrib/auth/migrations/0011_update_proxy_permissions.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.auth.migrations.0011_update_proxy_permissions.Migration"
                     }
@@ -1705,7 +1734,7 @@
                     },
                     {
                         "start_node": "django/db/backends/dummy/base.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.db.backends.dummy.base.DatabaseOperations"
                     }
@@ -1734,7 +1763,7 @@
                     },
                     {
                         "start_node": "django/db/backends/dummy/base.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.backends.dummy.base.DatabaseClient"
                     }
@@ -1821,7 +1850,7 @@
                     },
                     {
                         "start_node": "django/utils/xmlutils.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.utils.xmlutils.UnserializableContentError"
                     }
@@ -1918,6 +1947,35 @@
                 "signature": null
             },
             {
+                "start_line": 32,
+                "file_path": "django/core/management/base.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class SystemCheckError(CommandError):\n    \"\"\"\n    The system check framework detected unrecoverable errors.\n    \"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.core.management.base.SystemCheckError",
+                "documentation": "The system check framework detected unrecoverable errors.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/core/management/base.py"
+                    },
+                    {
+                        "start_node": "django/core/management/base.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.core.management.base.SystemCheckError"
+                    }
+                ],
+                "similarity": 0.06412520646017787,
+                "end_line": 36,
+                "signature": null
+            },
+            {
                 "start_line": 38,
                 "file_path": "django/db/backends/mysql/compiler.py",
                 "issue_id": null,
@@ -1966,7 +2024,7 @@
                     },
                     {
                         "start_node": "django/core/management/commands/dumpdata.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.core.management.commands.dumpdata.ProxyModelWarning"
                     }
@@ -2024,7 +2082,7 @@
                     },
                     {
                         "start_node": "django/db/models/manager.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.manager.Manager"
                     }
@@ -2082,7 +2140,7 @@
                     },
                     {
                         "start_node": "django/contrib/gis/utils/layermapping.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.gis.utils.layermapping.MissingForeignKey"
                     }
@@ -2140,7 +2198,7 @@
                     },
                     {
                         "start_node": "django/template/library.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.library.InvalidTemplateLibrary"
                     }
@@ -2314,7 +2372,7 @@
                     },
                     {
                         "start_node": "django/template/utils.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.utils.InvalidTemplateEngineError"
                     }
@@ -2401,7 +2459,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedGreaterThanOrEqual"
                     }
@@ -2546,7 +2604,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedLessThanOrEqual"
                     }
@@ -2662,7 +2720,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedGreaterThan"
                     }
@@ -2691,7 +2749,7 @@
                     },
                     {
                         "start_node": "django/db/models/fields/related_lookups.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.db.models.fields.related_lookups.RelatedLessThan"
                     }
@@ -2843,64 +2901,6 @@
                 ],
                 "similarity": 0.04530655413362802,
                 "end_line": 132,
-                "signature": null
-            },
-            {
-                "start_line": 154,
-                "file_path": "django/contrib/gis/db/models/lookups.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class StrictlyAboveLookup(GISLookup):\n    \"\"\"\n    The 'strictly_above' operator returns true if A's bounding box is strictly above B's\n    bounding box.\n    \"\"\"\n    lookup_name = 'strictly_above'",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.contrib.gis.db.models.lookups.StrictlyAboveLookup",
-                "documentation": "The 'strictly_above' operator returns true if A's bounding box is strictly above B's\nbounding box.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/contrib/gis/db/models/lookups.py"
-                    },
-                    {
-                        "start_node": "django/contrib/gis/db/models/lookups.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.contrib.gis.db.models.lookups.StrictlyAboveLookup"
-                    }
-                ],
-                "similarity": 0.044966135618869044,
-                "end_line": 159,
-                "signature": null
-            },
-            {
-                "start_line": 185,
-                "file_path": "django/contrib/gis/db/models/lookups.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class BBOverlapsLookup(GISLookup):\n    \"\"\"\n    The 'bboverlaps' operator returns true if A's bounding box overlaps B's bounding box.\n    \"\"\"\n    lookup_name = 'bboverlaps'",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.contrib.gis.db.models.lookups.BBOverlapsLookup",
-                "documentation": "The 'bboverlaps' operator returns true if A's bounding box overlaps B's bounding box.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/contrib/gis/db/models/lookups.py"
-                    },
-                    {
-                        "start_node": "django/contrib/gis/db/models/lookups.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.contrib.gis.db.models.lookups.BBOverlapsLookup"
-                    }
-                ],
-                "similarity": 0.044851338110973575,
-                "end_line": 189,
                 "signature": null
             }
         ],

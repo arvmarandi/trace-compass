@@ -80,7 +80,7 @@ def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
         for depth_from_inner, frame in enumerate(reversed(exc_frames)):
             key = (frame.get("file", ""), frame.get("func", ""))
             if key[0] and key[1]:
-                scores[key] = max(scores.get(key, 0.0), 0.85 ** depth_from_inner)
+                scores[key] = max(scores.get(key, 0.0), 0.7 ** depth_from_inner)
 
         for frame in all_calls:
             call_depth = frame.get("call_depth", 0) or 0

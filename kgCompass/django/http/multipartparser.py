@@ -7,6 +7,9 @@ file upload handlers for processing.
 import base64
 import binascii
 import cgi
+import collections
+import html
+import os
 from urllib.parse import unquote
 
 from django.conf import settings
@@ -18,7 +21,6 @@ from django.core.files.uploadhandler import (
 )
 from django.utils.datastructures import MultiValueDict
 from django.utils.encoding import force_str
-from django.utils.text import unescape_entities
 
 __all__ = ('MultiPartParser', 'MultiPartParserError', 'InputStreamExhausted')
 
@@ -66,10 +68,13 @@ class MultiPartParser:
             raise MultiPartParserError('Invalid Content-Type: %s' % content_type)
 
         # Parse the header to get the boundary to split the parts.
-        ctypes, opts = parse_header(content_type.encode('ascii'))
+        try:
+            ctypes, opts = parse_header(content_type.encode('ascii'))
+        except UnicodeEncodeError:
+            raise MultiPartParserError('Invalid non-ASCII Content-Type in multipart: %s' % force_str(content_type))
         boundary = opts.get('boundary')
         if not boundary or not cgi.valid_boundary(boundary):
-            raise MultiPartParserError('Invalid boundary in multipart: %s' % boundary.decode())
+            raise MultiPartParserError('Invalid boundary in multipart: %s' % force_str(boundary))
 
         # Content-Length should contain the length of the body we are about
         # to receive.
@@ -145,6 +150,8 @@ class MultiPartParser:
         num_post_keys = 0
         # To limit the amount of data read from the request.
         read_size = None
+        # Whether a file upload is finished.
+        uploaded_file = True
 
         try:
             for item_type, meta_data, field_stream in Parser(stream, self._boundary):
@@ -154,6 +161,7 @@ class MultiPartParser:
                     # we hit the next boundary/part of the multipart content.
                     self.handle_file_complete(old_field_name, counters)
                     old_field_name = None
+                    uploaded_file = True
 
                 try:
                     disposition = meta_data['content-disposition'][1]
@@ -204,8 +212,9 @@ class MultiPartParser:
                     # This is a file, use the handler...
                     file_name = disposition.get('filename')
                     if file_name:
+                        file_name = os.path.basename(file_name)
                         file_name = force_str(file_name, encoding, errors='replace')
-                        file_name = self.IE_sanitize(unescape_entities(file_name))
+                        file_name = self.IE_sanitize(html.unescape(file_name))
                     if not file_name:
                         continue
 
@@ -219,6 +228,7 @@ class MultiPartParser:
                         content_length = None
 
                     counters = [0] * len(handlers)
+                    uploaded_file = False
                     try:
                         for handler in handlers:
                             try:
@@ -273,6 +283,9 @@ class MultiPartParser:
             if not e.connection_reset:
                 exhaust(self._input_data)
         else:
+            if not uploaded_file:
+                for handler in handlers:
+                    handler.upload_interrupted()
             # Make sure that the request data is all fed
             exhaust(self._input_data)
 
@@ -356,8 +369,7 @@ class LazyStream:
                     remaining -= len(emitting)
                     yield emitting
 
-        out = b''.join(parts())
-        return out
+        return b''.join(parts())
 
     def __next__(self):
         """
@@ -565,9 +577,7 @@ def exhaust(stream_or_iterable):
         iterator = iter(stream_or_iterable)
     except TypeError:
         iterator = ChunkIter(stream_or_iterable, 16384)
-
-    for __ in iterator:
-        pass
+    collections.deque(iterator, maxlen=0)  # consume iterator quickly.
 
 
 def parse_boundary_stream(stream, max_header_size):
@@ -663,12 +673,12 @@ def parse_header(line):
                 if p.count(b"'") == 2:
                     has_encoding = True
             value = p[i + 1:].strip()
-            if has_encoding:
-                encoding, lang, value = value.split(b"'")
-                value = unquote(value.decode(), encoding=encoding.decode())
             if len(value) >= 2 and value[:1] == value[-1:] == b'"':
                 value = value[1:-1]
                 value = value.replace(b'\\\\', b'\\').replace(b'\\"', b'"')
+            if has_encoding:
+                encoding, lang, value = value.split(b"'")
+                value = unquote(value.decode(), encoding=encoding.decode())
             pdict[name] = value
     return key, pdict
 

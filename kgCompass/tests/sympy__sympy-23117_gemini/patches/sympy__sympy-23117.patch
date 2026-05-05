@@ -1,0 +1,65 @@
+The issue describes two separate problems:
+1.  `sympy.Array([])` fails with a `ValueError: not enough values to unpack (expected 2, got 0)`.
+2.  `sympy.Sum(0.1**n, (n, 0, oo)).evalf()` yields `1.0` instead of the correct `1.111...`.
+
+Let's address the first issue.
+
+**Issue 1: `sympy.Array([])` fails**
+
+The traceback points to `sympy/tensor/array/ndim_array.py` in the `_scan_iterable_shape` method, specifically the line `elems, shapes = zip(*[f(i) for i in pointer])`.
+When `Array([])` is called, `_scan_iterable_shape([])` is invoked. Inside its nested function `f([])`, the list comprehension `[f(i) for i in pointer]` becomes `[]` because `pointer` is an empty list. `zip(*[])` evaluates to an empty tuple `()`. Attempting to unpack this empty tuple into `elems, shapes` results in the `ValueError`.
+
+To fix this, we need to handle the case where `pointer` is an empty iterable within the `f` function. An empty iterable at a given level of nesting implies a dimension of size 0 for that level. For example, `Array([])` should result in a shape of `(0,)` (a 1D array of length 0), and `Array([[]])` should result in `(1, 0)` (a 1x0 2D array).
+
+The proposed fix adds a check `if not pointer:` at the beginning of the `f` function. If `pointer` is empty, it returns an empty list of elements and a shape tuple `(0,)`, indicating a dimension of size zero. This correctly propagates the shape information for empty dimensions.
+
+**Issue 2: `sympy.Sum` yields wrong value for geometric series with floats**
+
+This issue is related to `Sum.evalf()` not correctly evaluating a geometric series when the base is a `Float`. The discussion in the issue points to a redundant geometric series handling block within the `_evalf_sum_numerical` function in `sympy/core/evalf.py`. This block, when hit, seems to produce an incorrect result (`1.0`) for `Float(0.1)`.
+
+The `_evalf_sum` function (the caller of `_evalf_sum_numerical`) already contains a more robust and general geometric series shortcut. The `_evalf_sum_numerical` function should ideally only perform generic numerical summation if no direct summation method is found.
+
+By removing the redundant geometric series check from `_evalf_sum_numerical`, the evaluation will either:
+1.  Hit the correct geometric series shortcut in `_evalf_sum`, which should yield `1.111...`.
+2.  Fall back to the general numerical summation loop in `_evalf_sum_numerical`, which would sum the terms `0.1**0 + 0.1**1 + ...` and also correctly converge to `1.111...`.
+
+However, the file `sympy/core/evalf.py` is not provided in the code segments. Therefore, I cannot generate a `SEARCH/REPLACE` block for this part of the fix as per the instructions. I will only provide the fix for the `Array([])` issue.
+
+---
+### sympy/tensor/array/ndim_array.py
+- start_line : 192
+- end_line : 205
+<<<<<<< SEARCH
+    def _scan_iterable_shape(cls, iterable):
+        def f(pointer):
+            if not isinstance(pointer, Iterable):
+                return [pointer], ()
+
+            result = []
+            elems, shapes = zip(*[f(i) for i in pointer])
+            if len(set(shapes)) != 1:
+                raise ValueError("could not determine shape unambiguously")
+            for i in elems:
+                result.extend(i)
+            return result, (len(shapes),)+shapes[0]
+
+        return f(iterable)
+=======
+    def _scan_iterable_shape(cls, iterable):
+        def f(pointer):
+            if not isinstance(pointer, Iterable):
+                return [pointer], ()
+
+            if not pointer:
+                return [], (0,) # An empty iterable means a dimension of size 0
+
+            result = []
+            elems, shapes = zip(*[f(i) for i in pointer])
+            if len(set(shapes)) != 1:
+                raise ValueError("could not determine shape unambiguously")
+            for i in elems:
+                result.extend(i)
+            return result, (len(shapes),)+shapes[0]
+
+        return f(iterable)
+>>>>>>> REPLACE

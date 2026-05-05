@@ -814,6 +814,35 @@
                 "signature": "django.db.models.query.ValuesListIterable.__iter__(self)"
             },
             {
+                "start_line": 714,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_ancestor_link(self, ancestor):\n        \"\"\"\n        Return the field on the current model which points to the given\n        \"ancestor\". This is possible an indirect link (a pointer to a parent\n        model, which points, eventually, to the ancestor). Used when\n        constructing table joins for model inheritance.\n\n        Return None if the model isn't an ancestor of this one.\n        \"\"\"\n        if ancestor in self.parents:\n            return self.parents[ancestor]\n        for parent in self.parents:\n            # Tries to get a link field from the immediate parent\n            parent_link = parent._meta.get_ancestor_link(ancestor)\n            if parent_link:\n                # In case of a proxied model, the first link\n                # of the chain to the ancestor is that parent\n                # links\n                return self.parents[parent] or parent_link",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_ancestor_link",
+                "documentation": "Return the field on the current model which points to the given\n\"ancestor\". This is possible an indirect link (a pointer to a parent\nmodel, which points, eventually, to the ancestor). Used when\nconstructing table joins for model inheritance.\n\nReturn None if the model isn't an ancestor of this one.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_ancestor_link"
+                    }
+                ],
+                "similarity": 0.1578996123386293,
+                "end_line": 732,
+                "signature": "django.db.models.options.Options.get_ancestor_link(self, ancestor)"
+            },
+            {
                 "start_line": 758,
                 "file_path": "django/db/models/fields/related.py",
                 "issue_id": null,
@@ -1191,6 +1220,35 @@
                 "signature": "django.db.models.query.RawQuerySet.__iter__(self)"
             },
             {
+                "start_line": 845,
+                "file_path": "django/db/models/options.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def get_fields(self, include_parents=True, include_hidden=False):\n        \"\"\"\n        Return a list of fields associated to the model. By default, include\n        forward and reverse fields, fields derived from inheritance, but not\n        hidden fields. The returned fields can be changed using the parameters:\n\n        - include_parents: include fields derived from inheritance\n        - include_hidden:  include fields that have a related_name that\n                           starts with a \"+\"\n        \"\"\"\n        if include_parents is False:\n            include_parents = PROXY_PARENTS\n        return self._get_fields(\n            include_parents=include_parents, include_hidden=include_hidden\n        )",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.options.Options.get_fields",
+                "documentation": "Return a list of fields associated to the model. By default, include\nforward and reverse fields, fields derived from inheritance, but not\nhidden fields. The returned fields can be changed using the parameters:\n\n- include_parents: include fields derived from inheritance\n- include_hidden:  include fields that have a related_name that\n                   starts with a \"+\"",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/options.py"
+                    },
+                    {
+                        "start_node": "django/db/models/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.options.Options.get_fields"
+                    }
+                ],
+                "similarity": 0.1455338753270991,
+                "end_line": 859,
+                "signature": "django.db.models.options.Options.get_fields(self, include_parents, include_hidden)"
+            },
+            {
                 "start_line": 378,
                 "file_path": "django/db/models/query.py",
                 "issue_id": null,
@@ -1392,96 +1450,9 @@
                 "similarity": 0.14108768257148788,
                 "end_line": 1978,
                 "signature": "django.db.models.query.EmptyQuerySet.__init__(self)"
-            },
-            {
-                "start_line": 1960,
-                "file_path": "django/db/models/sql/compiler.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def pre_sql_setup(self):\n        \"\"\"\n        If the update depends on results from other tables, munge the \"where\"\n        conditions to match the format required for (portable) SQL updates.\n\n        If multiple updates are required, pull out the id values to update at\n        this point so that they don't change as a result of the progressive\n        updates.\n        \"\"\"\n        refcounts_before = self.query.alias_refcount.copy()\n        # Ensure base table is in the query\n        self.query.get_initial_alias()\n        count = self.query.count_active_tables()\n        if not self.query.related_updates and count == 1:\n            return\n        query = self.query.chain(klass=Query)\n        query.select_related = False\n        query.clear_ordering(force=True)\n        query.extra = {}\n        query.select = []\n        meta = query.get_meta()\n        fields = [meta.pk.name]\n        related_ids_index = []\n        for related in self.query.related_updates:\n            if all(\n                path.join_field.primary_key for path in meta.get_path_to_parent(related)\n            ):\n                # If a primary key chain exists to the targeted related update,\n                # then the meta.pk value can be used for it.\n                related_ids_index.append((related, 0))\n            else:\n                # This branch will only be reached when updating a field of an\n                # ancestor that is not part of the primary key chain of a MTI\n                # tree.\n                related_ids_index.append((related, len(fields)))\n                fields.append(related._meta.pk.name)\n        query.add_fields(fields)\n        super().pre_sql_setup()\n\n        must_pre_select = (\n            count > 1 and not self.connection.features.update_can_self_select\n        )\n\n        # Now we adjust the current query: reset the where clause and get rid\n        # of all the tables we don't need (since they're in the sub-select).\n        self.query.clear_where()\n        if self.query.related_updates or must_pre_select:\n            # Either we're using the idents in multiple update queries (so\n            # don't want them to change), or the db backend doesn't support\n            # selecting from the updating table (e.g. MySQL).\n            idents = []\n            related_ids = collections.defaultdict(list)\n            for rows in query.get_compiler(self.using).execute_sql(MULTI):\n                idents.extend(r[0] for r in rows)\n                for parent, index in related_ids_index:\n                    related_ids[parent].extend(r[index] for r in rows)\n            self.query.add_filter(\"pk__in\", idents)\n            self.query.related_ids = related_ids\n        else:\n            # The fast path. Filters and updates in one query.\n            self.query.add_filter(\"pk__in\", query)\n        self.query.reset_refcounts(refcounts_before)",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup",
-                "documentation": "If the update depends on results from other tables, munge the \"where\"\nconditions to match the format required for (portable) SQL updates.\n\nIf multiple updates are required, pull out the id values to update at\nthis point so that they don't change as a result of the progressive\nupdates.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/sql/compiler.py"
-                    },
-                    {
-                        "start_node": "django/db/models/sql/compiler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup"
-                    }
-                ],
-                "similarity": 0.13896051325827427,
-                "end_line": 2021,
-                "signature": "django.db.models.sql.compiler.SQLUpdateCompiler.pre_sql_setup(self)"
-            },
-            {
-                "start_line": 37,
-                "file_path": "django/db/models/sql/compiler.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(self, query, connection, using, elide_empty=True):\n        self.query = query\n        self.connection = connection\n        self.using = using\n        # Some queries, e.g. coalesced aggregation, need to be executed even if\n        # they would return an empty result set.\n        self.elide_empty = elide_empty\n        self.quote_cache = {\"*\": \"*\"}\n        # The select, klass_info, and annotations are needed by QuerySet.iterator()\n        # these are set as a side-effect of executing the query. Note that we calculate\n        # separately a list of extra select columns needed for grammatical correctness\n        # of the query, but these columns are not included in self.select.\n        self.select = None\n        self.annotation_col_map = None\n        self.klass_info = None\n        self._meta_ordering = None",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.db.models.sql.compiler.SQLCompiler.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/db/models/sql/compiler.py"
-                    },
-                    {
-                        "start_node": "django/db/models/sql/compiler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.db.models.sql.compiler.SQLCompiler.__init__"
-                    }
-                ],
-                "similarity": 0.13872751088283683,
-                "end_line": 52,
-                "signature": "django.db.models.sql.compiler.SQLCompiler.__init__(self, query, connection, using, elide_empty)"
             }
         ],
         "classes": [
-            {
-                "start_line": 459,
-                "file_path": "django/contrib/admin/utils.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class NotRelationField(Exception):\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.contrib.admin.utils.NotRelationField",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/contrib/admin/utils.py"
-                    },
-                    {
-                        "start_node": "django/contrib/admin/utils.py",
-                        "description": "contains class",
-                        "type": "RELATED",
-                        "end_node": "django.contrib.admin.utils.NotRelationField"
-                    }
-                ],
-                "similarity": 0.08079244272453513,
-                "end_line": 460,
-                "signature": null
-            },
             {
                 "start_line": 54,
                 "file_path": "django/contrib/gis/utils/layermapping.py",
@@ -1589,7 +1560,7 @@
                     },
                     {
                         "start_node": "django/contrib/gis/geos/collections.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.gis.geos.collections.MultiPoint"
                     }
@@ -1647,7 +1618,7 @@
                     },
                     {
                         "start_node": "django/contrib/postgres/forms/ranges.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.postgres.forms.ranges.IntegerRangeField"
                     }
@@ -1676,7 +1647,7 @@
                     },
                     {
                         "start_node": "django/contrib/postgres/forms/ranges.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "django.contrib.postgres.forms.ranges.DecimalRangeField"
                     }
@@ -1792,42 +1763,13 @@
                     },
                     {
                         "start_node": "django/core/management/commands/dumpdata.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.core.management.commands.dumpdata.ProxyModelWarning"
                     }
                 ],
                 "similarity": 0.06521542936826215,
                 "end_line": 27,
-                "signature": null
-            },
-            {
-                "start_line": 59,
-                "file_path": "django/core/files/uploadhandler.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class StopFutureHandlers(UploadFileException):\n    \"\"\"\n    Upload handlers that have handled a file and do not want future handlers to\n    run should raise this exception instead of returning None.\n    \"\"\"\n\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.core.files.uploadhandler.StopFutureHandlers",
-                "documentation": "Upload handlers that have handled a file and do not want future handlers to\nrun should raise this exception instead of returning None.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/core/files/uploadhandler.py"
-                    },
-                    {
-                        "start_node": "django/core/files/uploadhandler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.core.files.uploadhandler.StopFutureHandlers"
-                    }
-                ],
-                "similarity": 0.06426345394250124,
-                "end_line": 65,
                 "signature": null
             },
             {
@@ -1915,35 +1857,6 @@
                 ],
                 "similarity": 0.06341690272205062,
                 "end_line": 90,
-                "signature": null
-            },
-            {
-                "start_line": 25,
-                "file_path": "django/contrib/admin/utils.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class FieldIsAForeignKeyColumnName(Exception):\n    \"\"\"A field is a foreign key attname, i.e. <FK>_id.\"\"\"\n\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.contrib.admin.utils.FieldIsAForeignKeyColumnName",
-                "documentation": "A field is a foreign key attname, i.e. <FK>_id.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/contrib/admin/utils.py"
-                    },
-                    {
-                        "start_node": "django/contrib/admin/utils.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.contrib.admin.utils.FieldIsAForeignKeyColumnName"
-                    }
-                ],
-                "similarity": 0.06303779734471518,
-                "end_line": 28,
                 "signature": null
             },
             {
@@ -2111,7 +2024,7 @@
                     },
                     {
                         "start_node": "django/contrib/gis/geos/collections.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.contrib.gis.geos.collections.MultiLineString"
                     }
@@ -2176,64 +2089,6 @@
                 ],
                 "similarity": 0.0568332246132179,
                 "end_line": 30,
-                "signature": null
-            },
-            {
-                "start_line": 530,
-                "file_path": "django/contrib/auth/hashers.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class BCryptPasswordHasher(BCryptSHA256PasswordHasher):\n    \"\"\"\n    Secure password hashing using the bcrypt algorithm\n\n    This is considered by many to be the most secure algorithm but you\n    must first install the bcrypt library.  Please be warned that\n    this library depends on native C code and might cause portability\n    issues.\n\n    This hasher does not first hash the password which means it is subject to\n    bcrypt's 72 bytes password truncation. Most use cases should prefer the\n    BCryptSHA256PasswordHasher.\n    \"\"\"\n\n    algorithm = \"bcrypt\"\n    digest = None",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.contrib.auth.hashers.BCryptPasswordHasher",
-                "documentation": "Secure password hashing using the bcrypt algorithm\n\nThis is considered by many to be the most secure algorithm but you\nmust first install the bcrypt library.  Please be warned that\nthis library depends on native C code and might cause portability\nissues.\n\nThis hasher does not first hash the password which means it is subject to\nbcrypt's 72 bytes password truncation. Most use cases should prefer the\nBCryptSHA256PasswordHasher.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/contrib/auth/hashers.py"
-                    },
-                    {
-                        "start_node": "django/contrib/auth/hashers.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.contrib.auth.hashers.BCryptPasswordHasher"
-                    }
-                ],
-                "similarity": 0.05619143625816958,
-                "end_line": 545,
-                "signature": null
-            },
-            {
-                "start_line": 51,
-                "file_path": "django/core/files/uploadhandler.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class SkipFile(UploadFileException):\n    \"\"\"\n    This exception is raised by an upload handler that wants to skip a given file.\n    \"\"\"\n\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.core.files.uploadhandler.SkipFile",
-                "documentation": "This exception is raised by an upload handler that wants to skip a given file.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/core/files/uploadhandler.py"
-                    },
-                    {
-                        "start_node": "django/core/files/uploadhandler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.core.files.uploadhandler.SkipFile"
-                    }
-                ],
-                "similarity": 0.055717069687938096,
-                "end_line": 56,
                 "signature": null
             },
             {
@@ -2324,35 +2179,6 @@
                 "signature": null
             },
             {
-                "start_line": 45,
-                "file_path": "django/utils/datastructures.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class MultiValueDictKeyError(KeyError):\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.utils.datastructures.MultiValueDictKeyError",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/utils/datastructures.py"
-                    },
-                    {
-                        "start_node": "django/utils/datastructures.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.utils.datastructures.MultiValueDictKeyError"
-                    }
-                ],
-                "similarity": 0.05440996646790184,
-                "end_line": 46,
-                "signature": null
-            },
-            {
                 "start_line": 37,
                 "file_path": "django/utils/regex_helper.py",
                 "issue_id": null,
@@ -2372,7 +2198,7 @@
                     },
                     {
                         "start_node": "django/utils/regex_helper.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.utils.regex_helper.NonCapture"
                     }
@@ -2701,6 +2527,35 @@
                 "signature": null
             },
             {
+                "start_line": 375,
+                "file_path": "django/db/models/functions/datetime.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TruncQuarter(TruncBase):\n    kind = \"quarter\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.datetime.TruncQuarter",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/datetime.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/datetime.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.datetime.TruncQuarter"
+                    }
+                ],
+                "similarity": 0.04817586739903838,
+                "end_line": 376,
+                "signature": null
+            },
+            {
                 "start_line": 11,
                 "file_path": "django/core/cache/backends/base.py",
                 "issue_id": null,
@@ -2778,7 +2633,7 @@
                     },
                     {
                         "start_node": "django/template/library.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "django.template.library.InvalidTemplateLibrary"
                     }
@@ -2846,35 +2701,6 @@
                 "signature": null
             },
             {
-                "start_line": 23,
-                "file_path": "django/core/files/uploadhandler.py",
-                "issue_id": null,
-                "type": "class",
-                "content": null,
-                "source_code": "class UploadFileException(Exception):\n    \"\"\"\n    Any error having to do with uploading files.\n    \"\"\"\n\n    pass",
-                "distance": 1.25,
-                "title": null,
-                "name": "django.core.files.uploadhandler.UploadFileException",
-                "documentation": "Any error having to do with uploading files.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "django/core/files/uploadhandler.py"
-                    },
-                    {
-                        "start_node": "django/core/files/uploadhandler.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "django.core.files.uploadhandler.UploadFileException"
-                    }
-                ],
-                "similarity": 0.04681886849362967,
-                "end_line": 28,
-                "signature": null
-            },
-            {
                 "start_line": 54,
                 "file_path": "django/core/signing.py",
                 "issue_id": null,
@@ -2901,6 +2727,180 @@
                 ],
                 "similarity": 0.04658695127718288,
                 "end_line": 57,
+                "signature": null
+            },
+            {
+                "start_line": 582,
+                "file_path": "django/contrib/admin/widgets.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class AutocompleteSelect(AutocompleteMixin, forms.Select):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.widgets.AutocompleteSelect",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/widgets.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/widgets.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.widgets.AutocompleteSelect"
+                    }
+                ],
+                "similarity": 0.046405047926515806,
+                "end_line": 583,
+                "signature": null
+            },
+            {
+                "start_line": 33,
+                "file_path": "django/utils/regex_helper.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Group(list):\n    \"\"\"Represent a capturing group in the pattern string.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.utils.regex_helper.Group",
+                "documentation": "Represent a capturing group in the pattern string.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/utils/regex_helper.py"
+                    },
+                    {
+                        "start_node": "django/utils/regex_helper.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.utils.regex_helper.Group"
+                    }
+                ],
+                "similarity": 0.045919880295691114,
+                "end_line": 34,
+                "signature": null
+            },
+            {
+                "start_line": 2499,
+                "file_path": "django/contrib/admin/options.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TabularInline(InlineModelAdmin):\n    template = \"admin/edit_inline/tabular.html\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.contrib.admin.options.TabularInline",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/contrib/admin/options.py"
+                    },
+                    {
+                        "start_node": "django/contrib/admin/options.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.contrib.admin.options.TabularInline"
+                    }
+                ],
+                "similarity": 0.045682112875696665,
+                "end_line": 2500,
+                "signature": null
+            },
+            {
+                "start_line": 383,
+                "file_path": "django/db/models/functions/datetime.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TruncWeek(TruncBase):\n    \"\"\"Truncate to midnight on the Monday of the week.\"\"\"\n\n    kind = \"week\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.datetime.TruncWeek",
+                "documentation": "Truncate to midnight on the Monday of the week.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/datetime.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/datetime.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.datetime.TruncWeek"
+                    }
+                ],
+                "similarity": 0.04521195009047733,
+                "end_line": 386,
+                "signature": null
+            },
+            {
+                "start_line": 425,
+                "file_path": "django/db/models/functions/datetime.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TruncSecond(TruncBase):\n    kind = \"second\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.db.models.functions.datetime.TruncSecond",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/db/models/functions/datetime.py"
+                    },
+                    {
+                        "start_node": "django/db/models/functions/datetime.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.db.models.functions.datetime.TruncSecond"
+                    }
+                ],
+                "similarity": 0.04414297984272762,
+                "end_line": 426,
+                "signature": null
+            },
+            {
+                "start_line": 33,
+                "file_path": "django/http/request.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class UnreadablePostError(OSError):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "django.http.request.UnreadablePostError",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "django/http/request.py"
+                    },
+                    {
+                        "start_node": "django/http/request.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "django.http.request.UnreadablePostError"
+                    }
+                ],
+                "similarity": 0.04400613571651592,
+                "end_line": 34,
                 "signature": null
             }
         ],

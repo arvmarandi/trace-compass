@@ -1,0 +1,2512 @@
+{
+    "related_entities": {
+        "methods": [
+            {
+                "start_line": 269,
+                "file_path": "pylint/lint/pylinter.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        options: Options = (),\n        reporter: reporters.BaseReporter | reporters.MultiReporter | None = None,\n        option_groups: tuple[tuple[str, str], ...] = (),\n        # TODO: Deprecate passing the pylintrc parameter\n        pylintrc: str | None = None,  # pylint: disable=unused-argument\n    ) -> None:\n        _ArgumentsManager.__init__(self, prog=\"pylint\")\n        _MessageStateHandler.__init__(self, self)\n\n        # Some stuff has to be done before initialization of other ancestors...\n        # messages store / checkers / reporter / astroid manager\n\n        # Attributes for reporters\n        self.reporter: reporters.BaseReporter | reporters.MultiReporter\n        if reporter:\n            self.set_reporter(reporter)\n        else:\n            self.set_reporter(TextReporter())\n        self._reporters: dict[str, type[reporters.BaseReporter]] = {}\n        \"\"\"Dictionary of possible but non-initialized reporters.\"\"\"\n\n        # Attributes for checkers and plugins\n        self._checkers: defaultdict[\n            str, list[checkers.BaseChecker]\n        ] = collections.defaultdict(list)\n        \"\"\"Dictionary of registered and initialized checkers.\"\"\"\n        self._dynamic_plugins: set[str] = set()\n        \"\"\"Set of loaded plugin names.\"\"\"\n\n        # Attributes related to registering messages and their handling\n        self.msgs_store = MessageDefinitionStore()\n        self.msg_status = 0\n        self._by_id_managed_msgs: list[ManagedMessage] = []\n\n        # Attributes related to visiting files\n        self.file_state = FileState(\"\", self.msgs_store, is_base_filestate=True)\n        self.current_name: str | None = None\n        self.current_file: str | None = None\n        self._ignore_file = False\n\n        # Attributes related to stats\n        self.stats = LinterStats()\n\n        # Attributes related to (command-line) options and their parsing\n        self.options: Options = options + _make_linter_options(self)\n        for opt_group in option_groups:\n            self.option_groups_descs[opt_group[0]] = opt_group[1]\n        self._option_groups: tuple[tuple[str, str], ...] = option_groups + (\n            (\"Messages control\", \"Options controlling analysis messages\"),\n            (\"Reports\", \"Options related to output formatting and reporting\"),\n        )\n        self.fail_on_symbols: list[str] = []\n        \"\"\"List of message symbols on which pylint should fail, set by --fail-on.\"\"\"\n        self._error_mode = False\n\n        reporters.ReportsHandlerMixIn.__init__(self)\n        checkers.BaseChecker.__init__(self, self)\n        # provided reports\n        self.reports = (\n            (\"RP0001\", \"Messages by category\", report_total_messages_stats),\n            (\n                \"RP0002\",\n                \"% errors / warnings by module\",\n                report_messages_by_module_stats,\n            ),\n            (\"RP0003\", \"Messages\", report_messages_stats),\n        )\n        self.register_checker(self)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lintlinter.PyLinter.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/pylinter.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/pylinter.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lintlinter.PyLinter.__init__"
+                    }
+                ],
+                "similarity": 0.20657523502938624,
+                "end_line": 338,
+                "signature": "pylint.lintlinter.PyLinter.__init__(self, options, reporter, option_groups, pylintrc)"
+            },
+            {
+                "start_line": 113,
+                "file_path": "pylint/lint/run.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        args: Sequence[str],\n        reporter: BaseReporter | None = None,\n        exit: bool = True,  # pylint: disable=redefined-builtin\n        do_exit: Any = UNUSED_PARAM_SENTINEL,\n    ) -> None:\n        # Immediately exit if user asks for version\n        if \"--version\" in args:\n            print(full_version)\n            sys.exit(0)\n\n        self._rcfile: str | None = None\n        self._output: str | None = None\n        self._plugins: list[str] = []\n        self.verbose: bool = False\n\n        # Pre-process certain options and remove them from args list\n        try:\n            args = _preprocess_options(self, args)\n        except ArgumentPreprocessingError as ex:\n            print(ex, file=sys.stderr)\n            sys.exit(32)\n\n        # Determine configuration file\n        if self._rcfile is None:\n            default_file = next(config.find_default_config_files(), None)\n            if default_file:\n                self._rcfile = str(default_file)\n\n        self.linter = linter = self.LinterClass(\n            _make_run_options(self),\n            option_groups=self.option_groups,\n            pylintrc=self._rcfile,\n        )\n        # register standard checkers\n        linter.load_default_plugins()\n        # load command line plugins\n        linter.load_plugin_modules(self._plugins)\n\n        linter.disable(\"I\")\n        linter.enable(\"c-extension-no-member\")\n\n        # Register the options needed for 'pylint-config'\n        # By not registering them by default they don't show up in the normal usage message\n        if self._is_pylint_config:\n            _register_generate_config_options(linter._arg_parser)\n\n        args = _config_initialization(\n            linter, args, reporter, config_file=self._rcfile, verbose_mode=self.verbose\n        )\n\n        # Handle the 'pylint-config' command\n        if self._is_pylint_config:\n            warnings.warn(\n                \"NOTE: The 'pylint-config' command is experimental and usage can change\",\n                UserWarning,\n            )\n            code = _handle_pylint_config_commands(linter)\n            if exit:\n                sys.exit(code)\n            return\n\n        # Display help messages if there are no files to lint\n        if not args:\n            print(linter.help())\n            sys.exit(32)\n\n        if linter.config.jobs < 0:\n            print(\n                f\"Jobs number ({linter.config.jobs}) should be greater than or equal to 0\",\n                file=sys.stderr,\n            )\n            sys.exit(32)\n        if linter.config.jobs > 1 or linter.config.jobs == 0:\n            if multiprocessing is None:\n                print(\n                    \"Multiprocessing library is missing, fallback to single process\",\n                    file=sys.stderr,\n                )\n                linter.set_option(\"jobs\", 1)\n            elif linter.config.jobs == 0:\n                linter.config.jobs = _cpu_count()\n\n        if self._output:\n            try:\n                with open(self._output, \"w\", encoding=\"utf-8\") as output:\n                    linter.reporter.out = output\n                    linter.check(args)\n                    score_value = linter.generate_reports()\n            except OSError as ex:\n                print(ex, file=sys.stderr)\n                sys.exit(32)\n        else:\n            linter.check(args)\n            score_value = linter.generate_reports()\n\n        if do_exit is not UNUSED_PARAM_SENTINEL:\n            warnings.warn(\n                \"do_exit is deprecated and it is going to be removed in a future version.\",\n                DeprecationWarning,\n            )\n            exit = do_exit\n\n        if exit:\n            if linter.config.exit_zero:\n                sys.exit(0)\n            elif linter.any_fail_on_issues():\n                # We need to make sure we return a failing exit code in this case.\n                # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.\n                sys.exit(self.linter.msg_status or 1)\n            elif score_value is not None:\n                if score_value >= linter.config.fail_under:\n                    sys.exit(0)\n                else:\n                    # We need to make sure we return a failing exit code in this case.\n                    # So we use self.linter.msg_status if that is non-zero, otherwise we just return 1.\n                    sys.exit(self.linter.msg_status or 1)\n            else:\n                sys.exit(self.linter.msg_status)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.run.Run.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/run.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/run.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.run.Run.__init__"
+                    }
+                ],
+                "similarity": 0.19955302010490333,
+                "end_line": 232,
+                "signature": "pylint.lint.run.Run.__init__(self, args, reporter, exit, do_exit)"
+            },
+            {
+                "start_line": 63,
+                "file_path": "pylint/config/arguments_manager.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self, prog: str, usage: str | None = None, description: str | None = None\n    ) -> None:\n        self._config = argparse.Namespace()\n        \"\"\"Namespace for all options.\"\"\"\n\n        self._base_config = self._config\n        \"\"\"Fall back Namespace object created during initialization.\n\n        This is necessary for the per-directory configuration support. Whenever we\n        fail to match a file with a directory we fall back to the Namespace object\n        created during initialization.\n        \"\"\"\n\n        self._arg_parser = argparse.ArgumentParser(\n            prog=prog,\n            usage=usage or \"%(prog)s [options]\",\n            description=description,\n            formatter_class=_HelpFormatter,\n            # Needed to let 'pylint-config' overwrite the -h command\n            conflict_handler=\"resolve\",\n        )\n        \"\"\"The command line argument parser.\"\"\"\n\n        self._argument_groups_dict: dict[str, argparse._ArgumentGroup] = {}\n        \"\"\"Dictionary of all the argument groups.\"\"\"\n\n        self._option_dicts: dict[str, OptionDict] = {}\n        \"\"\"All option dictionaries that have been registered.\"\"\"\n\n        self._directory_namespaces: DirectoryNamespaceDict = {}\n        \"\"\"Mapping of directories and their respective namespace objects.\"\"\"\n\n        # TODO: 3.0: Remove deprecated attributes introduced to keep API\n        # parity with optparse. Until '_maxlevel'\n        with warnings.catch_warnings():\n            warnings.filterwarnings(\"ignore\", category=DeprecationWarning)\n            self.reset_parsers(usage or \"\")\n        # list of registered options providers\n        self._options_providers: list[ConfigProvider] = []\n        # dictionary associating option name to checker\n        self._all_options: OrderedDict[str, ConfigProvider] = OrderedDict()\n        self._short_options: dict[str, str] = {}\n        self._nocallback_options: dict[ConfigProvider, str] = {}\n        self._mygroups: dict[str, optparse.OptionGroup] = {}\n        # verbosity\n        self._maxlevel: int = 0",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_manager._ArgumentsManager.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_manager.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_manager.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_manager._ArgumentsManager.__init__"
+                    }
+                ],
+                "similarity": 0.18772857337300256,
+                "end_line": 109,
+                "signature": "pylint.config.arguments_manager._ArgumentsManager.__init__(self, prog, usage, description)"
+            },
+            {
+                "start_line": 37,
+                "file_path": "pylint/utils/file_state.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        modname: str | None = None,\n        msg_store: MessageDefinitionStore | None = None,\n        node: nodes.Module | None = None,\n        *,\n        is_base_filestate: bool = False,\n    ) -> None:\n        if modname is None:\n            warnings.warn(\n                \"FileState needs a string as modname argument. \"\n                \"This argument will be required in pylint 3.0\",\n                DeprecationWarning,\n            )\n        if msg_store is None:\n            warnings.warn(\n                \"FileState needs a 'MessageDefinitionStore' as msg_store argument. \"\n                \"This argument will be required in pylint 3.0\",\n                DeprecationWarning,\n            )\n        self.base_name = modname\n        self._module_msgs_state: MessageStateDict = {}\n        self._raw_module_msgs_state: MessageStateDict = {}\n        self._ignored_msgs: defaultdict[\n            tuple[str, int], set[int]\n        ] = collections.defaultdict(set)\n        self._suppression_mapping: dict[tuple[str, int], int] = {}\n        self._module = node\n        if node:\n            self._effective_max_line_number = node.tolineno\n        else:\n            self._effective_max_line_number = None\n        self._msgs_store = msg_store\n        self._is_base_filestate = is_base_filestate\n        \"\"\"If this FileState is the base state made during initialization of\n        PyLinter.\n        \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.utils.file_state.FileState.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/utils/file_state.py"
+                    },
+                    {
+                        "start_node": "pylint/utils/file_state.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.utils.file_state.FileState.__init__"
+                    }
+                ],
+                "similarity": 0.18163451812548226,
+                "end_line": 73,
+                "signature": "pylint.utils.file_state.FileState.__init__(self, modname, msg_store, node)"
+            },
+            {
+                "start_line": 791,
+                "file_path": "pylint/lint/pylinter.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def set_current_module(\n        self, modname: str | None, filepath: str | None = None\n    ) -> None:\n        \"\"\"Set the name of the currently analyzed module and\n        init statistics for it.\n        \"\"\"\n        if not modname and filepath is None:\n            return\n        self.reporter.on_set_current_module(modname or \"\", filepath)\n        if modname is None:\n            # TODO: 3.0: Remove all modname or \"\"'s in this method\n            warnings.warn(\n                (\n                    \"In pylint 3.0 modname should be a string so that it can be used to \"\n                    \"correctly set the current_name attribute of the linter instance. \"\n                    \"If unknown it should be initialized as an empty string.\"\n                ),\n                DeprecationWarning,\n            )\n        self.current_name = modname\n        self.current_file = filepath or modname\n        self.stats.init_single_module(modname or \"\")\n\n        # If there is an actual filepath we might need to update the config attribute\n        if filepath:\n            namespace = self._get_namespace_for_file(\n                Path(filepath), self._directory_namespaces\n            )\n            if namespace:\n                self.config = namespace or self._base_config",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lintlinter.PyLinter.set_current_module",
+                "documentation": "Set the name of the currently analyzed module and\ninit statistics for it.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/pylinter.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/pylinter.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lintlinter.PyLinter.set_current_module"
+                    }
+                ],
+                "similarity": 0.17655561685744522,
+                "end_line": 820,
+                "signature": "pylint.lintlinter.PyLinter.set_current_module(self, modname, filepath)"
+            },
+            {
+                "start_line": 49,
+                "file_path": "pylint/checkers/base_checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        \"\"\"Checker instances should have the linter as argument.\"\"\"\n        if getattr(self, \"__implements__\", None):\n            warnings.warn(\n                \"Using the __implements__ inheritance pattern for BaseChecker is no \"\n                \"longer supported. Child classes should only inherit BaseChecker or any \"\n                \"of the other checker types from pylint.checkers.\",\n                DeprecationWarning,\n            )\n        if self.name is not None:\n            self.name = self.name.lower()\n        self.linter = linter\n\n        _ArgumentsProvider.__init__(self, linter)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base_checker.BaseChecker.__init__",
+                "documentation": "Checker instances should have the linter as argument.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base_checker.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base_checker.BaseChecker.__init__"
+                    }
+                ],
+                "similarity": 0.17228124106290488,
+                "end_line": 62,
+                "signature": "pylint.checkers.base_checker.BaseChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 45,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        self.linter = linter\n        self._msgs_state: dict[str, bool] = {}\n        self._options_methods = {\n            \"enable\": self.enable,\n            \"disable\": self.disable,\n            \"disable-next\": self.disable_next,\n        }\n        self._bw_options_methods = {\n            \"disable-msg\": self._options_methods[\"disable\"],\n            \"enable-msg\": self._options_methods[\"enable\"],\n        }\n        self._pragma_lineno: dict[str, int] = {}\n        # TODO: 3.0: Update key type to str when current_name is always str\n        self._stashed_messages: defaultdict[\n            tuple[str | None, str], list[tuple[str | None, str]]\n        ] = defaultdict(list)\n        \"\"\"Some messages in the options (for --enable and --disable) are encountered\n        too early to warn about them.\n\n        i.e. before all option providers have been fully parsed. Thus, this dict stores\n        option_value and msg_id needed to (later) emit the messages keyed on module names.\n        \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler.__init__"
+                    }
+                ],
+                "similarity": 0.16862345075459564,
+                "end_line": 67,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler.__init__(self, linter)"
+            },
+            {
+                "start_line": 361,
+                "file_path": "pylint/lint/pylinter.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def load_plugin_modules(self, modnames: list[str]) -> None:\n        \"\"\"Check a list pylint plugins modules, load and register them.\"\"\"\n        for modname in modnames:\n            if modname in self._dynamic_plugins:\n                continue\n            self._dynamic_plugins.add(modname)\n            try:\n                module = astroid.modutils.load_module_from_name(modname)\n                module.register(self)\n            except ModuleNotFoundError:\n                pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lintlinter.PyLinter.load_plugin_modules",
+                "documentation": "Check a list pylint plugins modules, load and register them.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/pylinter.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/pylinter.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lintlinter.PyLinter.load_plugin_modules"
+                    }
+                ],
+                "similarity": 0.16242420166104943,
+                "end_line": 371,
+                "signature": "pylint.lintlinter.PyLinter.load_plugin_modules(self, modnames)"
+            },
+            {
+                "start_line": 420,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        BaseChecker.__init__(self, linter)\n        self.import_graph: defaultdict[str, set[str]] = defaultdict(set)\n        self._imports_stack: list[tuple[Any, Any]] = []\n        self._first_non_import_node = None\n        self._module_pkg: dict[\n            Any, Any\n        ] = {}  # mapping of modules to the pkg they belong in\n        self._allow_any_import_level: set[Any] = set()\n        self.reports = (\n            (\"RP0401\", \"External dependencies\", self._report_external_dependencies),\n            (\"RP0402\", \"Modules dependencies graph\", self._report_dependencies_graph),\n        )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker.__init__"
+                    }
+                ],
+                "similarity": 0.16121146668465502,
+                "end_line": 432,
+                "signature": "pylint.checkers.imports.ImportsChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 137,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _set_msg_status(\n        self,\n        msgid: str,\n        enable: bool,\n        scope: str = \"package\",\n        line: int | None = None,\n        ignore_unknown: bool = False,\n    ) -> None:\n        \"\"\"Do some tests and then iterate over message definitions to set state.\"\"\"\n        assert scope in {\"package\", \"module\"}\n\n        message_definitions = self._get_messages_to_set(msgid, enable, ignore_unknown)\n\n        for message_definition in message_definitions:\n            self._set_one_msg_status(scope, message_definition, line, enable)\n\n        # sync configuration object\n        self.linter.config.enable = []\n        self.linter.config.disable = []\n        for msgid_or_symbol, is_enabled in self._msgs_state.items():\n            symbols = [\n                m.symbol\n                for m in self.linter.msgs_store.get_message_definitions(msgid_or_symbol)\n            ]\n            if is_enabled:\n                self.linter.config.enable += symbols\n            else:\n                self.linter.config.disable += symbols",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler._set_msg_status",
+                "documentation": "Do some tests and then iterate over message definitions to set state.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler._set_msg_status"
+                    }
+                ],
+                "similarity": 0.15765173500198643,
+                "end_line": 164,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler._set_msg_status(self, msgid, enable, scope, line, ignore_unknown)"
+            },
+            {
+                "start_line": 168,
+                "file_path": "pylint/checkers/base_checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def check_consistency(self) -> None:\n        \"\"\"Check the consistency of msgid.\n\n        msg ids for a checker should be a string of len 4, where the two first\n        characters are the checker id and the two last the msg id in this\n        checker.\n\n        :raises InvalidMessageError: If the checker id in the messages are not\n        always the same.\n        \"\"\"\n        checker_id = None\n        existing_ids = []\n        for message in self.messages:\n            # Id's for shared messages such as the 'deprecated-*' messages\n            # can be inconsistent with their checker id.\n            if message.shared:\n                continue\n            if checker_id is not None and checker_id != message.msgid[1:3]:\n                error_msg = \"Inconsistent checker part in message id \"\n                error_msg += f\"'{message.msgid}' (expected 'x{checker_id}xx' \"\n                error_msg += f\"because we already had {existing_ids}).\"\n                raise InvalidMessageError(error_msg)\n            checker_id = message.msgid[1:3]\n            existing_ids.append(message.msgid)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base_checker.BaseChecker.check_consistency",
+                "documentation": "Check the consistency of msgid.\n\nmsg ids for a checker should be a string of len 4, where the two first\ncharacters are the checker id and the two last the msg id in this\nchecker.\n\n:raises InvalidMessageError: If the checker id in the messages are not\nalways the same.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base_checker.BaseChecker.check_consistency"
+                    }
+                ],
+                "similarity": 0.15697630305772128,
+                "end_line": 191,
+                "signature": "pylint.checkers.base_checker.BaseChecker.check_consistency(self)"
+            },
+            {
+                "start_line": 267,
+                "file_path": "pylint/checkers/base/name_checker/checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        super().__init__(linter)\n        self._name_group: dict[str, str] = {}\n        self._bad_names: dict[str, dict[str, list[_BadNamesTuple]]] = {}\n        self._name_regexps: dict[str, re.Pattern[str]] = {}\n        self._name_hints: dict[str, str] = {}\n        self._good_names_rgxs_compiled: list[re.Pattern[str]] = []\n        self._bad_names_rgxs_compiled: list[re.Pattern[str]] = []",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.name_checker.checker.NameChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/name_checker/checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/name_checker/checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.name_checker.checker.NameChecker.__init__"
+                    }
+                ],
+                "similarity": 0.15679892248911495,
+                "end_line": 274,
+                "signature": "pylint.checkers.base.name_checker.checker.NameChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 340,
+                "file_path": "pylint/checkers/similar.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        min_lines: int = DEFAULT_MIN_SIMILARITY_LINE,\n        ignore_comments: bool = False,\n        ignore_docstrings: bool = False,\n        ignore_imports: bool = False,\n        ignore_signatures: bool = False,\n    ) -> None:\n        # If we run in pylint mode we link the namespace objects\n        if isinstance(self, BaseChecker):\n            self.namespace = self.linter.config\n        else:\n            self.namespace = argparse.Namespace()\n\n        self.namespace.min_similarity_lines = min_lines\n        self.namespace.ignore_comments = ignore_comments\n        self.namespace.ignore_docstrings = ignore_docstrings\n        self.namespace.ignore_imports = ignore_imports\n        self.namespace.ignore_signatures = ignore_signatures\n        self.linesets: list[LineSet] = []",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.similar.Similar.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/similar.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/similar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.similar.Similar.__init__"
+                    }
+                ],
+                "similarity": 0.1555888663998771,
+                "end_line": 359,
+                "signature": "pylint.checkers.similar.Similar.__init__(self, min_lines, ignore_comments, ignore_docstrings, ignore_imports, ignore_signatures)"
+            },
+            {
+                "start_line": 807,
+                "file_path": "pylint/checkers/similar.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        BaseRawFileChecker.__init__(self, linter)\n        Similar.__init__(\n            self,\n            min_lines=self.linter.config.min_similarity_lines,\n            ignore_comments=self.linter.config.ignore_comments,\n            ignore_docstrings=self.linter.config.ignore_docstrings,\n            ignore_imports=self.linter.config.ignore_imports,\n            ignore_signatures=self.linter.config.ignore_signatures,\n        )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.similar.SimilarChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/similar.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/similar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.similar.SimilarChecker.__init__"
+                    }
+                ],
+                "similarity": 0.1555408897331763,
+                "end_line": 816,
+                "signature": "pylint.checkers.similar.SimilarChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 100,
+                "file_path": "pylint/config/config_file_parser.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def parse_config_file(\n        self, file_path: Path | None\n    ) -> tuple[dict[str, str], list[str]]:\n        \"\"\"Parse a config file and return str-str pairs.\"\"\"\n        if file_path is None:\n            if self.verbose_mode:\n                print(\n                    \"No config file found, using default configuration\", file=sys.stderr\n                )\n            return {}, []\n\n        file_path = Path(os.path.expandvars(file_path)).expanduser()\n        if not file_path.exists():\n            raise OSError(f\"The config file {file_path} doesn't exist!\")\n\n        if self.verbose_mode:\n            print(f\"Using config file {file_path}\", file=sys.stderr)\n\n        try:\n            if file_path.suffix == \".toml\":\n                return self._parse_toml_file(file_path)\n            return self._parse_ini_file(file_path)\n        except (configparser.Error, tomllib.TOMLDecodeError) as e:\n            self.linter.add_message(\"config-parse-error\", line=0, args=str(e))\n            return {}, []",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.config_file_parser._ConfigurationFileParser.parse_config_file",
+                "documentation": "Parse a config file and return str-str pairs.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/config_file_parser.py"
+                    },
+                    {
+                        "start_node": "pylint/config/config_file_parser.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.config_file_parser._ConfigurationFileParser.parse_config_file"
+                    }
+                ],
+                "similarity": 0.15261470233415952,
+                "end_line": 124,
+                "signature": "pylint.config.config_file_parser._ConfigurationFileParser.parse_config_file(self, file_path)"
+            },
+            {
+                "start_line": 876,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_import_as_rename(self, node: ImportNode) -> None:\n        names = node.names\n        for name in names:\n            if not all(name):\n                return\n\n            splitted_packages = name[0].rsplit(\".\", maxsplit=1)\n            import_name = splitted_packages[-1]\n            aliased_name = name[1]\n            if import_name != aliased_name:\n                continue\n\n            if len(splitted_packages) == 1:\n                self.add_message(\"useless-import-alias\", node=node)\n            elif len(splitted_packages) == 2:\n                self.add_message(\n                    \"consider-using-from-import\",\n                    node=node,\n                    args=(splitted_packages[0], import_name),\n                )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_import_as_rename",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_import_as_rename"
+                    }
+                ],
+                "similarity": 0.15207833614742217,
+                "end_line": 895,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_import_as_rename(self, node)"
+            },
+            {
+                "start_line": 446,
+                "file_path": "pylint/checkers/stdlib.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter: PyLinter) -> None:\n        BaseChecker.__init__(self, linter)\n        self._deprecated_methods: set[str] = set()\n        self._deprecated_arguments: dict[str, tuple[tuple[int | None, str], ...]] = {}\n        self._deprecated_classes: dict[str, set[str]] = {}\n        self._deprecated_decorators: set[str] = set()\n\n        for since_vers, func_list in DEPRECATED_METHODS[sys.version_info[0]].items():\n            if since_vers <= sys.version_info:\n                self._deprecated_methods.update(func_list)\n        for since_vers, args_list in DEPRECATED_ARGUMENTS.items():\n            if since_vers <= sys.version_info:\n                self._deprecated_arguments.update(args_list)\n        for since_vers, class_list in DEPRECATED_CLASSES.items():\n            if since_vers <= sys.version_info:\n                self._deprecated_classes.update(class_list)\n        for since_vers, decorator_list in DEPRECATED_DECORATORS.items():\n            if since_vers <= sys.version_info:\n                self._deprecated_decorators.update(decorator_list)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.stdlib.StdlibChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/stdlib.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/stdlib.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.stdlib.StdlibChecker.__init__"
+                    }
+                ],
+                "similarity": 0.15162920052763093,
+                "end_line": 464,
+                "signature": "pylint.checkers.stdlib.StdlibChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 897,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_reimport(\n        self,\n        node: ImportNode,\n        basename: str | None = None,\n        level: int | None = None,\n    ) -> None:\n        \"\"\"Check if the import is necessary (i.e. not already done).\"\"\"\n        if not self.linter.is_message_enabled(\"reimported\"):\n            return\n\n        frame = node.frame(future=True)\n        root = node.root()\n        contexts = [(frame, level)]\n        if root is not frame:\n            contexts.append((root, None))\n\n        for known_context, known_level in contexts:\n            for name, alias in node.names:\n                first = _get_first_import(\n                    node, known_context, name, basename, known_level, alias\n                )\n                if first is not None:\n                    self.add_message(\n                        \"reimported\", node=node, args=(name, first.fromlineno)\n                    )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_reimport",
+                "documentation": "Check if the import is necessary (i.e. not already done).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_reimport"
+                    }
+                ],
+                "similarity": 0.14948038613810516,
+                "end_line": 921,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_reimport(self, node, basename, level)"
+            },
+            {
+                "start_line": 69,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _set_one_msg_status(\n        self, scope: str, msg: MessageDefinition, line: int | None, enable: bool\n    ) -> None:\n        \"\"\"Set the status of an individual message.\"\"\"\n        if scope == \"module\":\n            assert isinstance(line, int)  # should always be int inside module scope\n\n            self.linter.file_state.set_msg_status(msg, line, enable)\n            if not enable and msg.symbol != \"locally-disabled\":\n                self.linter.add_message(\n                    \"locally-disabled\", line=line, args=(msg.symbol, msg.msgid)\n                )\n        else:\n            msgs = self._msgs_state\n            msgs[msg.msgid] = enable",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler._set_one_msg_status",
+                "documentation": "Set the status of an individual message.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler._set_one_msg_status"
+                    }
+                ],
+                "similarity": 0.14797070316571326,
+                "end_line": 83,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler._set_one_msg_status(self, scope, msg, line, enable)"
+            },
+            {
+                "start_line": 34,
+                "file_path": "pylint/config/config_file_parser.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _parse_ini_file(self, file_path: Path) -> tuple[dict[str, str], list[str]]:\n        \"\"\"Parse and handle errors of a ini configuration file.\"\"\"\n        parser = configparser.ConfigParser(inline_comment_prefixes=(\"#\", \";\"))\n\n        # Use this encoding in order to strip the BOM marker, if any.\n        with open(file_path, encoding=\"utf_8_sig\") as fp:\n            parser.read_file(fp)\n\n        config_content: dict[str, str] = {}\n        options: list[str] = []\n        for section in parser.sections():\n            if self._ini_file_with_sections(file_path) and not section.startswith(\n                \"pylint\"\n            ):\n                if section.lower() == \"master\":\n                    # TODO: 3.0: Remove deprecated handling of master, only allow 'pylint.' sections\n                    warnings.warn(\n                        \"The use of 'MASTER' or 'master' as configuration section for pylint \"\n                        \"has been deprecated, as it's bad practice to not start sections titles with the \"\n                        \"tool name. Please use 'pylint.main' instead.\",\n                        UserWarning,\n                    )\n                else:\n                    continue\n            for opt, value in parser[section].items():\n                config_content[opt] = value\n                options += [f\"--{opt}\", value]\n        return config_content, options",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.config_file_parser._ConfigurationFileParser._parse_ini_file",
+                "documentation": "Parse and handle errors of a ini configuration file.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/config_file_parser.py"
+                    },
+                    {
+                        "start_node": "pylint/config/config_file_parser.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.config_file_parser._ConfigurationFileParser._parse_ini_file"
+                    }
+                ],
+                "similarity": 0.14680733053905357,
+                "end_line": 61,
+                "signature": "pylint.config.config_file_parser._ConfigurationFileParser._parse_ini_file(self, file_path)"
+            },
+            {
+                "start_line": 671,
+                "file_path": "pylint/checkers/similar.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        name: str,\n        lines: list[str],\n        ignore_comments: bool = False,\n        ignore_docstrings: bool = False,\n        ignore_imports: bool = False,\n        ignore_signatures: bool = False,\n        line_enabled_callback: Callable[[str, int], bool] | None = None,\n    ) -> None:\n        self.name = name\n        self._real_lines = lines\n        self._stripped_lines = stripped_lines(\n            lines,\n            ignore_comments,\n            ignore_docstrings,\n            ignore_imports,\n            ignore_signatures,\n            line_enabled_callback=line_enabled_callback,\n        )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.similar.LineSet.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/similar.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/similar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.similar.LineSet.__init__"
+                    }
+                ],
+                "similarity": 0.1453171957148555,
+                "end_line": 690,
+                "signature": "pylint.checkers.similar.LineSet.__init__(self, name, lines, ignore_comments, ignore_docstrings, ignore_imports, ignore_signatures, line_enabled_callback)"
+            },
+            {
+                "start_line": 134,
+                "file_path": "pylint/checkers/classes/special_methods_checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter=None):\n        super().__init__(linter)\n        self._protocol_map = {\n            \"__iter__\": self._check_iter,\n            \"__len__\": self._check_len,\n            \"__bool__\": self._check_bool,\n            \"__index__\": self._check_index,\n            \"__repr__\": self._check_repr,\n            \"__str__\": self._check_str,\n            \"__bytes__\": self._check_bytes,\n            \"__hash__\": self._check_hash,\n            \"__length_hint__\": self._check_length_hint,\n            \"__format__\": self._check_format,\n            \"__getnewargs__\": self._check_getnewargs,\n            \"__getnewargs_ex__\": self._check_getnewargs_ex,\n        }",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.classes.special_methods_checker.SpecialMethodsChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/classes/special_methods_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/classes/special_methods_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.classes.special_methods_checker.SpecialMethodsChecker.__init__"
+                    }
+                ],
+                "similarity": 0.14498506606685752,
+                "end_line": 149,
+                "signature": "pylint.checkers.classes.special_methods_checker.SpecialMethodsChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 253,
+                "file_path": "pylint/config/arguments_manager.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _parse_configuration_file(self, arguments: list[str]) -> None:\n        \"\"\"Parse the arguments found in a configuration file into the namespace.\"\"\"\n        self.config, parsed_args = self._arg_parser.parse_known_args(\n            arguments, self.config\n        )\n        unrecognized_options: list[str] = []\n        for opt in parsed_args:\n            if opt.startswith(\"--\"):\n                unrecognized_options.append(opt[2:])\n        if unrecognized_options:\n            raise _UnrecognizedOptionError(options=unrecognized_options)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_manager._ArgumentsManager._parse_configuration_file",
+                "documentation": "Parse the arguments found in a configuration file into the namespace.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_manager.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_manager.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_manager._ArgumentsManager._parse_configuration_file"
+                    }
+                ],
+                "similarity": 0.1442782333907161,
+                "end_line": 263,
+                "signature": "pylint.config.arguments_manager._ArgumentsManager._parse_configuration_file(self, arguments)"
+            },
+            {
+                "start_line": 621,
+                "file_path": "pylint/lint/pylinter.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def check(self, files_or_modules: Sequence[str] | str) -> None:\n        \"\"\"Main checking entry: check a list of files or modules from their name.\n\n        files_or_modules is either a string or list of strings presenting modules to check.\n        \"\"\"\n        self.initialize()\n        if not isinstance(files_or_modules, (list, tuple)):\n            # TODO: 3.0: Remove deprecated typing and update docstring\n            warnings.warn(\n                \"In pylint 3.0, the checkers check function will only accept sequence of string\",\n                DeprecationWarning,\n            )\n            files_or_modules = (files_or_modules,)  # type: ignore[assignment]\n        if self.config.recursive:\n            files_or_modules = tuple(self._discover_files(files_or_modules))\n        if self.config.from_stdin:\n            if len(files_or_modules) != 1:\n                raise exceptions.InvalidArgsError(\n                    \"Missing filename required for --from-stdin\"\n                )\n\n            filepath = files_or_modules[0]\n            with fix_import_path(files_or_modules):\n                self._check_files(\n                    functools.partial(self.get_ast, data=_read_stdin()),\n                    [self._get_file_descr_from_stdin(filepath)],\n                )\n        elif self.config.jobs == 1:\n            with fix_import_path(files_or_modules):\n                self._check_files(\n                    self.get_ast, self._iterate_file_descrs(files_or_modules)\n                )\n        else:\n            original_sys_path = sys.path[:]\n            check_parallel(\n                self,\n                self.config.jobs,\n                self._iterate_file_descrs(files_or_modules),\n                files_or_modules,  # this argument patches sys.path\n            )\n            sys.path = original_sys_path",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lintlinter.PyLinter.check",
+                "documentation": "Main checking entry: check a list of files or modules from their name.\n\nfiles_or_modules is either a string or list of strings presenting modules to check.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/pylinter.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/pylinter.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lintlinter.PyLinter.check"
+                    }
+                ],
+                "similarity": 0.14349484453134173,
+                "end_line": 661,
+                "signature": "pylint.lintlinter.PyLinter.check(self, files_or_modules)"
+            },
+            {
+                "start_line": 396,
+                "file_path": "pylint/config/argument.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        *,\n        flags: list[str],\n        default: _ArgumentTypes,\n        arg_type: str,\n        choices: list[str] | None,\n        arg_help: str,\n        metavar: str,\n        hide_help: bool,\n        kwargs: dict[str, Any],\n        section: str | None,\n    ) -> None:\n        super().__init__(\n            flags=flags,\n            action=_OldNamesAction,\n            default=default,\n            arg_type=arg_type,\n            choices=choices,\n            arg_help=arg_help,\n            metavar=metavar,\n            hide_help=hide_help,\n            section=section,\n        )\n\n        self.kwargs = kwargs\n        \"\"\"Any additional arguments passed to the action.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.argument._StoreOldNamesArgument.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/argument.py"
+                    },
+                    {
+                        "start_node": "pylint/config/argument.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.argument._StoreOldNamesArgument.__init__"
+                    }
+                ],
+                "similarity": 0.14275215802196234,
+                "end_line": 422,
+                "signature": "pylint.config.argument._StoreOldNamesArgument.__init__(self)"
+            },
+            {
+                "start_line": 457,
+                "file_path": "pylint/lint/pylinter.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def register_checker(self, checker: checkers.BaseChecker) -> None:\n        \"\"\"This method auto registers the checker.\"\"\"\n        self._checkers[checker.name].append(checker)\n        for r_id, r_title, r_cb in checker.reports:\n            self.register_report(r_id, r_title, r_cb, checker)\n        if hasattr(checker, \"msgs\"):\n            self.msgs_store.register_messages_from_checker(checker)\n        # Register the checker, but disable all of its messages.\n        if not getattr(checker, \"enabled\", True):\n            self.disable(checker.name)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lintlinter.PyLinter.register_checker",
+                "documentation": "This method auto registers the checker.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/pylinter.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/pylinter.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lintlinter.PyLinter.register_checker"
+                    }
+                ],
+                "similarity": 0.1427492371915971,
+                "end_line": 466,
+                "signature": "pylint.lintlinter.PyLinter.register_checker(self, checker)"
+            },
+            {
+                "start_line": 85,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _get_messages_to_set(\n        self, msgid: str, enable: bool, ignore_unknown: bool = False\n    ) -> list[MessageDefinition]:\n        \"\"\"Do some tests and find the actual messages of which the status should be set.\"\"\"\n        message_definitions: list[MessageDefinition] = []\n        if msgid == \"all\":\n            for _msgid in MSG_TYPES:\n                message_definitions.extend(\n                    self._get_messages_to_set(_msgid, enable, ignore_unknown)\n                )\n            return message_definitions\n\n        # msgid is a category?\n        category_id = msgid.upper()\n        if category_id not in MSG_TYPES:\n            category_id_formatted = MSG_TYPES_LONG.get(category_id)\n        else:\n            category_id_formatted = category_id\n        if category_id_formatted is not None:\n            for _msgid in self.linter.msgs_store._msgs_by_category[\n                category_id_formatted\n            ]:\n                message_definitions.extend(\n                    self._get_messages_to_set(_msgid, enable, ignore_unknown)\n                )\n            return message_definitions\n\n        # msgid is a checker name?\n        if msgid.lower() in self.linter._checkers:\n            for checker in self.linter._checkers[msgid.lower()]:\n                for _msgid in checker.msgs:\n                    message_definitions.extend(\n                        self._get_messages_to_set(_msgid, enable, ignore_unknown)\n                    )\n            return message_definitions\n\n        # msgid is report id?\n        if msgid.lower().startswith(\"rp\"):\n            if enable:\n                self.linter.enable_report(msgid)\n            else:\n                self.linter.disable_report(msgid)\n            return message_definitions\n\n        try:\n            # msgid is a symbolic or numeric msgid.\n            message_definitions = self.linter.msgs_store.get_message_definitions(msgid)\n        except exceptions.UnknownMessageError:\n            if not ignore_unknown:\n                raise\n        return message_definitions",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler._get_messages_to_set",
+                "documentation": "Do some tests and find the actual messages of which the status should be set.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler._get_messages_to_set"
+                    }
+                ],
+                "similarity": 0.14229825258460455,
+                "end_line": 135,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler._get_messages_to_set(self, msgid, enable, ignore_unknown)"
+            },
+            {
+                "start_line": 325,
+                "file_path": "pylint/checkers/base/name_checker/checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def leave_module(self, _: nodes.Module) -> None:\n        for all_groups in self._bad_names.values():\n            if len(all_groups) < 2:\n                continue\n            groups: collections.defaultdict[\n                int, list[list[_BadNamesTuple]]\n            ] = collections.defaultdict(list)\n            min_warnings = sys.maxsize\n            prevalent_group, _ = max(all_groups.items(), key=lambda item: len(item[1]))\n            for group in all_groups.values():\n                groups[len(group)].append(group)\n                min_warnings = min(len(group), min_warnings)\n            if len(groups[min_warnings]) > 1:\n                by_line = sorted(\n                    groups[min_warnings],\n                    key=lambda group: min(\n                        warning[0].lineno\n                        for warning in group\n                        if warning[0].lineno is not None\n                    ),\n                )\n                warnings: Iterable[_BadNamesTuple] = itertools.chain(*by_line[1:])\n            else:\n                warnings = groups[min_warnings][0]\n            for args in warnings:\n                self._raise_name_warning(prevalent_group, *args)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.name_checker.checker.NameChecker.leave_module",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/name_checker/checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/name_checker/checker.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.name_checker.checker.NameChecker.leave_module"
+                    }
+                ],
+                "similarity": 0.14212965043563322,
+                "end_line": 350,
+                "signature": "pylint.checkers.base.name_checker.checker.NameChecker.leave_module(self, _)"
+            },
+            {
+                "start_line": 277,
+                "file_path": "pylint/config/arguments_manager.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def reset_parsers(self, usage: str = \"\") -> None:  # pragma: no cover\n        \"\"\"DEPRECATED.\"\"\"\n        warnings.warn(\n            \"reset_parsers has been deprecated. Parsers should be instantiated \"\n            \"once during initialization and do not need to be reset.\",\n            DeprecationWarning,\n        )\n        # configuration file parser\n        self.cfgfile_parser = configparser.ConfigParser(\n            inline_comment_prefixes=(\"#\", \";\")\n        )\n        # command line parser\n        self.cmdline_parser = OptionParser(Option, usage=usage)\n        self.cmdline_parser.options_manager = self  # type: ignore[attr-defined]\n        self._optik_option_attrs = set(self.cmdline_parser.option_class.ATTRS)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_manager._ArgumentsManager.reset_parsers",
+                "documentation": "DEPRECATED.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_manager.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_manager.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_manager._ArgumentsManager.reset_parsers"
+                    }
+                ],
+                "similarity": 0.14143569855582666,
+                "end_line": 291,
+                "signature": "pylint.config.arguments_manager._ArgumentsManager.reset_parsers(self, usage)"
+            },
+            {
+                "start_line": 998,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_toplevel(self, node: ImportNode) -> None:\n        \"\"\"Check whether the import is made outside the module toplevel.\"\"\"\n        # If the scope of the import is a module, then obviously it is\n        # not outside the module toplevel.\n        if isinstance(node.scope(), nodes.Module):\n            return\n\n        module_names = [\n            f\"{node.modname}.{name[0]}\"\n            if isinstance(node, nodes.ImportFrom)\n            else name[0]\n            for name in node.names\n        ]\n\n        # Get the full names of all the imports that are only allowed at the module level\n        scoped_imports = [\n            name for name in module_names if name not in self._allow_any_import_level\n        ]\n\n        if scoped_imports:\n            self.add_message(\n                \"import-outside-toplevel\", args=\", \".join(scoped_imports), node=node\n            )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_toplevel",
+                "documentation": "Check whether the import is made outside the module toplevel.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_toplevel"
+                    }
+                ],
+                "similarity": 0.14138588656237863,
+                "end_line": 1020,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_toplevel(self, node)"
+            },
+            {
+                "start_line": 304,
+                "file_path": "pylint/config/argument.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        *,\n        flags: list[str],\n        action: type[argparse.Action],\n        default: _ArgumentTypes,\n        arg_type: str,\n        choices: list[str] | None,\n        arg_help: str,\n        metavar: str,\n        hide_help: bool,\n        section: str | None,\n    ) -> None:\n        super().__init__(\n            flags=flags, arg_help=arg_help, hide_help=hide_help, section=section\n        )\n\n        self.action = action\n        \"\"\"The action to perform with the argument.\"\"\"\n\n        self.default = default\n        \"\"\"The default value of the argument.\"\"\"\n\n        self.type = _TYPE_TRANSFORMERS[arg_type]\n        \"\"\"A transformer function that returns a transformed type of the argument.\"\"\"\n\n        self.choices = choices\n        \"\"\"A list of possible choices for the argument.\n\n        None if there are no restrictions.\n        \"\"\"\n\n        self.metavar = metavar\n        \"\"\"The metavar of the argument.\n\n        See:\n        https://docs.python.org/3/library/argparse.html#metavar\n        \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.argument._DeprecationArgument.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/argument.py"
+                    },
+                    {
+                        "start_node": "pylint/config/argument.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.argument._DeprecationArgument.__init__"
+                    }
+                ],
+                "similarity": 0.14095140575648518,
+                "end_line": 341,
+                "signature": "pylint.config.argument._DeprecationArgument.__init__(self)"
+            },
+            {
+                "start_line": 184,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def disable(\n        self,\n        msgid: str,\n        scope: str = \"package\",\n        line: int | None = None,\n        ignore_unknown: bool = False,\n    ) -> None:\n        \"\"\"Disable a message for a scope.\"\"\"\n        self._set_msg_status(\n            msgid, enable=False, scope=scope, line=line, ignore_unknown=ignore_unknown\n        )\n        self._register_by_id_managed_msg(msgid, line)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler.disable",
+                "documentation": "Disable a message for a scope.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler.disable"
+                    }
+                ],
+                "similarity": 0.1407548428695108,
+                "end_line": 195,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler.disable(self, msgid, scope, line, ignore_unknown)"
+            },
+            {
+                "start_line": 675,
+                "file_path": "pylint/config/arguments_manager.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _generate_config_file(self) -> str:\n        \"\"\"Write a configuration file according to the current configuration into\n        stdout.\n        \"\"\"\n        toml_doc = tomlkit.document()\n        pylint_tool_table = tomlkit.table(is_super_table=True)\n        toml_doc.add(tomlkit.key([\"tool\", \"pylint\"]), pylint_tool_table)\n\n        for group in sorted(\n            self._arg_parser._action_groups,\n            key=lambda x: (x.title != \"Main\", x.title),\n        ):\n            # Skip the options section with the --help option\n            if group.title in {\"options\", \"optional arguments\", \"Commands\"}:\n                continue\n\n            # Skip sections without options such as \"positional arguments\"\n            if not group._group_actions:\n                continue\n\n            group_table = tomlkit.table()\n            option_actions = [\n                i\n                for i in group._group_actions\n                if not isinstance(i, argparse._SubParsersAction)\n            ]\n            for action in sorted(option_actions, key=lambda x: x.option_strings[0][2:]):\n                optname = action.option_strings[0][2:]\n\n                # We skip old name options that don't have their own optdict\n                try:\n                    optdict = self._option_dicts[optname]\n                except KeyError:\n                    continue\n\n                if optdict.get(\"hide_from_config_file\"):\n                    continue\n\n                # Add help comment\n                help_msg = optdict.get(\"help\", \"\")\n                assert isinstance(help_msg, str)\n                help_text = textwrap.wrap(help_msg, width=79)\n                for line in help_text:\n                    group_table.add(tomlkit.comment(line))\n\n                # Get current value of option\n                value = getattr(self.config, optname.replace(\"-\", \"_\"))\n\n                # Create a comment if the option has no value\n                if not value:\n                    group_table.add(tomlkit.comment(f\"{optname} =\"))\n                    group_table.add(tomlkit.nl())\n                    continue\n\n                # Skip deprecated options\n                if \"kwargs\" in optdict:\n                    assert isinstance(optdict[\"kwargs\"], dict)\n                    if \"new_names\" in optdict[\"kwargs\"]:\n                        continue\n\n                # Tomlkit doesn't support regular expressions\n                if isinstance(value, re.Pattern):\n                    value = value.pattern\n                elif isinstance(value, (list, tuple)) and isinstance(\n                    value[0], re.Pattern\n                ):\n                    value = [i.pattern for i in value]\n\n                # Handle tuples that should be strings\n                if optdict.get(\"type\") == \"py_version\":\n                    value = \".\".join(str(i) for i in value)\n\n                # Add to table\n                group_table.add(optname, value)\n                group_table.add(tomlkit.nl())\n\n            assert group.title\n            pylint_tool_table.add(group.title.lower(), group_table)\n\n        toml_string = tomlkit.dumps(toml_doc)\n\n        # Make sure the string we produce is valid toml and can be parsed\n        tomllib.loads(toml_string)\n\n        return toml_string",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_manager._ArgumentsManager._generate_config_file",
+                "documentation": "Write a configuration file according to the current configuration into\nstdout.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_manager.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_manager.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_manager._ArgumentsManager._generate_config_file"
+                    }
+                ],
+                "similarity": 0.14071149343646897,
+                "end_line": 759,
+                "signature": "pylint.config.arguments_manager._ArgumentsManager._generate_config_file(self)"
+            },
+            {
+                "start_line": 171,
+                "file_path": "pylint/config/arguments_manager.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _add_parser_option(\n        section_group: argparse._ArgumentGroup, argument: _Argument\n    ) -> None:\n        \"\"\"Add an argument.\"\"\"\n        if isinstance(argument, _StoreArgument):\n            section_group.add_argument(\n                *argument.flags,\n                action=argument.action,\n                default=argument.default,\n                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed\n                help=argument.help,\n                metavar=argument.metavar,\n                choices=argument.choices,\n            )\n        elif isinstance(argument, _StoreOldNamesArgument):\n            section_group.add_argument(\n                *argument.flags,\n                **argument.kwargs,\n                action=argument.action,\n                default=argument.default,\n                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed\n                help=argument.help,\n                metavar=argument.metavar,\n                choices=argument.choices,\n            )\n            # We add the old name as hidden option to make it's default value gets loaded when\n            # argparse initializes all options from the checker\n            assert argument.kwargs[\"old_names\"]\n            for old_name in argument.kwargs[\"old_names\"]:\n                section_group.add_argument(\n                    f\"--{old_name}\",\n                    action=\"store\",\n                    default=argument.default,\n                    type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed\n                    help=argparse.SUPPRESS,\n                    metavar=argument.metavar,\n                    choices=argument.choices,\n                )\n        elif isinstance(argument, _StoreNewNamesArgument):\n            section_group.add_argument(\n                *argument.flags,\n                **argument.kwargs,\n                action=argument.action,\n                default=argument.default,\n                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed\n                help=argument.help,\n                metavar=argument.metavar,\n                choices=argument.choices,\n            )\n        elif isinstance(argument, _StoreTrueArgument):\n            section_group.add_argument(\n                *argument.flags,\n                action=argument.action,\n                default=argument.default,\n                help=argument.help,\n            )\n        elif isinstance(argument, _CallableArgument):\n            section_group.add_argument(\n                *argument.flags,\n                **argument.kwargs,\n                action=argument.action,\n                help=argument.help,\n                metavar=argument.metavar,\n            )\n        elif isinstance(argument, _ExtendArgument):\n            section_group.add_argument(\n                *argument.flags,\n                action=argument.action,\n                default=argument.default,\n                type=argument.type,  # type: ignore[arg-type] # incorrect typing in typeshed\n                help=argument.help,\n                metavar=argument.metavar,\n                choices=argument.choices,\n                dest=argument.dest,\n            )\n        else:\n            raise UnrecognizedArgumentAction",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_manager._ArgumentsManager._add_parser_option",
+                "documentation": "Add an argument.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_manager.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_manager.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_manager._ArgumentsManager._add_parser_option"
+                    }
+                ],
+                "similarity": 0.14041603296936073,
+                "end_line": 247,
+                "signature": "pylint.config.arguments_manager._ArgumentsManager._add_parser_option(section_group, argument)"
+            },
+            {
+                "start_line": 1082,
+                "file_path": "pylint/checkers/variables.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, linter=None):\n        super().__init__(linter)\n        self._to_consume: list[NamesConsumer] = []\n        self._checking_mod_attr = None\n        self._type_annotation_names = []\n        self._except_handler_names_queue: list[\n            tuple[nodes.ExceptHandler, nodes.AssignName]\n        ] = []\n        \"\"\"This is a queue, last in first out.\"\"\"\n        self._postponed_evaluation_enabled = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.variables.VariablesChecker.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/variables.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/variables.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.variables.VariablesChecker.__init__"
+                    }
+                ],
+                "similarity": 0.13994817087631006,
+                "end_line": 1091,
+                "signature": "pylint.checkers.variables.VariablesChecker.__init__(self, linter)"
+            },
+            {
+                "start_line": 2622,
+                "file_path": "pylint/checkers/variables.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_module_attrs(self, node, module, module_names):\n        \"\"\"Check that module_names (list of string) are accessible through the\n        given module, if the latest access name corresponds to a module, return it.\n        \"\"\"\n        while module_names:\n            name = module_names.pop(0)\n            if name == \"__dict__\":\n                module = None\n                break\n            try:\n                module = next(module.getattr(name)[0].infer())\n                if module is astroid.Uninferable:\n                    return None\n            except astroid.NotFoundError:\n                if module.name in self._ignored_modules:\n                    return None\n                self.add_message(\n                    \"no-name-in-module\", args=(name, module.name), node=node\n                )\n                return None\n            except astroid.InferenceError:\n                return None\n        if module_names:\n            modname = module.name if module else \"__dict__\"\n            self.add_message(\n                \"no-name-in-module\", node=node, args=(\".\".join(module_names), modname)\n            )\n            return None\n        if isinstance(module, nodes.Module):\n            return module\n        return None",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.variables.VariablesChecker._check_module_attrs",
+                "documentation": "Check that module_names (list of string) are accessible through the\ngiven module, if the latest access name corresponds to a module, return it.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/variables.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/variables.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.variables.VariablesChecker._check_module_attrs"
+                    }
+                ],
+                "similarity": 0.13907221426717623,
+                "end_line": 2652,
+                "signature": "pylint.checkers.variables.VariablesChecker._check_module_attrs(self, node, module, module_names)"
+            },
+            {
+                "start_line": 2712,
+                "file_path": "pylint/checkers/variables.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_imports(self, not_consumed):\n        local_names = _fix_dot_imports(not_consumed)\n        checked = set()\n        unused_wildcard_imports: defaultdict[\n            tuple[str, nodes.ImportFrom], list[str]\n        ] = collections.defaultdict(list)\n        for name, stmt in local_names:\n            for imports in stmt.names:\n                real_name = imported_name = imports[0]\n                if imported_name == \"*\":\n                    real_name = name\n                as_name = imports[1]\n                if real_name in checked:\n                    continue\n                if name not in (real_name, as_name):\n                    continue\n                checked.add(real_name)\n\n                is_type_annotation_import = (\n                    imported_name in self._type_annotation_names\n                    or as_name in self._type_annotation_names\n                )\n                if isinstance(stmt, nodes.Import) or (\n                    isinstance(stmt, nodes.ImportFrom) and not stmt.modname\n                ):\n                    if isinstance(stmt, nodes.ImportFrom) and SPECIAL_OBJ.search(\n                        imported_name\n                    ):\n                        # Filter special objects (__doc__, __all__) etc.,\n                        # because they can be imported for exporting.\n                        continue\n\n                    if is_type_annotation_import:\n                        # Most likely a typing import if it wasn't used so far.\n                        continue\n\n                    if as_name == \"_\":\n                        continue\n                    if as_name is None:\n                        msg = f\"import {imported_name}\"\n                    else:\n                        msg = f\"{imported_name} imported as {as_name}\"\n                    if not in_type_checking_block(stmt):\n                        self.add_message(\"unused-import\", args=msg, node=stmt)\n                elif isinstance(stmt, nodes.ImportFrom) and stmt.modname != FUTURE:\n                    if SPECIAL_OBJ.search(imported_name):\n                        # Filter special objects (__doc__, __all__) etc.,\n                        # because they can be imported for exporting.\n                        continue\n\n                    if _is_from_future_import(stmt, name):\n                        # Check if the name is in fact loaded from a\n                        # __future__ import in another module.\n                        continue\n\n                    if is_type_annotation_import:\n                        # Most likely a typing import if it wasn't used so far.\n                        continue\n\n                    if imported_name == \"*\":\n                        unused_wildcard_imports[(stmt.modname, stmt)].append(name)\n                    else:\n                        if as_name is None:\n                            msg = f\"{imported_name} imported from {stmt.modname}\"\n                        else:\n                            msg = f\"{imported_name} imported from {stmt.modname} as {as_name}\"\n                        if not in_type_checking_block(stmt):\n                            self.add_message(\"unused-import\", args=msg, node=stmt)\n\n        # Construct string for unused-wildcard-import message\n        for module, unused_list in unused_wildcard_imports.items():\n            if len(unused_list) == 1:\n                arg_string = unused_list[0]\n            else:\n                arg_string = (\n                    f\"{', '.join(i for i in unused_list[:-1])} and {unused_list[-1]}\"\n                )\n            self.add_message(\n                \"unused-wildcard-import\", args=(arg_string, module[0]), node=module[1]\n            )\n        del self._to_consume",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.variables.VariablesChecker._check_imports",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/variables.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/variables.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.variables.VariablesChecker._check_imports"
+                    }
+                ],
+                "similarity": 0.13891056344377142,
+                "end_line": 2792,
+                "signature": "pylint.checkers.variables.VariablesChecker._check_imports(self, not_consumed)"
+            },
+            {
+                "start_line": 699,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_imports_order(self, _module_node):\n        \"\"\"Checks imports of module `node` are grouped by category.\n\n        Imports must follow this order: standard, 3rd party, local\n        \"\"\"\n        std_imports = []\n        third_party_imports = []\n        first_party_imports = []\n        # need of a list that holds third or first party ordered import\n        external_imports = []\n        local_imports = []\n        third_party_not_ignored = []\n        first_party_not_ignored = []\n        local_not_ignored = []\n        isort_driver = IsortDriver(self.linter.config)\n        for node, modname in self._imports_stack:\n            if modname.startswith(\".\"):\n                package = \".\" + modname.split(\".\")[1]\n            else:\n                package = modname.split(\".\")[0]\n            nested = not isinstance(node.parent, nodes.Module)\n            ignore_for_import_order = not self.linter.is_message_enabled(\n                \"wrong-import-order\", node.fromlineno\n            )\n            import_category = isort_driver.place_module(package)\n            node_and_package_import = (node, package)\n            if import_category in {\"FUTURE\", \"STDLIB\"}:\n                std_imports.append(node_and_package_import)\n                wrong_import = (\n                    third_party_not_ignored\n                    or first_party_not_ignored\n                    or local_not_ignored\n                )\n                if self._is_fallback_import(node, wrong_import):\n                    continue\n                if wrong_import and not nested:\n                    self.add_message(\n                        \"wrong-import-order\",\n                        node=node,\n                        args=(\n                            f'standard import \"{node.as_string()}\"',\n                            f'\"{wrong_import[0][0].as_string()}\"',\n                        ),\n                    )\n            elif import_category == \"THIRDPARTY\":\n                third_party_imports.append(node_and_package_import)\n                external_imports.append(node_and_package_import)\n                if not nested:\n                    if not ignore_for_import_order:\n                        third_party_not_ignored.append(node_and_package_import)\n                    else:\n                        self.linter.add_ignored_message(\n                            \"wrong-import-order\", node.fromlineno, node\n                        )\n                wrong_import = first_party_not_ignored or local_not_ignored\n                if wrong_import and not nested:\n                    self.add_message(\n                        \"wrong-import-order\",\n                        node=node,\n                        args=(\n                            f'third party import \"{node.as_string()}\"',\n                            f'\"{wrong_import[0][0].as_string()}\"',\n                        ),\n                    )\n            elif import_category == \"FIRSTPARTY\":\n                first_party_imports.append(node_and_package_import)\n                external_imports.append(node_and_package_import)\n                if not nested:\n                    if not ignore_for_import_order:\n                        first_party_not_ignored.append(node_and_package_import)\n                    else:\n                        self.linter.add_ignored_message(\n                            \"wrong-import-order\", node.fromlineno, node\n                        )\n                wrong_import = local_not_ignored\n                if wrong_import and not nested:\n                    self.add_message(\n                        \"wrong-import-order\",\n                        node=node,\n                        args=(\n                            f'first party import \"{node.as_string()}\"',\n                            f'\"{wrong_import[0][0].as_string()}\"',\n                        ),\n                    )\n            elif import_category == \"LOCALFOLDER\":\n                local_imports.append((node, package))\n                if not nested:\n                    if not ignore_for_import_order:\n                        local_not_ignored.append((node, package))\n                    else:\n                        self.linter.add_ignored_message(\n                            \"wrong-import-order\", node.fromlineno, node\n                        )\n        return std_imports, external_imports, local_imports",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_imports_order",
+                "documentation": "Checks imports of module `node` are grouped by category.\n\nImports must follow this order: standard, 3rd party, local",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_imports_order"
+                    }
+                ],
+                "similarity": 0.13843616418772145,
+                "end_line": 792,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_imports_order(self, _module_node)"
+            },
+            {
+                "start_line": 216,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def enable(\n        self,\n        msgid: str,\n        scope: str = \"package\",\n        line: int | None = None,\n        ignore_unknown: bool = False,\n    ) -> None:\n        \"\"\"Enable a message for a scope.\"\"\"\n        self._set_msg_status(\n            msgid, enable=True, scope=scope, line=line, ignore_unknown=ignore_unknown\n        )\n        self._register_by_id_managed_msg(msgid, line, is_disabled=False)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler.enable",
+                "documentation": "Enable a message for a scope.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler.enable"
+                    }
+                ],
+                "similarity": 0.13819417980348747,
+                "end_line": 227,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler.enable(self, msgid, scope, line, ignore_unknown)"
+            },
+            {
+                "start_line": 22,
+                "file_path": "pylint/config/arguments_provider.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, *args: object) -> None:\n        # TODO: 3.0: Remove deprecated exception\n        warnings.warn(\n            \"UnsupportedAction has been deprecated and will be removed in pylint 3.0\",\n            DeprecationWarning,\n        )\n        super().__init__(*args)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.arguments_provider.UnsupportedAction.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/arguments_provider.py"
+                    },
+                    {
+                        "start_node": "pylint/config/arguments_provider.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.arguments_provider.UnsupportedAction.__init__"
+                    }
+                ],
+                "similarity": 0.13809413476459417,
+                "end_line": 28,
+                "signature": "pylint.config.arguments_provider.UnsupportedAction.__init__(self)"
+            },
+            {
+                "start_line": 26,
+                "file_path": "pylint/message/message_definition_store.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self) -> None:\n        self.message_id_store: MessageIdStore = MessageIdStore()\n        # Primary registry for all active messages definitions.\n        # It contains the 1:1 mapping from msgid to MessageDefinition.\n        # Keys are msgid, values are MessageDefinition\n        self._messages_definitions: dict[str, MessageDefinition] = {}\n        # MessageDefinition kept by category\n        self._msgs_by_category: dict[str, list[str]] = collections.defaultdict(list)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.message.message_definition_store.MessageDefinitionStore.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/message/message_definition_store.py"
+                    },
+                    {
+                        "start_node": "pylint/message/message_definition_store.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.message.message_definition_store.MessageDefinitionStore.__init__"
+                    }
+                ],
+                "similarity": 0.13781417692965958,
+                "end_line": 33,
+                "signature": "pylint.message.message_definition_store.MessageDefinitionStore.__init__(self)"
+            },
+            {
+                "start_line": 509,
+                "file_path": "pylint/checkers/base/basic_error_checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_redefinition(\n        self, redeftype: str, node: nodes.Call | nodes.FunctionDef\n    ) -> None:\n        \"\"\"Check for redefinition of a function / method / class name.\"\"\"\n        parent_frame = node.parent.frame(future=True)\n\n        # Ignore function stubs created for type information\n        redefinitions = [\n            i\n            for i in parent_frame.locals[node.name]\n            if not (isinstance(i.parent, nodes.AnnAssign) and i.parent.simple)\n        ]\n        defined_self = next(\n            (local for local in redefinitions if not utils.is_overload_stub(local)),\n            node,\n        )\n        if defined_self is not node and not astroid.are_exclusive(node, defined_self):\n            # Additional checks for methods which are not considered\n            # redefined, since they are already part of the base API.\n            if (\n                isinstance(parent_frame, nodes.ClassDef)\n                and node.name in REDEFINABLE_METHODS\n            ):\n                return\n\n            # Skip typing.overload() functions.\n            if utils.is_overload_stub(node):\n                return\n\n            # Exempt functions redefined on a condition.\n            if isinstance(node.parent, nodes.If):\n                # Exempt \"if not <func>\" cases\n                if (\n                    isinstance(node.parent.test, nodes.UnaryOp)\n                    and node.parent.test.op == \"not\"\n                    and isinstance(node.parent.test.operand, nodes.Name)\n                    and node.parent.test.operand.name == node.name\n                ):\n                    return\n\n                # Exempt \"if <func> is not None\" cases\n                # pylint: disable=too-many-boolean-expressions\n                if (\n                    isinstance(node.parent.test, nodes.Compare)\n                    and isinstance(node.parent.test.left, nodes.Name)\n                    and node.parent.test.left.name == node.name\n                    and node.parent.test.ops[0][0] == \"is\"\n                    and isinstance(node.parent.test.ops[0][1], nodes.Const)\n                    and node.parent.test.ops[0][1].value is None\n                ):\n                    return\n\n            # Check if we have forward references for this node.\n            try:\n                redefinition_index = redefinitions.index(node)\n            except ValueError:\n                pass\n            else:\n                for redefinition in redefinitions[:redefinition_index]:\n                    inferred = utils.safe_infer(redefinition)\n                    if (\n                        inferred\n                        and isinstance(inferred, astroid.Instance)\n                        and inferred.qname() == TYPING_FORWARD_REF_QNAME\n                    ):\n                        return\n\n            dummy_variables_rgx = self.linter.config.dummy_variables_rgx\n            if dummy_variables_rgx and dummy_variables_rgx.match(node.name):\n                return\n            self.add_message(\n                \"function-redefined\",\n                node=node,\n                args=(redeftype, defined_self.fromlineno),\n            )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_redefinition",
+                "documentation": "Check for redefinition of a function / method / class name.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/basic_error_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/basic_error_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_redefinition"
+                    }
+                ],
+                "similarity": 0.13696114964950995,
+                "end_line": 583,
+                "signature": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_redefinition(self, redeftype, node)"
+            },
+            {
+                "start_line": 166,
+                "file_path": "pylint/lint/message_state_handler.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _register_by_id_managed_msg(\n        self, msgid_or_symbol: str, line: int | None, is_disabled: bool = True\n    ) -> None:\n        \"\"\"If the msgid is a numeric one, then register it to inform the user\n        it could furnish instead a symbolic msgid.\n        \"\"\"\n        if msgid_or_symbol[1:].isdigit():\n            try:\n                symbol = self.linter.msgs_store.message_id_store.get_symbol(\n                    msgid=msgid_or_symbol\n                )\n            except exceptions.UnknownMessageError:\n                return\n            managed = ManagedMessage(\n                self.linter.current_name, msgid_or_symbol, symbol, line, is_disabled\n            )\n            self.linter._by_id_managed_msgs.append(managed)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.message_state_handler._MessageStateHandler._register_by_id_managed_msg",
+                "documentation": "If the msgid is a numeric one, then register it to inform the user\nit could furnish instead a symbolic msgid.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/message_state_handler.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/message_state_handler.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.message_state_handler._MessageStateHandler._register_by_id_managed_msg"
+                    }
+                ],
+                "similarity": 0.13658574871217866,
+                "end_line": 182,
+                "signature": "pylint.lint.message_state_handler._MessageStateHandler._register_by_id_managed_msg(self, msgid_or_symbol, line, is_disabled)"
+            },
+            {
+                "start_line": 397,
+                "file_path": "pylint/checkers/base/basic_error_checker.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_nonlocal_without_binding(self, node: nodes.Nonlocal, name: str) -> None:\n        current_scope = node.scope()\n        while True:\n            if current_scope.parent is None:\n                break\n\n            if not isinstance(current_scope, (nodes.ClassDef, nodes.FunctionDef)):\n                self.add_message(\"nonlocal-without-binding\", args=(name,), node=node)\n                return\n\n            # Search for `name` in the parent scope if:\n            #  `current_scope` is the same scope in which the `nonlocal` name is declared\n            #  or `name` is not in `current_scope.locals`.\n            if current_scope is node.scope() or name not in current_scope.locals:\n                current_scope = current_scope.parent.scope()\n                continue\n\n            # Okay, found it.\n            return\n\n        if not isinstance(current_scope, nodes.FunctionDef):\n            self.add_message(\n                \"nonlocal-without-binding\", args=(name,), node=node, confidence=HIGH\n            )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_nonlocal_without_binding",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/basic_error_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/basic_error_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_nonlocal_without_binding"
+                    }
+                ],
+                "similarity": 0.13631969532112287,
+                "end_line": 420,
+                "signature": "pylint.checkers.base.basic_error_checker.BasicErrorChecker._check_nonlocal_without_binding(self, node, name)"
+            },
+            {
+                "start_line": 433,
+                "file_path": "pylint/config/argument.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        *,\n        flags: list[str],\n        default: _ArgumentTypes,\n        arg_type: str,\n        choices: list[str] | None,\n        arg_help: str,\n        metavar: str,\n        hide_help: bool,\n        kwargs: dict[str, Any],\n        section: str | None,\n    ) -> None:\n        super().__init__(\n            flags=flags,\n            action=_NewNamesAction,\n            default=default,\n            arg_type=arg_type,\n            choices=choices,\n            arg_help=arg_help,\n            metavar=metavar,\n            hide_help=hide_help,\n            section=section,\n        )\n\n        self.kwargs = kwargs\n        \"\"\"Any additional arguments passed to the action.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.argument._StoreNewNamesArgument.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/argument.py"
+                    },
+                    {
+                        "start_node": "pylint/config/argument.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.argument._StoreNewNamesArgument.__init__"
+                    }
+                ],
+                "similarity": 0.13621116059097724,
+                "end_line": 459,
+                "signature": "pylint.config.argument._StoreNewNamesArgument.__init__(self)"
+            },
+            {
+                "start_line": 979,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_wildcard_imports(\n        self, node: nodes.ImportFrom, imported_module: nodes.Module | None\n    ) -> None:\n        if node.root().package:\n            # Skip the check if in __init__.py issue #2026\n            return\n\n        wildcard_import_is_allowed = self._wildcard_import_is_allowed(imported_module)\n        for name, _ in node.names:\n            if name == \"*\" and not wildcard_import_is_allowed:\n                self.add_message(\"wildcard-import\", args=node.modname, node=node)",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_wildcard_imports",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_wildcard_imports"
+                    }
+                ],
+                "similarity": 0.1361372376893159,
+                "end_line": 989,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_wildcard_imports(self, node, imported_module)"
+            },
+            {
+                "start_line": 247,
+                "file_path": "pylint/extensions/private_import.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def same_root_dir(\n        node: nodes.Import | nodes.ImportFrom, import_mod_name: str\n    ) -> bool:\n        \"\"\"Does the node's file's path contain the base name of `import_mod_name`?\"\"\"\n        if not import_mod_name:  # from . import ...\n            return True\n        if node.level:  # from .foo import ..., from ..bar import ...\n            return True\n\n        base_import_package = import_mod_name.split(\".\")[0]\n\n        return base_import_package in Path(node.root().file).parent.parts",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.extensions.private_import.PrivateImportChecker.same_root_dir",
+                "documentation": "Does the node's file's path contain the base name of `import_mod_name`?",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/extensions/private_import.py"
+                    },
+                    {
+                        "start_node": "pylint/extensions/private_import.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.extensions.private_import.PrivateImportChecker.same_root_dir"
+                    }
+                ],
+                "similarity": 0.13583511685766944,
+                "end_line": 258,
+                "signature": "pylint.extensions.private_import.PrivateImportChecker.same_root_dir(node, import_mod_name)"
+            },
+            {
+                "start_line": 527,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def leave_module(self, node: nodes.Module) -> None:\n        # Check imports are grouped by category (standard, 3rd party, local)\n        std_imports, ext_imports, loc_imports = self._check_imports_order(node)\n\n        # Check that imports are grouped by package within a given category\n        met_import: set[str] = set()  # set for 'import x' style\n        met_from: set[str] = set()  # set for 'from x import y' style\n        current_package = None\n        for import_node, import_name in std_imports + ext_imports + loc_imports:\n            met = met_from if isinstance(import_node, nodes.ImportFrom) else met_import\n            package, _, _ = import_name.partition(\".\")\n            if (\n                current_package\n                and current_package != package\n                and package in met\n                and is_node_in_guarded_import_block(import_node) is False\n            ):\n                self.add_message(\"ungrouped-imports\", node=import_node, args=package)\n            current_package = package\n            if not self.linter.is_message_enabled(\n                \"ungrouped-imports\", import_node.fromlineno\n            ):\n                continue\n            met.add(package)\n\n        self._imports_stack = []\n        self._first_non_import_node = None",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker.leave_module",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker.leave_module"
+                    }
+                ],
+                "similarity": 0.1357386450592748,
+                "end_line": 553,
+                "signature": "pylint.checkers.imports.ImportsChecker.leave_module(self, node)"
+            },
+            {
+                "start_line": 352,
+                "file_path": "pylint/config/argument.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        *,\n        flags: list[str],\n        action: Literal[\"extend\"],\n        default: _ArgumentTypes,\n        arg_type: str,\n        metavar: str,\n        arg_help: str,\n        hide_help: bool,\n        section: str | None,\n        choices: list[str] | None,\n        dest: str | None,\n    ) -> None:\n        # The extend action is included in the stdlib from 3.8+\n        if PY38_PLUS:\n            action_class = argparse._ExtendAction  # type: ignore[attr-defined]\n        else:\n            action_class = _ExtendAction\n\n        self.dest = dest\n        \"\"\"The destination of the argument.\"\"\"\n\n        super().__init__(\n            flags=flags,\n            action=action_class,\n            default=default,\n            arg_type=arg_type,\n            choices=choices,\n            arg_help=arg_help,\n            metavar=metavar,\n            hide_help=hide_help,\n            section=section,\n        )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.config.argument._ExtendArgument.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/config/argument.py"
+                    },
+                    {
+                        "start_node": "pylint/config/argument.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.config.argument._ExtendArgument.__init__"
+                    }
+                ],
+                "similarity": 0.13559736975628348,
+                "end_line": 385,
+                "signature": "pylint.config.argument._ExtendArgument.__init__(self)"
+            },
+            {
+                "start_line": 650,
+                "file_path": "pylint/checkers/imports.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _check_position(self, node: ImportNode) -> None:\n        \"\"\"Check `node` import or importfrom node position is correct.\n\n        Send a message  if `node` comes before another instruction\n        \"\"\"\n        # if a first non-import instruction has already been encountered,\n        # it means the import comes after it and therefore is not well placed\n        if self._first_non_import_node:\n            if self.linter.is_message_enabled(\n                \"wrong-import-position\", self._first_non_import_node.fromlineno\n            ):\n                self.add_message(\n                    \"wrong-import-position\", node=node, args=node.as_string()\n                )\n            else:\n                self.linter.add_ignored_message(\n                    \"wrong-import-position\", node.fromlineno, node\n                )",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.imports.ImportsChecker._check_position",
+                "documentation": "Check `node` import or importfrom node position is correct.\n\nSend a message  if `node` comes before another instruction",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/imports.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/imports.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.imports.ImportsChecker._check_position"
+                    }
+                ],
+                "similarity": 0.134748035196064,
+                "end_line": 667,
+                "signature": "pylint.checkers.imports.ImportsChecker._check_position(self, node)"
+            }
+        ],
+        "classes": [
+            {
+                "start_line": 327,
+                "file_path": "pylint/checkers/similar.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Commonality(NamedTuple):\n    cmn_lines_nb: int\n    fst_lset: LineSet\n    fst_file_start: LineNumber\n    fst_file_end: LineNumber\n    snd_lset: LineSet\n    snd_file_start: LineNumber\n    snd_file_end: LineNumber",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.similar.Commonality",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/similar.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/similar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.similar.Commonality"
+                    }
+                ],
+                "similarity": 0.09432628477782155,
+                "end_line": 334,
+                "signature": null
+            },
+            {
+                "start_line": 37,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class FileItem(NamedTuple):\n    \"\"\"Represents data about a file handled by pylint.\n\n    Each file item has:\n    - name: full name of the module\n    - filepath: path of the file\n    - modname: module name\n    \"\"\"\n\n    name: str\n    filepath: str\n    modpath: str",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.FileItem",
+                "documentation": "Represents data about a file handled by pylint.\n\nEach file item has:\n- name: full name of the module\n- filepath: path of the file\n- modname: module name",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.FileItem"
+                    }
+                ],
+                "similarity": 0.09396018102457455,
+                "end_line": 48,
+                "signature": null
+            },
+            {
+                "start_line": 46,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InvalidArgsError(ValueError):\n    \"\"\"Raised when passed arguments are invalid, e.g., have the wrong length.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.InvalidArgsError",
+                "documentation": "Raised when passed arguments are invalid, e.g., have the wrong length.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.InvalidArgsError"
+                    }
+                ],
+                "similarity": 0.09309874630071914,
+                "end_line": 47,
+                "signature": null
+            },
+            {
+                "start_line": 69,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MessageLocationTuple(NamedTuple):\n    \"\"\"Tuple with information about the location of a to-be-displayed message.\"\"\"\n\n    abspath: str\n    path: str\n    module: str\n    obj: str\n    line: int\n    column: int\n    end_line: int | None = None\n    end_column: int | None = None",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.MessageLocationTuple",
+                "documentation": "Tuple with information about the location of a to-be-displayed message.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.MessageLocationTuple"
+                    }
+                ],
+                "similarity": 0.09254187651596626,
+                "end_line": 79,
+                "signature": null
+            },
+            {
+                "start_line": 50,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class NoLineSuppliedError(Exception):\n    \"\"\"Raised when trying to disable a message on a next line without supplying a line\n    number.\n    \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.NoLineSuppliedError",
+                "documentation": "Raised when trying to disable a message on a next line without supplying a line\nnumber.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.NoLineSuppliedError"
+                    }
+                ],
+                "similarity": 0.09234534999218655,
+                "end_line": 53,
+                "signature": null
+            },
+            {
+                "start_line": 33,
+                "file_path": "pylint/checkers/base/basic_checker.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class _BasicChecker(BaseChecker):\n    \"\"\"Permits separating multiple checks with the same checker name into\n    classes/file.\n    \"\"\"\n\n    name = \"basic\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.basic_checker._BasicChecker",
+                "documentation": "Permits separating multiple checks with the same checker name into\nclasses/file.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/basic_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/basic_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.basic_checker._BasicChecker"
+                    }
+                ],
+                "similarity": 0.09232773129541759,
+                "end_line": 38,
+                "signature": null
+            },
+            {
+                "start_line": 8,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InvalidMessageError(Exception):\n    \"\"\"Raised when a message creation, registration or addition is rejected.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.InvalidMessageError",
+                "documentation": "Raised when a message creation, registration or addition is rejected.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.InvalidMessageError"
+                    }
+                ],
+                "similarity": 0.08928692518193558,
+                "end_line": 9,
+                "signature": null
+            },
+            {
+                "start_line": 38,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class EmptyReportError(Exception):\n    \"\"\"Raised when a report is empty and so should not be displayed.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.EmptyReportError",
+                "documentation": "Raised when a report is empty and so should not be displayed.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.EmptyReportError"
+                    }
+                ],
+                "similarity": 0.08791348429637608,
+                "end_line": 39,
+                "signature": null
+            },
+            {
+                "start_line": 235,
+                "file_path": "pylint/lint/run.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class _PylintConfigRun(Run):\n    \"\"\"A private wrapper for the 'pylint-config' command.\"\"\"\n\n    _is_pylint_config: ClassVar[bool] = True\n    \"\"\"Boolean whether or not this is a 'pylint-config' run.\n\n    Used by _PylintConfigRun to make the 'pylint-config' command work.\n    \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.lint.run._PylintConfigRun",
+                "documentation": "A private wrapper for the 'pylint-config' command.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/lint/run.py"
+                    },
+                    {
+                        "start_node": "pylint/lint/run.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.lint.run._PylintConfigRun"
+                    }
+                ],
+                "similarity": 0.08763913160610953,
+                "end_line": 242,
+                "signature": null
+            },
+            {
+                "start_line": 12,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class UnknownMessageError(Exception):\n    \"\"\"Raised when an unregistered message id is encountered.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.UnknownMessageError",
+                "documentation": "Raised when an unregistered message id is encountered.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.UnknownMessageError"
+                    }
+                ],
+                "similarity": 0.08734551217023256,
+                "end_line": 13,
+                "signature": null
+            },
+            {
+                "start_line": 51,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ModuleDescriptionDict(TypedDict):\n    \"\"\"Represents data about a checked module.\"\"\"\n\n    path: str\n    name: str\n    isarg: bool\n    basepath: str\n    basename: str",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.ModuleDescriptionDict",
+                "documentation": "Represents data about a checked module.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.ModuleDescriptionDict"
+                    }
+                ],
+                "similarity": 0.08409810797647997,
+                "end_line": 58,
+                "signature": null
+            },
+            {
+                "start_line": 119,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ExtraMessageOptions(TypedDict, total=False):\n    \"\"\"All allowed keys in the extra options for message definitions.\"\"\"\n\n    scope: str\n    old_names: list[tuple[str, str]]\n    maxversion: tuple[int, int]\n    minversion: tuple[int, int]\n    shared: bool",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.ExtraMessageOptions",
+                "documentation": "All allowed keys in the extra options for message definitions.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.ExtraMessageOptions"
+                    }
+                ],
+                "similarity": 0.08337464058150722,
+                "end_line": 126,
+                "signature": null
+            },
+            {
+                "start_line": 108,
+                "file_path": "pylint/checkers/spelling.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class CamelCasedWord(RegExFilter):\n    r\"\"\"Filter skipping over camelCasedWords.\n    This filter skips any words matching the following regular expression:\n\n           ^([a-z]\\w+[A-Z]+\\w+)\n\n    That is, any words that are camelCasedWords.\n    \"\"\"\n    _pattern = re.compile(r\"^([a-z]+(\\d|[A-Z])(?:\\w+)?)\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.spelling.CamelCasedWord",
+                "documentation": "Filter skipping over camelCasedWords.\nThis filter skips any words matching the following regular expression:\n\n       ^([a-z]\\w+[A-Z]+\\w+)\n\nThat is, any words that are camelCasedWords.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/spelling.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/spelling.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.spelling.CamelCasedWord"
+                    }
+                ],
+                "similarity": 0.08241729533694488,
+                "end_line": 116,
+                "signature": null
+            },
+            {
+                "start_line": 42,
+                "file_path": "pylint/exceptions.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InvalidReporterError(Exception):\n    \"\"\"Raised when selected reporter is invalid (e.g. not found).\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.exceptions.InvalidReporterError",
+                "documentation": "Raised when selected reporter is invalid (e.g. not found).",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/exceptions.py"
+                    },
+                    {
+                        "start_node": "pylint/exceptions.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.exceptions.InvalidReporterError"
+                    }
+                ],
+                "similarity": 0.0814610568291662,
+                "end_line": 43,
+                "signature": null
+            },
+            {
+                "start_line": 119,
+                "file_path": "pylint/checkers/spelling.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class SphinxDirectives(RegExFilter):\n    r\"\"\"Filter skipping over Sphinx Directives.\n    This filter skips any words matching the following regular expression:\n\n           ^(:([a-z]+)){1,2}:`([^`]+)(`)?\n\n    That is, for example, :class:`BaseQuery`\n    \"\"\"\n    # The final ` in the pattern is optional because enchant strips it out\n    _pattern = re.compile(r\"^(:([a-z]+)){1,2}:`([^`]+)(`)?\")",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.spelling.SphinxDirectives",
+                "documentation": "Filter skipping over Sphinx Directives.\nThis filter skips any words matching the following regular expression:\n\n       ^(:([a-z]+)){1,2}:`([^`]+)(`)?\n\nThat is, for example, :class:`BaseQuery`",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/spelling.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/spelling.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.spelling.SphinxDirectives"
+                    }
+                ],
+                "similarity": 0.0811221238805217,
+                "end_line": 128,
+                "signature": null
+            },
+            {
+                "start_line": 35,
+                "file_path": "doc/exts/pylint_messages.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class MessageData(NamedTuple):\n    checker: str\n    id: str\n    name: str\n    definition: MessageDefinition\n    good_code: str\n    bad_code: str\n    details: str\n    related_links: str\n    checker_module_name: str\n    checker_module_path: str\n    shared: bool = False",
+                "distance": 1.25,
+                "title": null,
+                "name": "doc.extslint_messages.MessageData",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "doc/exts/pylint_messages.py"
+                    },
+                    {
+                        "start_node": "doc/exts/pylint_messages.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "doc.extslint_messages.MessageData"
+                    }
+                ],
+                "similarity": 0.0808598956921319,
+                "end_line": 46,
+                "signature": null
+            },
+            {
+                "start_line": 82,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ManagedMessage(NamedTuple):\n    \"\"\"Tuple with information about a managed message of the linter.\"\"\"\n\n    name: str | None\n    msgid: str\n    symbol: str\n    line: int | None\n    is_disabled: bool",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.ManagedMessage",
+                "documentation": "Tuple with information about a managed message of the linter.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.ManagedMessage"
+                    }
+                ],
+                "similarity": 0.07959955629080734,
+                "end_line": 89,
+                "signature": null
+            },
+            {
+                "start_line": 82,
+                "file_path": "pylint/checkers/typecheck.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class VERSION_COMPATIBLE_OVERLOAD:\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.typecheck.VERSION_COMPATIBLE_OVERLOAD",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/typecheck.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/typecheck.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.typecheck.VERSION_COMPATIBLE_OVERLOAD"
+                    }
+                ],
+                "similarity": 0.07864468821268955,
+                "end_line": 83,
+                "signature": null
+            },
+            {
+                "start_line": 61,
+                "file_path": "pylint/typing.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ErrorDescriptionDict(TypedDict):\n    \"\"\"Represents data about errors collected during checking of a module.\"\"\"\n\n    key: Literal[\"fatal\"]\n    mod: str\n    ex: ImportError | SyntaxError",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.typing.ErrorDescriptionDict",
+                "documentation": "Represents data about errors collected during checking of a module.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/typing.py"
+                    },
+                    {
+                        "start_node": "pylint/typing.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.typing.ErrorDescriptionDict"
+                    }
+                ],
+                "similarity": 0.07839279717743043,
+                "end_line": 66,
+                "signature": null
+            },
+            {
+                "start_line": 233,
+                "file_path": "pylint/checkers/utils.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class NoSuchArgumentError(Exception):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.utils.NoSuchArgumentError",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/utils.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/utils.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.utils.NoSuchArgumentError"
+                    }
+                ],
+                "similarity": 0.07797348473060396,
+                "end_line": 234,
+                "signature": null
+            },
+            {
+                "start_line": 118,
+                "file_path": "pylint/interfaces.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class IAstroidChecker(IChecker):\n    \"\"\"Interface for checker which prefers receive events according to\n    statement type.\n    \"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.interfaces.IAstroidChecker",
+                "documentation": "Interface for checker which prefers receive events according to\nstatement type.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/interfaces.py"
+                    },
+                    {
+                        "start_node": "pylint/interfaces.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.interfaces.IAstroidChecker"
+                    }
+                ],
+                "similarity": 0.07787513044372993,
+                "end_line": 121,
+                "signature": null
+            },
+            {
+                "start_line": 59,
+                "file_path": "pylint/constants.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class WarningScope:\n    LINE = \"line-based-msg\"\n    NODE = \"node-based-msg\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.constants.WarningScope",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/constants.py"
+                    },
+                    {
+                        "start_node": "pylint/constants.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.constants.WarningScope"
+                    }
+                ],
+                "similarity": 0.07667778709720256,
+                "end_line": 61,
+                "signature": null
+            },
+            {
+                "start_line": 505,
+                "file_path": "pylint/checkers/utils.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class IncompleteFormatString(Exception):\n    \"\"\"A format string ended in the middle of a format specifier.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.utils.IncompleteFormatString",
+                "documentation": "A format string ended in the middle of a format specifier.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/utils.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/utils.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.utils.IncompleteFormatString"
+                    }
+                ],
+                "similarity": 0.0761388140632705,
+                "end_line": 506,
+                "signature": null
+            },
+            {
+                "start_line": 83,
+                "file_path": "pylint/utils/pragma_parser.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InvalidPragmaError(PragmaParserError):\n    \"\"\"Thrown in case the pragma is invalid.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.utils.pragma_parser.InvalidPragmaError",
+                "documentation": "Thrown in case the pragma is invalid.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/utils/pragma_parser.py"
+                    },
+                    {
+                        "start_node": "pylint/utils/pragma_parser.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.utils.pragma_parser.InvalidPragmaError"
+                    }
+                ],
+                "similarity": 0.07487398455757022,
+                "end_line": 84,
+                "signature": null
+            },
+            {
+                "start_line": 79,
+                "file_path": "pylint/utils/pragma_parser.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class UnRecognizedOptionError(PragmaParserError):\n    \"\"\"Thrown in case the of a valid but unrecognized option.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.utils.pragma_parser.UnRecognizedOptionError",
+                "documentation": "Thrown in case the of a valid but unrecognized option.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/utils/pragma_parser.py"
+                    },
+                    {
+                        "start_node": "pylint/utils/pragma_parser.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.utils.pragma_parser.UnRecognizedOptionError"
+                    }
+                ],
+                "similarity": 0.07190881826858503,
+                "end_line": 80,
+                "signature": null
+            },
+            {
+                "start_line": 512,
+                "file_path": "pylint/checkers/variables.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class ScopeConsumer(NamedTuple):\n    \"\"\"Store nodes and their consumption states.\"\"\"\n\n    to_consume: dict[str, list[nodes.NodeNG]]\n    consumed: dict[str, list[nodes.NodeNG]]\n    consumed_uncertain: defaultdict[str, list[nodes.NodeNG]]\n    scope_type: str",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.variables.ScopeConsumer",
+                "documentation": "Store nodes and their consumption states.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/variables.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/variables.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.variables.ScopeConsumer"
+                    }
+                ],
+                "similarity": 0.0704675887025221,
+                "end_line": 518,
+                "signature": null
+            },
+            {
+                "start_line": 111,
+                "file_path": "pylint/checkers/variables.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class VariableVisitConsumerAction(Enum):\n    \"\"\"Reported by _check_consumer() and its sub-methods to determine the\n    subsequent action to take in _undefined_and_used_before_checker().\n\n    Continue -> continue loop to next consumer\n    Return -> return and thereby break the loop\n    \"\"\"\n\n    CONTINUE = 0\n    RETURN = 1",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.variables.VariableVisitConsumerAction",
+                "documentation": "Reported by _check_consumer() and its sub-methods to determine the\nsubsequent action to take in _undefined_and_used_before_checker().\n\nContinue -> continue loop to next consumer\nReturn -> return and thereby break the loop",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/variables.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/variables.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.variables.VariableVisitConsumerAction"
+                    }
+                ],
+                "similarity": 0.06820470629660397,
+                "end_line": 120,
+                "signature": null
+            },
+            {
+                "start_line": 237,
+                "file_path": "pylint/checkers/utils.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class InferredTypeError(Exception):\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.utils.InferredTypeError",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/utils.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/utils.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.utils.InferredTypeError"
+                    }
+                ],
+                "similarity": 0.06726756773775819,
+                "end_line": 238,
+                "signature": null
+            },
+            {
+                "start_line": 71,
+                "file_path": "pylint/checkers/similar.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class LineSpecifs(NamedTuple):\n    line_number: LineNumber\n    text: str",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.similar.LineSpecifs",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/similar.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/similar.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.similar.LineSpecifs"
+                    }
+                ],
+                "similarity": 0.06270798478997225,
+                "end_line": 73,
+                "signature": null
+            },
+            {
+                "start_line": 1,
+                "file_path": "doc/data/messages/u/unnecessary-pass/bad.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Foo:\n    \"\"\"Foo docstring.\"\"\"\n    pass",
+                "distance": 1.25,
+                "title": null,
+                "name": "doc.data.messages.u.unnecessary-pass.bad.Foo",
+                "documentation": "Foo docstring.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "doc/data/messages/u/unnecessary-pass/bad.py"
+                    },
+                    {
+                        "start_node": "doc/data/messages/u/unnecessary-pass/bad.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "doc.data.messages.u.unnecessary-pass.bad.Foo"
+                    }
+                ],
+                "similarity": 0.06061268379931844,
+                "end_line": 3,
+                "signature": null
+            },
+            {
+                "start_line": 5,
+                "file_path": "doc/data/messages/a/arguments-renamed/bad.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class Apple(Fruit):\n    ...",
+                "distance": 1.25,
+                "title": null,
+                "name": "doc.data.messages.a.arguments-renamed.bad.Apple",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "doc/data/messages/a/arguments-renamed/bad.py"
+                    },
+                    {
+                        "start_node": "doc/data/messages/a/arguments-renamed/bad.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "doc.data.messages.a.arguments-renamed.bad.Apple"
+                    }
+                ],
+                "similarity": 0.06032785152749839,
+                "end_line": 6,
+                "signature": null
+            },
+            {
+                "start_line": 50,
+                "file_path": "pylint/checkers/base/name_checker/checker.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class TypeVarVariance(Enum):\n    invariant = auto()\n    covariant = auto()\n    contravariant = auto()\n    double_variant = auto()",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.base.name_checker.checker.TypeVarVariance",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/base/name_checker/checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/base/name_checker/checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.base.name_checker.checker.TypeVarVariance"
+                    }
+                ],
+                "similarity": 0.05918310951535762,
+                "end_line": 54,
+                "signature": null
+            },
+            {
+                "start_line": 202,
+                "file_path": "pylint/checkers/classes/class_checker.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class _DefaultMissing:\n    \"\"\"Sentinel value for missing arg default, use _DEFAULT_MISSING.\"\"\"",
+                "distance": 1.25,
+                "title": null,
+                "name": "pylint.checkers.classes.class_checker._DefaultMissing",
+                "documentation": "Sentinel value for missing arg default, use _DEFAULT_MISSING.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "pylint/checkers/classes/class_checker.py"
+                    },
+                    {
+                        "start_node": "pylint/checkers/classes/class_checker.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "pylint.checkers.classes.class_checker._DefaultMissing"
+                    }
+                ],
+                "similarity": 0.05818693672331154,
+                "end_line": 203,
+                "signature": null
+            },
+            {
+                "start_line": 26,
+                "file_path": "doc/exts/pylint_options.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class OptionsData(NamedTuple):\n    name: str\n    optdict: OptionDict\n    checker: BaseChecker\n    extension: bool",
+                "distance": 1.25,
+                "title": null,
+                "name": "doc.extslint_options.OptionsData",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "doc/exts/pylint_options.py"
+                    },
+                    {
+                        "start_node": "doc/exts/pylint_options.py",
+                        "description": "contains class",
+                        "type": "RELATED",
+                        "end_node": "doc.extslint_options.OptionsData"
+                    }
+                ],
+                "similarity": 0.04849769356575362,
+                "end_line": 30,
+                "signature": null
+            },
+            {
+                "start_line": 5,
+                "file_path": "doc/data/messages/s/subclassed-final-class/good.py",
+                "issue_id": null,
+                "type": "class",
+                "content": null,
+                "source_code": "class PlatypusData:\n    \"\"\"General Platypus data.\"\"\"\n\n    average_length = 46\n    average_body_temperature = 32",
+                "distance": 1.25,
+                "title": null,
+                "name": "doc.data.messages.s.subclassed-final-class.good.PlatypusData",
+                "documentation": "General Platypus data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "doc/data/messages/s/subclassed-final-class/good.py"
+                    },
+                    {
+                        "start_node": "doc/data/messages/s/subclassed-final-class/good.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "doc.data.messages.s.subclassed-final-class.good.PlatypusData"
+                    }
+                ],
+                "similarity": 0.033772653064636865,
+                "end_line": 9,
+                "signature": null
+            }
+        ],
+        "issues": [
+            {
+                "content": "### Steps to reproduce\r\n\r\nGiven multiple files:\r\n```\r\n.\r\n`-- a/\r\n    |-- a.py\r\n    `-- b.py\r\n```\r\nWhich are all empty, running `pylint a` fails:\r\n\r\n```\r\n$ pylint a\r\n************* Module a\r\na/__init__.py:1:0: F0010: error while code parsing: Unable to load file a/__init__.py:\r\n[Errno 2] No such file or directory: 'a/__init__.py' (parse-error)\r\n$\r\n```\r\n\r\nHowever, if I rename `a.py`, `pylint a` succeeds:\r\n\r\n```\r\n$ mv a/a.py a/c.py\r\n$ pylint a\r\n$\r\n```\r\nAlternatively, I can also `touch a/__init__.py`, but that shouldn't be necessary anymore.\r\n\r\n### Current behavior\r\n\r\nRunning `pylint a` if `a/a.py` is present fails while searching for an `__init__.py` file.\r\n\r\n### Expected behavior\r\n\r\nRunning `pylint a` if `a/a.py` is present should succeed.\r\n\r\n### pylint --version output\r\n\r\nResult of `pylint --version` output:\r\n\r\n```\r\npylint 3.0.0a3\r\nastroid 2.5.6\r\nPython 3.8.5 (default, Jan 27 2021, 15:41:15) \r\n[GCC 9.3.0]\r\n```\r\n\r\n### Additional info\r\n\r\nThis also has some side-effects in module resolution. For example, if I create another file `r.py`:\r\n\r\n```\r\n.\r\n|-- a\r\n|   |-- a.py\r\n|   `-- b.py\r\n`-- r.py\r\n```\r\n\r\nWith the content:\r\n\r\n```\r\nfrom a import b\r\n```\r\n\r\nRunning `pylint -E r` will run fine, but `pylint -E r a` will fail. Not just for module a, but for module r as well.\r\n\r\n```\r\n************* Module r\r\nr.py:1:0: E0611: No name 'b' in module 'a' (no-name-in-module)\r\n************* Module a\r\na/__init__.py:1:0: F0010: error while code parsing: Unable to load file a/__init__.py:\r\n[Errno 2] No such file or directory: 'a/__init__.py' (parse-error)\r\n```\r\n\r\nAgain, if I rename `a.py` to `c.py`, `pylint -E r a` will work perfectly.\n",
+                "distance": 0,
+                "title": "Linting fails if module contains module of the same name",
+                "name": "root",
+                "path": [],
+                "issue_id": "root",
+                "similarity": 2.0,
+                "type": "issue"
+            },
+            {
+                "start_line": null,
+                "file_path": null,
+                "issue_id": "7093",
+                "type": "issue",
+                "content": "### Bug description\r\n\r\nApport provides a module name `apport`, but also a script named `data/apport`. Pylint throws a bunch of failures for `data/apport`. This problem can be reproduces with this Shell script:\r\n\r\n```sh\r\n#!/bin/sh\r\nmkdir name\r\ntouch name/__init__.py\r\nprintf '# pylint: disable=missing-docstring\\ndef inc(val):\\n    return val + 1\\n' > name/math.py\r\nmkdir data\r\nprintf '#!/usr/bin/python3\\n# pylint: disable=missing-docstring\\n\\nimport name\\nimport name.math\\n\\nprint(name.math.inc(41))\\n' > data/name\r\nchmod +x data/name\r\nPYTHONPATH=. data/name\r\n```\r\n\r\nIt will create `name/math.py` with\r\n\r\n```python\r\n# pylint: disable=missing-docstring\r\ndef inc(val):\r\n    return val + 1\r\n```\r\n\r\nand `data/name` with\r\n\r\n```python\r\n#!/usr/bin/python3\r\n# pylint: disable=missing-docstring\r\n\r\nimport name\r\nimport name.math\r\n\r\nprint(name.math.inc(41))\r\n```\r\n\r\nAfter setting `PYTHONPATH`, `data/name` will execute successfully.\r\n\r\n### Configuration\r\n\r\n_No response_\r\n\r\n### Command used\r\n\r\n```shell\r\npylint name data/name\r\n```\r\n\r\nor\r\n\r\n```shell\r\nPYTHONPATH=. pylint name data/name\r\n```\r\n\r\nor\r\n\r\n```shell\r\npylint --init-hook='import sys; sys.path.append(\".\")' name data/name\r\n```\r\n\r\n### Pylint output\r\n\r\n```shell\r\ndata/name:4:0: W0406: Module import itself (import-self)\r\ndata/name:5:0: E0611: No name 'math' in module 'name' (no-name-in-module)\r\ndata/name:7:6: I1101: Module 'name' has no 'math' member, but source is unavailable. Consider adding this module to extension-pkg-allow-list if you want to perform analysis based on run-time introspection of living objects. (c-extension-no-member)\r\n```\r\n\r\n\r\n### Expected behavior\r\n\r\npylint should produce no output.\r\n\r\n### Pylint version\r\n\r\n```shell\r\npylint 2.14.4\r\nastroid 2.11.6\r\nPython 3.10.5 (main, Jun  8 2022, 09:26:22) [GCC 11.3.0]\r\n```\r\n\r\n\r\n### OS / Environment\r\n\r\nUbuntu 22.04 (jammy)\r\n\r\n### Additional dependencies\r\n\r\n_No response_\n\n",
+                "source_code": null,
+                "distance": 0.25,
+                "title": "pylint fails to import module if the script is named the same way",
+                "name": "issue#7093",
+                "documentation": null,
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "issue#7093"
+                    }
+                ],
+                "similarity": 0.5994199771320304,
+                "end_line": null,
+                "signature": null
+            }
+        ]
+    },
+    "artifact_stats": {
+        "skipped_due_to_time": 6,
+        "valid_related_items": 18
+    }
+}

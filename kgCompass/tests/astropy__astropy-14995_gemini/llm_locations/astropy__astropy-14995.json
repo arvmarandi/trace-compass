@@ -124,41 +124,6 @@
                 "signature": "astropy.nddata.nddata.NDData.uncertainty(self, value)"
             },
             {
-                "start_line": 166,
-                "file_path": "astropy/nddata/mixins/ndarithmetic.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _arithmetic(\n        self,\n        operation,\n        operand,\n        propagate_uncertainties=True,\n        handle_mask=np.logical_or,\n        handle_meta=None,\n        uncertainty_correlation=0,\n        compare_wcs=\"first_found\",\n        operation_ignores_mask=False,\n        axis=None,\n        **kwds,\n    ):\n        \"\"\"\n        Base method which calculates the result of the arithmetic operation.\n\n        This method determines the result of the arithmetic operation on the\n        ``data`` including their units and then forwards to other methods\n        to calculate the other properties for the result (like uncertainty).\n\n        Parameters\n        ----------\n        operation : callable\n            The operation that is performed on the `NDData`. Supported are\n            `numpy.add`, `numpy.subtract`, `numpy.multiply` and\n            `numpy.true_divide`.\n\n        operand : same type (class) as self\n            see :meth:`NDArithmeticMixin.add`\n\n        propagate_uncertainties : `bool` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        handle_mask : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        handle_meta : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        compare_wcs : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        uncertainty_correlation : ``Number`` or `~numpy.ndarray`, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        operation_ignores_mask : bool, optional\n            When True, masked values will be excluded from operations;\n            otherwise the operation will be performed on all values,\n            including masked ones.\n\n        axis : int or tuple of ints, optional\n            axis or axes over which to perform collapse operations like min, max, sum or mean.\n\n        kwargs :\n            Any other parameter that should be passed to the\n            different :meth:`NDArithmeticMixin._arithmetic_mask` (or wcs, ...)\n            methods.\n\n        Returns\n        -------\n        result : ndarray or `~astropy.units.Quantity`\n            The resulting data as array (in case both operands were without\n            unit) or as quantity if at least one had a unit.\n\n        kwargs : `dict`\n            The kwargs should contain all the other attributes (besides data\n            and unit) needed to create a new instance for the result. Creating\n            the new instance is up to the calling method, for example\n            :meth:`NDArithmeticMixin.add`.\n\n        \"\"\"\n        # Find the appropriate keywords for the appropriate method (not sure\n        # if data and uncertainty are ever used ...)\n        kwds2 = {\"mask\": {}, \"meta\": {}, \"wcs\": {}, \"data\": {}, \"uncertainty\": {}}\n        for i in kwds:\n            splitted = i.split(\"_\", 1)\n            try:\n                kwds2[splitted[0]][splitted[1]] = kwds[i]\n            except KeyError:\n                raise KeyError(f\"Unknown prefix {splitted[0]} for parameter {i}\")\n\n        kwargs = {}\n\n        # First check that the WCS allows the arithmetic operation\n        if compare_wcs is None:\n            kwargs[\"wcs\"] = None\n        elif compare_wcs in [\"ff\", \"first_found\"]:\n            if self.wcs is None and hasattr(operand, \"wcs\"):\n                kwargs[\"wcs\"] = deepcopy(operand.wcs)\n            else:\n                kwargs[\"wcs\"] = deepcopy(self.wcs)\n        else:\n            kwargs[\"wcs\"] = self._arithmetic_wcs(\n                operation, operand, compare_wcs, **kwds2[\"wcs\"]\n            )\n\n        # collapse operations on masked quantities/arrays which are supported by\n        # the astropy.utils.masked or np.ma modules should use those modules to\n        # do the arithmetic on the data and propagate masks.\n        use_masked_arith = operand is None and self.mask is not None\n        if use_masked_arith:\n            # if we're *including* masked values in the operation,\n            # use the astropy Masked module:\n            if not operation_ignores_mask:\n                # call the numpy operation on a Masked NDDataArray\n                # representation of the nddata, with units when available:\n                if self.unit is not None and not hasattr(self.data, \"unit\"):\n                    masked_input = Masked(self.data << self.unit, mask=self.mask)\n                else:\n                    masked_input = Masked(self.data, mask=self.mask)\n            # if we're *excluding* masked values in the operation,\n            # we use the numpy.ma module:\n            else:\n                masked_input = np.ma.masked_array(self.data, self.mask)\n            result = operation(masked_input, axis=axis)\n            # since result may be e.g. a float if operation is a sum over all axes,\n            # let's ensure that result is a masked array, since we'll assume this later:\n            if not hasattr(result, \"mask\"):\n                result = np.ma.masked_array(\n                    result, mask=np.zeros_like(result, dtype=bool)\n                )\n        else:\n            # Then calculate the resulting data (which can but needs not be a\n            # quantity)\n            result = self._arithmetic_data(\n                operation, operand, axis=axis, **kwds2[\"data\"]\n            )\n\n        # preserve original units\n        if not hasattr(result, \"unit\") and hasattr(self, \"unit\"):\n            kwargs[\"unit\"] = self.unit\n\n        # Determine the other properties\n        if propagate_uncertainties is None:\n            kwargs[\"uncertainty\"] = None\n        elif not propagate_uncertainties:\n            if self.uncertainty is None:\n                kwargs[\"uncertainty\"] = deepcopy(operand.uncertainty)\n            else:\n                kwargs[\"uncertainty\"] = deepcopy(self.uncertainty)\n        else:\n            kwargs[\"uncertainty\"] = self._arithmetic_uncertainty(\n                operation,\n                operand,\n                result,\n                uncertainty_correlation,\n                axis=axis,\n                **kwds2[\"uncertainty\"],\n            )\n\n        # If both are None, there is nothing to do.\n        if self.psf is not None or (operand is not None and operand.psf is not None):\n            warnings.warn(\n                f\"Not setting psf attribute during {operation.__name__}.\",\n                AstropyUserWarning,\n            )\n\n        if handle_mask is None:\n            pass\n        elif hasattr(result, \"mask\"):\n            # if numpy.ma or astropy.utils.masked is being used, the constructor\n            # will pick up the mask from the masked object:\n            kwargs[\"mask\"] = None\n        elif handle_mask in [\"ff\", \"first_found\"]:\n            if self.mask is None:\n                kwargs[\"mask\"] = deepcopy(operand.mask)\n            else:\n                kwargs[\"mask\"] = deepcopy(self.mask)\n        else:\n            kwargs[\"mask\"] = self._arithmetic_mask(\n                operation, operand, handle_mask, axis=axis, **kwds2[\"mask\"]\n            )\n\n        if handle_meta is None:\n            kwargs[\"meta\"] = None\n        elif handle_meta in [\"ff\", \"first_found\"]:\n            if not self.meta:\n                kwargs[\"meta\"] = deepcopy(operand.meta)\n            else:\n                kwargs[\"meta\"] = deepcopy(self.meta)\n        else:\n            kwargs[\"meta\"] = self._arithmetic_meta(\n                operation, operand, handle_meta, **kwds2[\"meta\"]\n            )\n\n        # Wrap the individual results into a new instance of the same class.\n        return result, kwargs",
-                "distance": 0.75,
-                "title": null,
-                "name": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic",
-                "documentation": "Base method which calculates the result of the arithmetic operation.\n\nThis method determines the result of the arithmetic operation on the\n``data`` including their units and then forwards to other methods\nto calculate the other properties for the result (like uncertainty).\n\nParameters\n----------\noperation : callable\n    The operation that is performed on the `NDData`. Supported are\n    `numpy.add`, `numpy.subtract`, `numpy.multiply` and\n    `numpy.true_divide`.\n\noperand : same type (class) as self\n    see :meth:`NDArithmeticMixin.add`\n\npropagate_uncertainties : `bool` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nhandle_mask : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nhandle_meta : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\ncompare_wcs : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nuncertainty_correlation : ``Number`` or `~numpy.ndarray`, optional\n    see :meth:`NDArithmeticMixin.add`\n\noperation_ignores_mask : bool, optional\n    When True, masked values will be excluded from operations;\n    otherwise the operation will be performed on all values,\n    including masked ones.\n\naxis : int or tuple of ints, optional\n    axis or axes over which to perform collapse operations like min, max, sum or mean.\n\nkwargs :\n    Any other parameter that should be passed to the\n    different :meth:`NDArithmeticMixin._arithmetic_mask` (or wcs, ...)\n    methods.\n\nReturns\n-------\nresult : ndarray or `~astropy.units.Quantity`\n    The resulting data as array (in case both operands were without\n    unit) or as quantity if at least one had a unit.\n\nkwargs : `dict`\n    The kwargs should contain all the other attributes (besides data\n    and unit) needed to create a new instance for the result. Creating\n    the new instance is up to the calling method, for example\n    :meth:`NDArithmeticMixin.add`.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "issue#14978"
-                    },
-                    {
-                        "start_node": "issue#14978",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#14175"
-                    },
-                    {
-                        "start_node": "pr#14175",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic"
-                    }
-                ],
-                "similarity": 0.24849628883603653,
-                "end_line": 352,
-                "signature": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic(self, operation, operand, propagate_uncertainties, handle_mask, handle_meta, uncertainty_correlation, compare_wcs, operation_ignores_mask, axis)"
-            },
-            {
                 "start_line": 654,
                 "file_path": "astropy/nddata/mixins/ndarithmetic.py",
                 "issue_id": null,
@@ -221,6 +186,41 @@
                 "similarity": 0.2361659096665542,
                 "end_line": 326,
                 "signature": "astropy.nddata.nddata.NDData.mask(self)"
+            },
+            {
+                "start_line": 166,
+                "file_path": "astropy/nddata/mixins/ndarithmetic.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _arithmetic(\n        self,\n        operation,\n        operand,\n        propagate_uncertainties=True,\n        handle_mask=np.logical_or,\n        handle_meta=None,\n        uncertainty_correlation=0,\n        compare_wcs=\"first_found\",\n        operation_ignores_mask=False,\n        axis=None,\n        **kwds,\n    ):\n        \"\"\"\n        Base method which calculates the result of the arithmetic operation.\n\n        This method determines the result of the arithmetic operation on the\n        ``data`` including their units and then forwards to other methods\n        to calculate the other properties for the result (like uncertainty).\n\n        Parameters\n        ----------\n        operation : callable\n            The operation that is performed on the `NDData`. Supported are\n            `numpy.add`, `numpy.subtract`, `numpy.multiply` and\n            `numpy.true_divide`.\n\n        operand : same type (class) as self\n            see :meth:`NDArithmeticMixin.add`\n\n        propagate_uncertainties : `bool` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        handle_mask : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        handle_meta : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        compare_wcs : callable, ``'first_found'`` or ``None``, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        uncertainty_correlation : ``Number`` or `~numpy.ndarray`, optional\n            see :meth:`NDArithmeticMixin.add`\n\n        operation_ignores_mask : bool, optional\n            When True, masked values will be excluded from operations;\n            otherwise the operation will be performed on all values,\n            including masked ones.\n\n        axis : int or tuple of ints, optional\n            axis or axes over which to perform collapse operations like min, max, sum or mean.\n\n        kwargs :\n            Any other parameter that should be passed to the\n            different :meth:`NDArithmeticMixin._arithmetic_mask` (or wcs, ...)\n            methods.\n\n        Returns\n        -------\n        result : ndarray or `~astropy.units.Quantity`\n            The resulting data as array (in case both operands were without\n            unit) or as quantity if at least one had a unit.\n\n        kwargs : `dict`\n            The kwargs should contain all the other attributes (besides data\n            and unit) needed to create a new instance for the result. Creating\n            the new instance is up to the calling method, for example\n            :meth:`NDArithmeticMixin.add`.\n\n        \"\"\"\n        # Find the appropriate keywords for the appropriate method (not sure\n        # if data and uncertainty are ever used ...)\n        kwds2 = {\"mask\": {}, \"meta\": {}, \"wcs\": {}, \"data\": {}, \"uncertainty\": {}}\n        for i in kwds:\n            splitted = i.split(\"_\", 1)\n            try:\n                kwds2[splitted[0]][splitted[1]] = kwds[i]\n            except KeyError:\n                raise KeyError(f\"Unknown prefix {splitted[0]} for parameter {i}\")\n\n        kwargs = {}\n\n        # First check that the WCS allows the arithmetic operation\n        if compare_wcs is None:\n            kwargs[\"wcs\"] = None\n        elif compare_wcs in [\"ff\", \"first_found\"]:\n            if self.wcs is None and hasattr(operand, \"wcs\"):\n                kwargs[\"wcs\"] = deepcopy(operand.wcs)\n            else:\n                kwargs[\"wcs\"] = deepcopy(self.wcs)\n        else:\n            kwargs[\"wcs\"] = self._arithmetic_wcs(\n                operation, operand, compare_wcs, **kwds2[\"wcs\"]\n            )\n\n        # collapse operations on masked quantities/arrays which are supported by\n        # the astropy.utils.masked or np.ma modules should use those modules to\n        # do the arithmetic on the data and propagate masks.\n        use_masked_arith = operand is None and self.mask is not None\n        if use_masked_arith:\n            # if we're *including* masked values in the operation,\n            # use the astropy Masked module:\n            if not operation_ignores_mask:\n                # call the numpy operation on a Masked NDDataArray\n                # representation of the nddata, with units when available:\n                if self.unit is not None and not hasattr(self.data, \"unit\"):\n                    masked_input = Masked(self.data << self.unit, mask=self.mask)\n                else:\n                    masked_input = Masked(self.data, mask=self.mask)\n            # if we're *excluding* masked values in the operation,\n            # we use the numpy.ma module:\n            else:\n                masked_input = np.ma.masked_array(self.data, self.mask)\n            result = operation(masked_input, axis=axis)\n            # since result may be e.g. a float if operation is a sum over all axes,\n            # let's ensure that result is a masked array, since we'll assume this later:\n            if not hasattr(result, \"mask\"):\n                result = np.ma.masked_array(\n                    result, mask=np.zeros_like(result, dtype=bool)\n                )\n        else:\n            # Then calculate the resulting data (which can but needs not be a\n            # quantity)\n            result = self._arithmetic_data(\n                operation, operand, axis=axis, **kwds2[\"data\"]\n            )\n\n        # preserve original units\n        if not hasattr(result, \"unit\") and hasattr(self, \"unit\"):\n            kwargs[\"unit\"] = self.unit\n\n        # Determine the other properties\n        if propagate_uncertainties is None:\n            kwargs[\"uncertainty\"] = None\n        elif not propagate_uncertainties:\n            if self.uncertainty is None:\n                kwargs[\"uncertainty\"] = deepcopy(operand.uncertainty)\n            else:\n                kwargs[\"uncertainty\"] = deepcopy(self.uncertainty)\n        else:\n            kwargs[\"uncertainty\"] = self._arithmetic_uncertainty(\n                operation,\n                operand,\n                result,\n                uncertainty_correlation,\n                axis=axis,\n                **kwds2[\"uncertainty\"],\n            )\n\n        # If both are None, there is nothing to do.\n        if self.psf is not None or (operand is not None and operand.psf is not None):\n            warnings.warn(\n                f\"Not setting psf attribute during {operation.__name__}.\",\n                AstropyUserWarning,\n            )\n\n        if handle_mask is None:\n            pass\n        elif hasattr(result, \"mask\"):\n            # if numpy.ma or astropy.utils.masked is being used, the constructor\n            # will pick up the mask from the masked object:\n            kwargs[\"mask\"] = None\n        elif handle_mask in [\"ff\", \"first_found\"]:\n            if self.mask is None:\n                kwargs[\"mask\"] = deepcopy(operand.mask)\n            else:\n                kwargs[\"mask\"] = deepcopy(self.mask)\n        else:\n            kwargs[\"mask\"] = self._arithmetic_mask(\n                operation, operand, handle_mask, axis=axis, **kwds2[\"mask\"]\n            )\n\n        if handle_meta is None:\n            kwargs[\"meta\"] = None\n        elif handle_meta in [\"ff\", \"first_found\"]:\n            if not self.meta:\n                kwargs[\"meta\"] = deepcopy(operand.meta)\n            else:\n                kwargs[\"meta\"] = deepcopy(self.meta)\n        else:\n            kwargs[\"meta\"] = self._arithmetic_meta(\n                operation, operand, handle_meta, **kwds2[\"meta\"]\n            )\n\n        # Wrap the individual results into a new instance of the same class.\n        return result, kwargs",
+                "distance": 0.75,
+                "title": null,
+                "name": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic",
+                "documentation": "Base method which calculates the result of the arithmetic operation.\n\nThis method determines the result of the arithmetic operation on the\n``data`` including their units and then forwards to other methods\nto calculate the other properties for the result (like uncertainty).\n\nParameters\n----------\noperation : callable\n    The operation that is performed on the `NDData`. Supported are\n    `numpy.add`, `numpy.subtract`, `numpy.multiply` and\n    `numpy.true_divide`.\n\noperand : same type (class) as self\n    see :meth:`NDArithmeticMixin.add`\n\npropagate_uncertainties : `bool` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nhandle_mask : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nhandle_meta : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\ncompare_wcs : callable, ``'first_found'`` or ``None``, optional\n    see :meth:`NDArithmeticMixin.add`\n\nuncertainty_correlation : ``Number`` or `~numpy.ndarray`, optional\n    see :meth:`NDArithmeticMixin.add`\n\noperation_ignores_mask : bool, optional\n    When True, masked values will be excluded from operations;\n    otherwise the operation will be performed on all values,\n    including masked ones.\n\naxis : int or tuple of ints, optional\n    axis or axes over which to perform collapse operations like min, max, sum or mean.\n\nkwargs :\n    Any other parameter that should be passed to the\n    different :meth:`NDArithmeticMixin._arithmetic_mask` (or wcs, ...)\n    methods.\n\nReturns\n-------\nresult : ndarray or `~astropy.units.Quantity`\n    The resulting data as array (in case both operands were without\n    unit) or as quantity if at least one had a unit.\n\nkwargs : `dict`\n    The kwargs should contain all the other attributes (besides data\n    and unit) needed to create a new instance for the result. Creating\n    the new instance is up to the calling method, for example\n    :meth:`NDArithmeticMixin.add`.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "issue#14978"
+                    },
+                    {
+                        "start_node": "issue#14978",
+                        "description": "referenced by issue",
+                        "type": "RELATED",
+                        "end_node": "pr#14175"
+                    },
+                    {
+                        "start_node": "pr#14175",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic"
+                    }
+                ],
+                "similarity": 0.23349628883603651,
+                "end_line": 352,
+                "signature": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin._arithmetic(self, operation, operand, propagate_uncertainties, handle_mask, handle_meta, uncertainty_correlation, compare_wcs, operation_ignores_mask, axis)"
             },
             {
                 "start_line": 399,
@@ -493,7 +493,7 @@
                     },
                     {
                         "start_node": "astropy.nddata.compat.NDDataArray",
-                        "description": "contains class",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.compat.NDDataArray.__init__"
                     }
@@ -604,7 +604,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to method",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray.mean"
                     }
@@ -645,7 +645,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -692,7 +692,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -739,7 +739,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -774,7 +774,7 @@
                     },
                     {
                         "start_node": "nddata.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.nddata.NDData.wcs"
                     }
@@ -844,7 +844,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -990,7 +990,7 @@
                     },
                     {
                         "start_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin",
-                        "description": "contains method",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin.add"
                     }
@@ -1031,7 +1031,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1078,7 +1078,7 @@
                     },
                     {
                         "start_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin",
-                        "description": "contains class",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.mixins.ndarithmetic.NDArithmeticMixin.subtract"
                     }
@@ -1177,7 +1177,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1212,7 +1212,7 @@
                     },
                     {
                         "start_node": "astropy/stats/sigma_clipping.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.stats.sigma_clipping.SigmaClip._sigmaclip_withaxis"
                     }
@@ -1253,7 +1253,7 @@
                     },
                     {
                         "start_node": "astropy.nddata.compat.NDDataArray",
-                        "description": "contains class",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.compat.NDDataArray.flags"
                     }
@@ -1329,7 +1329,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1405,7 +1405,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1440,7 +1440,7 @@
                     },
                     {
                         "start_node": "astropy/stats/sigma_clipping.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "astropy.stats.sigma_clipping.SigmaClip._sigmaclip_noaxis"
                     }
@@ -1539,7 +1539,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1599,29 +1599,11 @@
                         "start_node": "root",
                         "description": "points to issue",
                         "type": "RELATED",
-                        "end_node": "issue#14978"
+                        "end_node": "table.py"
                     },
                     {
-                        "start_node": "issue#14978",
-                        "description": "referenced by issue",
-                        "type": "RELATED",
-                        "end_node": "pr#14175"
-                    },
-                    {
-                        "start_node": "pr#14175",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "pr#2039"
-                    },
-                    {
-                        "start_node": "pr#2039",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "astropy.table.table.Table"
-                    },
-                    {
-                        "start_node": "astropy.table.table.Table",
-                        "description": "contains class",
+                        "start_node": "table.py",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.table.table.Table.mask"
                     }
@@ -1703,7 +1685,7 @@
                     },
                     {
                         "start_node": "astropy.nddata.compat.NDDataArray",
-                        "description": "contains method",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.compat.NDDataArray.mask"
                     }
@@ -1773,7 +1755,7 @@
                     },
                     {
                         "start_node": "pr#14341",
-                        "description": "points to class",
+                        "description": "points to issue",
                         "type": "RELATED",
                         "end_node": "astropy.utils.masked.core.MaskedNDArray"
                     },
@@ -1894,25 +1876,6 @@
                 "similarity": 1.0
             },
             {
-                "name": "astropy.nddata.nddata.NDData.__init__",
-                "file_path": "astropy/nddata/nddata.py",
-                "start_line": 126,
-                "end_line": 296,
-                "source_code": "def __init__(\n        self,\n        data,\n        uncertainty=None,\n        mask=None,\n        wcs=None,\n        meta=None,\n        unit=None,\n        copy=False,\n        psf=None,\n    ):\n        # Rather pointless since the NDDataBase does not implement any setting\n        # but before the NDDataBase did call the uncertainty\n        # setter. But if anyone wants to alter this behavior again the call\n        # to the superclass NDDataBase should be in here.\n        super().__init__()\n\n        # Check if data is any type from which to collect some implicitly\n        # passed parameters.\n        if isinstance(data, NDData):  # don't use self.__class__ (issue #4137)\n            # Of course we need to check the data because subclasses with other\n            # init-logic might be passed in here. We could skip these\n            # tests if we compared for self.__class__ but that has other\n            # drawbacks.\n\n            # Comparing if there is an explicit and an implicit unit parameter.\n            # If that is the case use the explicit one and issue a warning\n            # that there might be a conflict. In case there is no explicit\n            # unit just overwrite the unit parameter with the NDData.unit\n            # and proceed as if that one was given as parameter. Same for the\n            # other parameters.\n            if unit is None and data.unit is not None:\n                unit = data.unit\n            elif unit is not None and data.unit is not None:\n                log.info(\"overwriting NDData's current unit with specified unit.\")\n\n            if uncertainty is not None and data.uncertainty is not None:\n                log.info(\n                    \"overwriting NDData's current \"\n                    \"uncertainty with specified uncertainty.\"\n                )\n            elif data.uncertainty is not None:\n                uncertainty = data.uncertainty\n\n            if mask is not None and data.mask is not None:\n                log.info(\"overwriting NDData's current mask with specified mask.\")\n            elif data.mask is not None:\n                mask = data.mask\n\n            if wcs is not None and data.wcs is not None:\n                log.info(\"overwriting NDData's current wcs with specified wcs.\")\n            elif data.wcs is not None:\n                wcs = data.wcs\n\n            if psf is not None and data.psf is not None:\n                log.info(\"Overwriting NDData's current psf with specified psf.\")\n            elif data.psf is not None:\n                psf = data.psf\n\n            if meta is not None and data.meta is not None:\n                log.info(\"overwriting NDData's current meta with specified meta.\")\n            elif data.meta is not None:\n                meta = data.meta\n\n            # get the data attribute as it is, and continue to process it:\n            data = data.data\n\n        # if the data is wrapped by astropy.utils.masked.Masked:\n        if isinstance(data, Masked):\n            # first get the mask if one is available:\n            if hasattr(data, \"mask\"):\n                if mask is not None:\n                    log.info(\n                        \"overwriting Masked Quantity's current mask with specified mask.\"\n                    )\n                else:\n                    mask = data.mask\n\n            if isinstance(data, MaskedNDArray):\n                if unit is not None and hasattr(data, \"unit\") and data.unit != unit:\n                    log.info(\n                        \"overwriting MaskedNDArray's current unit with specified unit.\"\n                    )\n                    data = data.to(unit).value\n                elif unit is None and hasattr(data, \"unit\"):\n                    unit = data.unit\n                    data = data.value\n\n                # now get the unmasked ndarray:\n                data = np.asarray(data)\n\n            if isinstance(data, Quantity):\n                # this is a Quantity:\n                if unit is not None and data.unit != unit:\n                    log.info(\"overwriting Quantity's current unit with specified unit.\")\n                    data = data.to(unit)\n                elif unit is None and data.unit is not None:\n                    unit = data.unit\n                data = data.value\n\n        if isinstance(data, np.ma.masked_array):\n            if mask is not None:\n                log.info(\n                    \"overwriting masked ndarray's current mask with specified mask.\"\n                )\n            else:\n                mask = data.mask\n            data = data.data\n\n        if isinstance(data, Quantity):\n            # this is a Quantity:\n            if unit is not None and data.unit != unit:\n                log.info(\"overwriting Quantity's current unit with specified unit.\")\n                data = data.to(unit)\n            elif unit is None and data.unit is not None:\n                unit = data.unit\n            data = data.value\n\n        if isinstance(data, np.ndarray):\n            # check for mask from np.ma.masked_ndarray\n            if hasattr(data, \"mask\"):\n                if mask is not None:\n                    log.info(\n                        \"overwriting masked ndarray's current mask with specified mask.\"\n                    )\n                else:\n                    mask = data.mask\n\n        # Quick check on the parameters if they match the requirements.\n        if (\n            not hasattr(data, \"shape\")\n            or not hasattr(data, \"__getitem__\")\n            or not hasattr(data, \"__array__\")\n        ):\n            # Data doesn't look like a numpy array, try converting it to\n            # one.\n            data = np.array(data, subok=True, copy=False)\n        # Another quick check to see if what we got looks like an array\n        # rather than an object (since numpy will convert a\n        # non-numerical/non-string inputs to an array of objects).\n        if data.dtype == \"O\":\n            raise TypeError(\"could not convert data to numpy array.\")\n\n        if unit is not None:\n            unit = Unit(unit)\n\n        if copy:\n            # Data might have been copied before but no way of validating\n            # without another variable.\n            data = deepcopy(data)\n            mask = deepcopy(mask)\n            wcs = deepcopy(wcs)\n            psf = deepcopy(psf)\n            meta = deepcopy(meta)\n            uncertainty = deepcopy(uncertainty)\n            # Actually - copying the unit is unnecessary but better safe\n            # than sorry :-)\n            unit = deepcopy(unit)\n\n        # Store the attributes\n        self._data = data\n        self.mask = mask\n        self._wcs = None\n        if wcs is not None:\n            # Validate the wcs\n            self.wcs = wcs\n        self.meta = meta  # TODO: Make this call the setter sometime\n        self._unit = unit\n        # Call the setter for uncertainty to further check the uncertainty\n        self.uncertainty = uncertainty\n        self.psf = psf",
-                "signature": "astropy.nddata.nddata.NDData.__init__(self, data, uncertainty, mask, wcs, meta, unit, copy, psf)",
-                "doc_string": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to method",
-                        "type": "INFERENCE",
-                        "end_node": "astropy.nddata.nddata.NDData.__init__"
-                    }
-                ],
-                "type": "method",
-                "similarity": 1.0
-            },
-            {
                 "name": "astropy.nddata.nddata.NDData.mask",
                 "file_path": "astropy/nddata/nddata.py",
                 "start_line": 319,
@@ -1932,38 +1895,19 @@
                 "similarity": 1.0
             },
             {
-                "name": "astropy.nddata.compat.NDDataArray.mask",
-                "file_path": "astropy/nddata/compat.py",
-                "start_line": 161,
-                "end_line": 165,
-                "source_code": "def mask(self):\n        if self._mask is np.ma.nomask:\n            return None\n        else:\n            return self._mask",
-                "signature": "astropy.nddata.compat.NDDataArray.mask(self)",
+                "name": "astropy.nddata.nddata.NDData.__init__",
+                "file_path": "astropy/nddata/nddata.py",
+                "start_line": 126,
+                "end_line": 296,
+                "source_code": "def __init__(\n        self,\n        data,\n        uncertainty=None,\n        mask=None,\n        wcs=None,\n        meta=None,\n        unit=None,\n        copy=False,\n        psf=None,\n    ):\n        # Rather pointless since the NDDataBase does not implement any setting\n        # but before the NDDataBase did call the uncertainty\n        # setter. But if anyone wants to alter this behavior again the call\n        # to the superclass NDDataBase should be in here.\n        super().__init__()\n\n        # Check if data is any type from which to collect some implicitly\n        # passed parameters.\n        if isinstance(data, NDData):  # don't use self.__class__ (issue #4137)\n            # Of course we need to check the data because subclasses with other\n            # init-logic might be passed in here. We could skip these\n            # tests if we compared for self.__class__ but that has other\n            # drawbacks.\n\n            # Comparing if there is an explicit and an implicit unit parameter.\n            # If that is the case use the explicit one and issue a warning\n            # that there might be a conflict. In case there is no explicit\n            # unit just overwrite the unit parameter with the NDData.unit\n            # and proceed as if that one was given as parameter. Same for the\n            # other parameters.\n            if unit is None and data.unit is not None:\n                unit = data.unit\n            elif unit is not None and data.unit is not None:\n                log.info(\"overwriting NDData's current unit with specified unit.\")\n\n            if uncertainty is not None and data.uncertainty is not None:\n                log.info(\n                    \"overwriting NDData's current \"\n                    \"uncertainty with specified uncertainty.\"\n                )\n            elif data.uncertainty is not None:\n                uncertainty = data.uncertainty\n\n            if mask is not None and data.mask is not None:\n                log.info(\"overwriting NDData's current mask with specified mask.\")\n            elif data.mask is not None:\n                mask = data.mask\n\n            if wcs is not None and data.wcs is not None:\n                log.info(\"overwriting NDData's current wcs with specified wcs.\")\n            elif data.wcs is not None:\n                wcs = data.wcs\n\n            if psf is not None and data.psf is not None:\n                log.info(\"Overwriting NDData's current psf with specified psf.\")\n            elif data.psf is not None:\n                psf = data.psf\n\n            if meta is not None and data.meta is not None:\n                log.info(\"overwriting NDData's current meta with specified meta.\")\n            elif data.meta is not None:\n                meta = data.meta\n\n            # get the data attribute as it is, and continue to process it:\n            data = data.data\n\n        # if the data is wrapped by astropy.utils.masked.Masked:\n        if isinstance(data, Masked):\n            # first get the mask if one is available:\n            if hasattr(data, \"mask\"):\n                if mask is not None:\n                    log.info(\n                        \"overwriting Masked Quantity's current mask with specified mask.\"\n                    )\n                else:\n                    mask = data.mask\n\n            if isinstance(data, MaskedNDArray):\n                if unit is not None and hasattr(data, \"unit\") and data.unit != unit:\n                    log.info(\n                        \"overwriting MaskedNDArray's current unit with specified unit.\"\n                    )\n                    data = data.to(unit).value\n                elif unit is None and hasattr(data, \"unit\"):\n                    unit = data.unit\n                    data = data.value\n\n                # now get the unmasked ndarray:\n                data = np.asarray(data)\n\n            if isinstance(data, Quantity):\n                # this is a Quantity:\n                if unit is not None and data.unit != unit:\n                    log.info(\"overwriting Quantity's current unit with specified unit.\")\n                    data = data.to(unit)\n                elif unit is None and data.unit is not None:\n                    unit = data.unit\n                data = data.value\n\n        if isinstance(data, np.ma.masked_array):\n            if mask is not None:\n                log.info(\n                    \"overwriting masked ndarray's current mask with specified mask.\"\n                )\n            else:\n                mask = data.mask\n            data = data.data\n\n        if isinstance(data, Quantity):\n            # this is a Quantity:\n            if unit is not None and data.unit != unit:\n                log.info(\"overwriting Quantity's current unit with specified unit.\")\n                data = data.to(unit)\n            elif unit is None and data.unit is not None:\n                unit = data.unit\n            data = data.value\n\n        if isinstance(data, np.ndarray):\n            # check for mask from np.ma.masked_ndarray\n            if hasattr(data, \"mask\"):\n                if mask is not None:\n                    log.info(\n                        \"overwriting masked ndarray's current mask with specified mask.\"\n                    )\n                else:\n                    mask = data.mask\n\n        # Quick check on the parameters if they match the requirements.\n        if (\n            not hasattr(data, \"shape\")\n            or not hasattr(data, \"__getitem__\")\n            or not hasattr(data, \"__array__\")\n        ):\n            # Data doesn't look like a numpy array, try converting it to\n            # one.\n            data = np.array(data, subok=True, copy=False)\n        # Another quick check to see if what we got looks like an array\n        # rather than an object (since numpy will convert a\n        # non-numerical/non-string inputs to an array of objects).\n        if data.dtype == \"O\":\n            raise TypeError(\"could not convert data to numpy array.\")\n\n        if unit is not None:\n            unit = Unit(unit)\n\n        if copy:\n            # Data might have been copied before but no way of validating\n            # without another variable.\n            data = deepcopy(data)\n            mask = deepcopy(mask)\n            wcs = deepcopy(wcs)\n            psf = deepcopy(psf)\n            meta = deepcopy(meta)\n            uncertainty = deepcopy(uncertainty)\n            # Actually - copying the unit is unnecessary but better safe\n            # than sorry :-)\n            unit = deepcopy(unit)\n\n        # Store the attributes\n        self._data = data\n        self.mask = mask\n        self._wcs = None\n        if wcs is not None:\n            # Validate the wcs\n            self.wcs = wcs\n        self.meta = meta  # TODO: Make this call the setter sometime\n        self._unit = unit\n        # Call the setter for uncertainty to further check the uncertainty\n        self.uncertainty = uncertainty\n        self.psf = psf",
+                "signature": "astropy.nddata.nddata.NDData.__init__(self, data, uncertainty, mask, wcs, meta, unit, copy, psf)",
                 "doc_string": "",
                 "path": [
                     {
                         "start_node": "root",
                         "description": "points to method",
                         "type": "INFERENCE",
-                        "end_node": "astropy.nddata.compat.NDDataArray.mask"
-                    }
-                ],
-                "type": "method",
-                "similarity": 1.0
-            },
-            {
-                "name": "astropy.utils.masked.core.MaskedNDArray._combine_masks",
-                "file_path": "astropy/utils/masked/core.py",
-                "start_line": 674,
-                "end_line": 703,
-                "source_code": "def _combine_masks(self, masks, out=None, where=True, copy=True):\n        \"\"\"Combine masks, possibly storing it in some output.\n\n        Parameters\n        ----------\n        masks : tuple of array of bool or None\n            Input masks.  Any that are `None` or `False` are ignored.\n            Should broadcast to each other.\n        out : output mask array, optional\n            Possible output array to hold the result.\n        where : array of bool, optional\n            Which elements of the output array to fill.\n        copy : bool optional\n            Whether to ensure a copy is made. Only relevant if a single\n            input mask is not `None`, and ``out`` is not given.\n        \"\"\"\n        masks = [m for m in masks if m is not None and m is not False]\n        if not masks:\n            return False\n        if len(masks) == 1:\n            if out is None:\n                return masks[0].copy() if copy else masks[0]\n            else:\n                np.copyto(out, masks[0], where=where)\n                return out\n\n        out = np.logical_or(masks[0], masks[1], out=out, where=where)\n        for mask in masks[2:]:\n            np.logical_or(out, mask, out=out, where=where)\n        return out",
-                "signature": "astropy.utils.masked.core.MaskedNDArray._combine_masks(self, masks, out, where, copy)",
-                "doc_string": "Combine masks, possibly storing it in some output.\n\nParameters\n----------\nmasks : tuple of array of bool or None\n    Input masks.  Any that are `None` or `False` are ignored.\n    Should broadcast to each other.\nout : output mask array, optional\n    Possible output array to hold the result.\nwhere : array of bool, optional\n    Which elements of the output array to fill.\ncopy : bool optional\n    Whether to ensure a copy is made. Only relevant if a single\n    input mask is not `None`, and ``out`` is not given.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to method",
-                        "type": "INFERENCE",
-                        "end_node": "astropy.utils.masked.core.MaskedNDArray._combine_masks"
+                        "end_node": "astropy.nddata.nddata.NDData.__init__"
                     }
                 ],
                 "type": "method",
@@ -2020,7 +1964,7 @@
                     },
                     {
                         "start_node": "astropy/nddata/__init__.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.nddata.__init__.Conf"
                     }
@@ -2084,7 +2028,7 @@
                     },
                     {
                         "start_node": "",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.__init__.Conf"
                     }
@@ -2299,7 +2243,7 @@
                     },
                     {
                         "start_node": "",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.__init__.astronomical_constants"
                     }
@@ -2357,7 +2301,7 @@
                     },
                     {
                         "start_node": "astropy/config/paths.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.config.paths.set_temp_cache"
                     }
@@ -3158,7 +3102,7 @@
                     },
                     {
                         "start_node": "astropy/io/ascii/fixedwidth.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.io.ascii.fixedwidth.FixedWidthTwoLineHeader"
                     }
@@ -3274,7 +3218,7 @@
                     },
                     {
                         "start_node": "astropy/utils/exceptions.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.utils.exceptions.AstropyPendingDeprecationWarning"
                     }
@@ -3332,7 +3276,7 @@
                     },
                     {
                         "start_node": "astropy/io/ascii/qdp.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.io.ascii.qdp.QDPData"
                     }
@@ -3361,7 +3305,7 @@
                     },
                     {
                         "start_node": "astropy/utils/exceptions.py",
-                        "description": "contains file",
+                        "description": "contains class",
                         "type": "RELATED",
                         "end_node": "astropy.utils.exceptions.DuplicateRepresentationWarning"
                     }
@@ -3390,7 +3334,7 @@
                     },
                     {
                         "start_node": "astropy/utils/exceptions.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "astropy.utils.exceptions.AstropyWarning"
                     }
@@ -3745,7 +3689,7 @@
                     },
                     {
                         "start_node": "",
-                        "description": "referenced by issue",
+                        "description": "points to file",
                         "type": "RELATED",
                         "end_node": "pr#86"
                     }

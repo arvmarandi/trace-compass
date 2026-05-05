@@ -2,267 +2,6 @@
     "related_entities": {
         "methods": [
             {
-                "start_line": 347,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _iter(self, fitted=False, replace_strings=False, column_as_strings=False):\n        \"\"\"\n        Generate (name, trans, column, weight) tuples.\n\n        If fitted=True, use the fitted transformers, else use the\n        user specified transformers updated with converted column names\n        and potentially appended with transformer for remainder.\n\n        \"\"\"\n        if fitted:\n            if replace_strings:\n                # Replace \"passthrough\" with the fitted version in\n                # _name_to_fitted_passthrough\n                def replace_passthrough(name, trans, columns):\n                    if name not in self._name_to_fitted_passthrough:\n                        return name, trans, columns\n                    return name, self._name_to_fitted_passthrough[name], columns\n\n                transformers = [\n                    replace_passthrough(*trans) for trans in self.transformers_\n                ]\n            else:\n                transformers = self.transformers_\n        else:\n            # interleave the validated column specifiers\n            transformers = [\n                (name, trans, column)\n                for (name, trans, _), column in zip(self.transformers, self._columns)\n            ]\n            # add transformer tuple for remainder\n            if self._remainder[2]:\n                transformers = chain(transformers, [self._remainder])\n        get_weight = (self.transformer_weights or {}).get\n\n        output_config = _get_output_config(\"transform\", self)\n        for name, trans, columns in transformers:\n            if replace_strings:\n                # replace 'passthrough' with identity transformer and\n                # skip in case of 'drop'\n                if trans == \"passthrough\":\n                    trans = FunctionTransformer(\n                        accept_sparse=True,\n                        check_inverse=False,\n                        feature_names_out=\"one-to-one\",\n                    ).set_output(transform=output_config[\"dense\"])\n                elif trans == \"drop\":\n                    continue\n                elif _is_empty_column_selection(columns):\n                    continue\n\n            if column_as_strings:\n                # Convert all columns to using their string labels\n                columns_is_scalar = np.isscalar(columns)\n\n                indices = self._transformer_to_input_indices[name]\n                columns = self.feature_names_in_[indices]\n\n                if columns_is_scalar:\n                    # selection is done with one dimension\n                    columns = columns[0]\n\n            yield (name, trans, columns, get_weight(name))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._iter",
-                "documentation": "Generate (name, trans, column, weight) tuples.\n\nIf fitted=True, use the fitted transformers, else use the\nuser specified transformers updated with converted column names\nand potentially appended with transformer for remainder.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._iter"
-                    }
-                ],
-                "similarity": 0.29353504960972926,
-                "end_line": 408,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._iter(self, fitted, replace_strings, column_as_strings)"
-            },
-            {
-                "start_line": 383,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Fit all transformers, transform the data and concatenate results.\n\n        Parameters\n        ----------\n        X : array-like or DataFrame of shape [n_samples, n_features]\n            Input data, of which specified subsets are used to fit the\n            transformers.\n\n        y : array-like, shape (n_samples, ...), optional\n            Targets for supervised learning.\n\n        Returns\n        -------\n        X_t : array-like or sparse matrix, shape (n_samples, sum_n_components)\n            hstack of results of transformers. sum_n_components is the\n            sum of n_components (output dimension) over transformers. If\n            any result is a sparse matrix, everything will be converted to\n            sparse matrices.\n\n        \"\"\"\n        self._validate_remainder(X)\n        self._validate_transformers()\n\n        result = self._fit_transform(X, y, _fit_transform_one)\n\n        if not result:\n            # All transformers are None\n            return np.zeros((X.shape[0], 0))\n\n        Xs, transformers = zip(*result)\n\n        self._update_fitted_transformers(transformers)\n        self._validate_output(Xs)\n\n        return _hstack(list(Xs))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform",
-                "documentation": "Fit all transformers, transform the data and concatenate results.\n\nParameters\n----------\nX : array-like or DataFrame of shape [n_samples, n_features]\n    Input data, of which specified subsets are used to fit the\n    transformers.\n\ny : array-like, shape (n_samples, ...), optional\n    Targets for supervised learning.\n\nReturns\n-------\nX_t : array-like or sparse matrix, shape (n_samples, sum_n_components)\n    hstack of results of transformers. sum_n_components is the\n    sum of n_components (output dimension) over transformers. If\n    any result is a sparse matrix, everything will be converted to\n    sparse matrices.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform"
-                    }
-                ],
-                "similarity": 0.2707049886934353,
-                "end_line": 418,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform(self, X, y)"
-            },
-            {
-                "start_line": 274,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def set_output(self, *, transform=None):\n        \"\"\"Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\n        Calling `set_output` will set the output of all estimators in `transformers`\n        and `transformers_`.\n\n        Parameters\n        ----------\n        transform : {\"default\", \"pandas\"}, default=None\n            Configure output of `transform` and `fit_transform`.\n\n            - `\"default\"`: Default output format of a transformer\n            - `\"pandas\"`: DataFrame output\n            - `None`: Transform configuration is unchanged\n\n        Returns\n        -------\n        self : estimator instance\n            Estimator instance.\n        \"\"\"\n        super().set_output(transform=transform)\n        transformers = (\n            trans\n            for _, trans, _ in chain(\n                self.transformers, getattr(self, \"transformers_\", [])\n            )\n            if trans not in {\"passthrough\", \"drop\"}\n        )\n        for trans in transformers:\n            _safe_set_output(trans, transform=transform)\n\n        return self",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.set_output",
-                "documentation": "Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\nCalling `set_output` will set the output of all estimators in `transformers`\nand `transformers_`.\n\nParameters\n----------\ntransform : {\"default\", \"pandas\"}, default=None\n    Configure output of `transform` and `fit_transform`.\n\n    - `\"default\"`: Default output format of a transformer\n    - `\"pandas\"`: DataFrame output\n    - `None`: Transform configuration is unchanged\n\nReturns\n-------\nself : estimator instance\n    Estimator instance.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.set_output"
-                    }
-                ],
-                "similarity": 0.26812771668373064,
-                "end_line": 305,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.set_output(self)"
-            },
-            {
-                "start_line": 651,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _fit_transform(self, X, y, func, fitted=False, column_as_strings=False):\n        \"\"\"\n        Private function to fit and/or transform on demand.\n\n        Return value (transformers and/or transformed X data) depends\n        on the passed function.\n        ``fitted=True`` ensures the fitted transformers are used.\n        \"\"\"\n        transformers = list(\n            self._iter(\n                fitted=fitted, replace_strings=True, column_as_strings=column_as_strings\n            )\n        )\n        try:\n            return Parallel(n_jobs=self.n_jobs)(\n                delayed(func)(\n                    transformer=clone(trans) if not fitted else trans,\n                    X=_safe_indexing(X, column, axis=1),\n                    y=y,\n                    weight=weight,\n                    message_clsname=\"ColumnTransformer\",\n                    message=self._log_message(name, idx, len(transformers)),\n                )\n                for idx, (name, trans, column, weight) in enumerate(transformers, 1)\n            )\n        except ValueError as e:\n            if \"Expected 2D array, got 1D array instead\" in str(e):\n                raise ValueError(_ERR_MSG_1DCOLUMN) from e\n            else:\n                raise",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform",
-                "documentation": "Private function to fit and/or transform on demand.\n\nReturn value (transformers and/or transformed X data) depends\non the passed function.\n``fitted=True`` ensures the fitted transformers are used.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform"
-                    }
-                ],
-                "similarity": 0.26356592076763563,
-                "end_line": 680,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform(self, X, y, func, fitted, column_as_strings)"
-            },
-            {
-                "start_line": 824,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _hstack(self, Xs):\n        \"\"\"Stacks Xs horizontally.\n\n        This allows subclasses to control the stacking behavior, while reusing\n        everything else from ColumnTransformer.\n\n        Parameters\n        ----------\n        Xs : list of {array-like, sparse matrix, dataframe}\n        \"\"\"\n        if self.sparse_output_:\n            try:\n                # since all columns should be numeric before stacking them\n                # in a sparse matrix, `check_array` is used for the\n                # dtype conversion if necessary.\n                converted_Xs = [\n                    check_array(X, accept_sparse=True, force_all_finite=False)\n                    for X in Xs\n                ]\n            except ValueError as e:\n                raise ValueError(\n                    \"For a sparse output, all columns should \"\n                    \"be a numeric or convertible to a numeric.\"\n                ) from e\n\n            return sparse.hstack(converted_Xs).tocsr()\n        else:\n            Xs = [f.toarray() if sparse.issparse(f) else f for f in Xs]\n            config = _get_output_config(\"transform\", self)\n            if config[\"dense\"] == \"pandas\" and all(hasattr(X, \"iloc\") for X in Xs):\n                pd = check_pandas_support(\"transform\")\n                output = pd.concat(Xs, axis=1)\n\n                # If all transformers define `get_feature_names_out`, then transform\n                # will adjust the column names to be consistent with\n                # verbose_feature_names_out. Here we prefix the feature names if\n                # verbose_feature_names_out=True.\n\n                if not self.verbose_feature_names_out:\n                    return output\n\n                transformer_names = [\n                    t[0] for t in self._iter(fitted=True, replace_strings=True)\n                ]\n                feature_names_outs = [X.columns for X in Xs]\n                names_out = self._add_prefix_for_feature_names_out(\n                    list(zip(transformer_names, feature_names_outs))\n                )\n                output.columns = names_out\n                return output\n\n            return np.hstack(Xs)",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._hstack",
-                "documentation": "Stacks Xs horizontally.\n\nThis allows subclasses to control the stacking behavior, while reusing\neverything else from ColumnTransformer.\n\nParameters\n----------\nXs : list of {array-like, sparse matrix, dataframe}",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._hstack"
-                    }
-                ],
-                "similarity": 0.261958444626246,
-                "end_line": 875,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._hstack(self, Xs)"
-            },
-            {
-                "start_line": 232,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def __init__(\n        self,\n        transformers,\n        *,\n        remainder=\"drop\",\n        sparse_threshold=0.3,\n        n_jobs=None,\n        transformer_weights=None,\n        verbose=False,\n        verbose_feature_names_out=True,\n    ):\n        self.transformers = transformers\n        self.remainder = remainder\n        self.sparse_threshold = sparse_threshold\n        self.n_jobs = n_jobs\n        self.transformer_weights = transformer_weights\n        self.verbose = verbose\n        self.verbose_feature_names_out = verbose_feature_names_out",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.__init__",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.__init__"
-                    }
-                ],
-                "similarity": 0.259506223786091,
-                "end_line": 249,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.__init__(self, transformers)"
-            },
-            {
-                "start_line": 300,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _update_fitted_transformers(self, transformers):\n        # transformers are fitted; excludes 'drop' cases\n        transformers = iter(transformers)\n        transformers_ = []\n\n        transformer_iter = self.transformers\n        if self._remainder[2] is not None:\n            transformer_iter = chain(transformer_iter, [self._remainder])\n\n        for name, old, column in transformer_iter:\n            if old == 'drop':\n                trans = 'drop'\n            elif old == 'passthrough':\n                # FunctionTransformer is present in list of transformers,\n                # so get next transformer, but save original string\n                next(transformers)\n                trans = 'passthrough'\n            else:\n                trans = next(transformers)\n            transformers_.append((name, trans, column))\n\n        # sanity check that transformers is exhausted\n        assert not list(transformers)\n        self.transformers_ = transformers_",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers"
-                    }
-                ],
-                "similarity": 0.2576462989751618,
-                "end_line": 323,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers(self, transformers)"
-            },
-            {
-                "start_line": 533,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _add_prefix_for_feature_names_out(self, transformer_with_feature_names_out):\n        \"\"\"Add prefix for feature names out that includes the transformer names.\n\n        Parameters\n        ----------\n        transformer_with_feature_names_out : list of tuples of (str, array-like of str)\n            The tuple consistent of the transformer's name and its feature names out.\n\n        Returns\n        -------\n        feature_names_out : ndarray of shape (n_features,), dtype=str\n            Transformed feature names.\n        \"\"\"\n        if self.verbose_feature_names_out:\n            # Prefix the feature names out with the transformers name\n            names = list(\n                chain.from_iterable(\n                    (f\"{name}__{i}\" for i in feature_names_out)\n                    for name, feature_names_out in transformer_with_feature_names_out\n                )\n            )\n            return np.asarray(names, dtype=object)\n\n        # verbose_feature_names_out is False\n        # Check that names are all unique without a prefix\n        feature_names_count = Counter(\n            chain.from_iterable(s for _, s in transformer_with_feature_names_out)\n        )\n        top_6_overlap = [\n            name for name, count in feature_names_count.most_common(6) if count > 1\n        ]\n        top_6_overlap.sort()\n        if top_6_overlap:\n            if len(top_6_overlap) == 6:\n                # There are more than 5 overlapping names, we only show the 5\n                # of the feature names\n                names_repr = str(top_6_overlap[:5])[:-1] + \", ...]\"\n            else:\n                names_repr = str(top_6_overlap)\n            raise ValueError(\n                f\"Output feature names: {names_repr} are not unique. Please set \"\n                \"verbose_feature_names_out=True to add prefixes to feature names\"\n            )\n\n        return np.concatenate(\n            [name for _, name in transformer_with_feature_names_out],\n        )",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out",
-                "documentation": "Add prefix for feature names out that includes the transformer names.\n\nParameters\n----------\ntransformer_with_feature_names_out : list of tuples of (str, array-like of str)\n    The tuple consistent of the transformer's name and its feature names out.\n\nReturns\n-------\nfeature_names_out : ndarray of shape (n_features,), dtype=str\n    Transformed feature names.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out"
-                    }
-                ],
-                "similarity": 0.24069888279961796,
-                "end_line": 579,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out(self, transformer_with_feature_names_out)"
-            },
-            {
-                "start_line": 219,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_transformers(self):\n        if not self.transformers:\n            return\n\n        names, transformers, _ = zip(*self.transformers)\n\n        # validate names\n        self._validate_names(names)\n\n        # validate estimators\n        for t in transformers:\n            if t in ('drop', 'passthrough'):\n                continue\n            if (not (hasattr(t, \"fit\") or hasattr(t, \"fit_transform\")) or not\n                    hasattr(t, \"transform\")):\n                raise TypeError(\"All estimators should implement fit and \"\n                                \"transform, or can be 'drop' or 'passthrough' \"\n                                \"specifiers. '%s' (type %s) doesn't.\" %\n                                (t, type(t)))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers",
-                "documentation": "",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers"
-                    }
-                ],
-                "similarity": 0.23938980518345898,
-                "end_line": 237,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers(self)"
-            },
-            {
                 "start_line": 511,
                 "file_path": "sklearn/preprocessing/_encoders.py",
                 "issue_id": null,
@@ -282,7 +21,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder._legacy_transform"
                     }
@@ -290,35 +29,6 @@
                 "similarity": 0.23934794471767562,
                 "end_line": 553,
                 "signature": "sklearn.preprocessing._encoders.OneHotEncoder._legacy_transform(self, X)"
-            },
-            {
-                "start_line": 193,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _iter(self, X=None, fitted=False, replace_strings=False):\n        \"\"\"Generate (name, trans, column, weight) tuples\n        \"\"\"\n        if fitted:\n            transformers = self.transformers_\n        else:\n            transformers = self.transformers\n            if self._remainder[2] is not None:\n                transformers = chain(transformers, [self._remainder])\n        get_weight = (self.transformer_weights or {}).get\n\n        for name, trans, column in transformers:\n            sub = None if X is None else _get_column(X, column)\n\n            if replace_strings:\n                # replace 'passthrough' with identity transformer and\n                # skip in case of 'drop'\n                if trans == 'passthrough':\n                    trans = FunctionTransformer(\n                        validate=False, accept_sparse=True,\n                        check_inverse=False)\n                elif trans == 'drop':\n                    continue\n\n            yield (name, trans, sub, get_weight(name))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._iter",
-                "documentation": "Generate (name, trans, column, weight) tuples\n        ",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._iter"
-                    }
-                ],
-                "similarity": 0.2358054001291425,
-                "end_line": 217,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._iter(self, X, fitted, replace_strings)"
             },
             {
                 "start_line": 423,
@@ -340,7 +50,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder._legacy_fit_transform"
                     }
@@ -350,16 +60,16 @@
                 "signature": "sklearn.preprocessing._encoders.OneHotEncoder._legacy_fit_transform(self, X)"
             },
             {
-                "start_line": 142,
+                "start_line": 705,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def __init__(self, transformers, remainder='passthrough', n_jobs=1,\n                 transformer_weights=None):\n        self.transformers = transformers\n        self.remainder = remainder\n        self.n_jobs = n_jobs\n        self.transformer_weights = transformer_weights",
-                "distance": 0.5,
+                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Fit all transformers, transform the data and concatenate results.\n\n        Parameters\n        ----------\n        X : {array-like, dataframe} of shape (n_samples, n_features)\n            Input data, of which specified subsets are used to fit the\n            transformers.\n\n        y : array-like of shape (n_samples,), default=None\n            Targets for supervised learning.\n\n        Returns\n        -------\n        X_t : {array-like, sparse matrix} of \\\n                shape (n_samples, sum_n_components)\n            Horizontally stacked results of transformers. sum_n_components is the\n            sum of n_components (output dimension) over transformers. If\n            any result is a sparse matrix, everything will be converted to\n            sparse matrices.\n        \"\"\"\n        self._validate_params()\n        self._check_feature_names(X, reset=True)\n\n        X = _check_X(X)\n        # set n_features_in_ attribute\n        self._check_n_features(X, reset=True)\n        self._validate_transformers()\n        self._validate_column_callables(X)\n        self._validate_remainder(X)\n\n        result = self._fit_transform(X, y, _fit_transform_one)\n\n        if not result:\n            self._update_fitted_transformers([])\n            # All transformers are None\n            return np.zeros((X.shape[0], 0))\n\n        Xs, transformers = zip(*result)\n\n        # determine if concatenated output will be sparse or not\n        if any(sparse.issparse(X) for X in Xs):\n            nnz = sum(X.nnz if sparse.issparse(X) else X.size for X in Xs)\n            total = sum(\n                X.shape[0] * X.shape[1] if sparse.issparse(X) else X.size for X in Xs\n            )\n            density = nnz / total\n            self.sparse_output_ = density < self.sparse_threshold\n        else:\n            self.sparse_output_ = False\n\n        self._update_fitted_transformers(transformers)\n        self._validate_output(Xs)\n        self._record_output_indices(Xs)\n\n        return self._hstack(list(Xs))",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.__init__",
-                "documentation": "",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform",
+                "documentation": "Fit all transformers, transform the data and concatenate results.\n\nParameters\n----------\nX : {array-like, dataframe} of shape (n_samples, n_features)\n    Input data, of which specified subsets are used to fit the\n    transformers.\n\ny : array-like of shape (n_samples,), default=None\n    Targets for supervised learning.\n\nReturns\n-------\nX_t : {array-like, sparse matrix} of                 shape (n_samples, sum_n_components)\n    Horizontally stacked results of transformers. sum_n_components is the\n    sum of n_components (output dimension) over transformers. If\n    any result is a sparse matrix, everything will be converted to\n    sparse matrices.",
                 "path": [
                     {
                         "start_node": "root",
@@ -371,24 +81,24 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.__init__"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform"
                     }
                 ],
-                "similarity": 0.23188102384888637,
-                "end_line": 147,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.__init__(self, transformers, remainder, n_jobs, transformer_weights)"
+                "similarity": 0.2319920139866607,
+                "end_line": 760,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer.fit_transform(self, X, y)"
             },
             {
-                "start_line": 337,
+                "start_line": 347,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _fit_transform(self, X, y, func, fitted=False):\n        \"\"\"\n        Private function to fit and/or transform on demand.\n\n        Return value (transformers and/or transformed X data) depends\n        on the passed function.\n        ``fitted=True`` ensures the fitted transformers are used.\n        \"\"\"\n        try:\n            return Parallel(n_jobs=self.n_jobs)(\n                delayed(func)(clone(trans) if not fitted else trans,\n                              X_sel, y, weight)\n                for _, trans, X_sel, weight in self._iter(\n                    X=X, fitted=fitted, replace_strings=True))\n        except ValueError as e:\n            if \"Expected 2D array, got 1D array instead\" in str(e):\n                raise ValueError(_ERR_MSG_1DCOLUMN)\n            else:\n                raise",
-                "distance": 0.5,
+                "source_code": "def _iter(self, fitted=False, replace_strings=False, column_as_strings=False):\n        \"\"\"\n        Generate (name, trans, column, weight) tuples.\n\n        If fitted=True, use the fitted transformers, else use the\n        user specified transformers updated with converted column names\n        and potentially appended with transformer for remainder.\n\n        \"\"\"\n        if fitted:\n            if replace_strings:\n                # Replace \"passthrough\" with the fitted version in\n                # _name_to_fitted_passthrough\n                def replace_passthrough(name, trans, columns):\n                    if name not in self._name_to_fitted_passthrough:\n                        return name, trans, columns\n                    return name, self._name_to_fitted_passthrough[name], columns\n\n                transformers = [\n                    replace_passthrough(*trans) for trans in self.transformers_\n                ]\n            else:\n                transformers = self.transformers_\n        else:\n            # interleave the validated column specifiers\n            transformers = [\n                (name, trans, column)\n                for (name, trans, _), column in zip(self.transformers, self._columns)\n            ]\n            # add transformer tuple for remainder\n            if self._remainder[2]:\n                transformers = chain(transformers, [self._remainder])\n        get_weight = (self.transformer_weights or {}).get\n\n        output_config = _get_output_config(\"transform\", self)\n        for name, trans, columns in transformers:\n            if replace_strings:\n                # replace 'passthrough' with identity transformer and\n                # skip in case of 'drop'\n                if trans == \"passthrough\":\n                    trans = FunctionTransformer(\n                        accept_sparse=True,\n                        check_inverse=False,\n                        feature_names_out=\"one-to-one\",\n                    ).set_output(transform=output_config[\"dense\"])\n                elif trans == \"drop\":\n                    continue\n                elif _is_empty_column_selection(columns):\n                    continue\n\n            if column_as_strings:\n                # Convert all columns to using their string labels\n                columns_is_scalar = np.isscalar(columns)\n\n                indices = self._transformer_to_input_indices[name]\n                columns = self.feature_names_in_[indices]\n\n                if columns_is_scalar:\n                    # selection is done with one dimension\n                    columns = columns[0]\n\n            yield (name, trans, columns, get_weight(name))",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform",
-                "documentation": "Private function to fit and/or transform on demand.\n\nReturn value (transformers and/or transformed X data) depends\non the passed function.\n``fitted=True`` ensures the fitted transformers are used.",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._iter",
+                "documentation": "Generate (name, trans, column, weight) tuples.\n\nIf fitted=True, use the fitted transformers, else use the\nuser specified transformers updated with converted column names\nand potentially appended with transformer for remainder.",
                 "path": [
                     {
                         "start_node": "root",
@@ -400,41 +110,12 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._iter"
                     }
                 ],
-                "similarity": 0.23067013552260873,
-                "end_line": 355,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform(self, X, y, func, fitted)"
-            },
-            {
-                "start_line": 239,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_remainder(self, X):\n        \"\"\"\n        Validates ``remainder`` and defines ``_remainder`` targeting\n        the remaining columns.\n        \"\"\"\n        is_transformer = ((hasattr(self.remainder, \"fit\")\n                           or hasattr(self.remainder, \"fit_transform\"))\n                          and hasattr(self.remainder, \"transform\"))\n        if (self.remainder not in ('drop', 'passthrough')\n                and not is_transformer):\n            raise ValueError(\n                \"The remainder keyword needs to be one of 'drop', \"\n                \"'passthrough', or estimator. '%s' was passed instead\" %\n                self.remainder)\n\n        n_columns = X.shape[1]\n        cols = []\n        for _, _, columns in self.transformers:\n            cols.extend(_get_column_indices(X, columns))\n        remaining_idx = sorted(list(set(range(n_columns)) - set(cols))) or None\n\n        self._remainder = ('remainder', self.remainder, remaining_idx)",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_remainder",
-                "documentation": "Validates ``remainder`` and defines ``_remainder`` targeting\nthe remaining columns.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_remainder"
-                    }
-                ],
-                "similarity": 0.22005815583655908,
-                "end_line": 260,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_remainder(self, X)"
+                "similarity": 0.21672593322211905,
+                "end_line": 408,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._iter(self, fitted, replace_strings, column_as_strings)"
             },
             {
                 "start_line": 304,
@@ -456,7 +137,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder._handle_deprecations"
                     }
@@ -466,16 +147,16 @@
                 "signature": "sklearn.preprocessing._encoders.OneHotEncoder._handle_deprecations(self, X)"
             },
             {
-                "start_line": 624,
+                "start_line": 274,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def _record_output_indices(self, Xs):\n        \"\"\"\n        Record which transformer produced which column.\n        \"\"\"\n        idx = 0\n        self.output_indices_ = {}\n\n        for transformer_idx, (name, _, _, _) in enumerate(\n            self._iter(fitted=True, replace_strings=True)\n        ):\n            n_columns = Xs[transformer_idx].shape[1]\n            self.output_indices_[name] = slice(idx, idx + n_columns)\n            idx += n_columns\n\n        # `_iter` only generates transformers that have a non empty\n        # selection. Here we set empty slices for transformers that\n        # generate no output, which are safe for indexing\n        all_names = [t[0] for t in self.transformers] + [\"remainder\"]\n        for name in all_names:\n            if name not in self.output_indices_:\n                self.output_indices_[name] = slice(0, 0)",
-                "distance": 0.5,
+                "source_code": "def set_output(self, *, transform=None):\n        \"\"\"Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\n        Calling `set_output` will set the output of all estimators in `transformers`\n        and `transformers_`.\n\n        Parameters\n        ----------\n        transform : {\"default\", \"pandas\"}, default=None\n            Configure output of `transform` and `fit_transform`.\n\n            - `\"default\"`: Default output format of a transformer\n            - `\"pandas\"`: DataFrame output\n            - `None`: Transform configuration is unchanged\n\n        Returns\n        -------\n        self : estimator instance\n            Estimator instance.\n        \"\"\"\n        super().set_output(transform=transform)\n        transformers = (\n            trans\n            for _, trans, _ in chain(\n                self.transformers, getattr(self, \"transformers_\", [])\n            )\n            if trans not in {\"passthrough\", \"drop\"}\n        )\n        for trans in transformers:\n            _safe_set_output(trans, transform=transform)\n\n        return self",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices",
-                "documentation": "Record which transformer produced which column.",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer.set_output",
+                "documentation": "Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\nCalling `set_output` will set the output of all estimators in `transformers`\nand `transformers_`.\n\nParameters\n----------\ntransform : {\"default\", \"pandas\"}, default=None\n    Configure output of `transform` and `fit_transform`.\n\n    - `\"default\"`: Default output format of a transformer\n    - `\"pandas\"`: DataFrame output\n    - `None`: Transform configuration is unchanged\n\nReturns\n-------\nself : estimator instance\n    Estimator instance.",
                 "path": [
                     {
                         "start_node": "root",
@@ -487,70 +168,12 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.set_output"
                     }
                 ],
-                "similarity": 0.21547289637788447,
-                "end_line": 644,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices(self, Xs)"
-            },
-            {
-                "start_line": 433,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_column_callables(self, X):\n        \"\"\"\n        Converts callable column specifications.\n        \"\"\"\n        all_columns = []\n        transformer_to_input_indices = {}\n        for name, _, columns in self.transformers:\n            if callable(columns):\n                columns = columns(X)\n            all_columns.append(columns)\n            transformer_to_input_indices[name] = _get_column_indices(X, columns)\n\n        self._columns = all_columns\n        self._transformer_to_input_indices = transformer_to_input_indices",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables",
-                "documentation": "Converts callable column specifications.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables"
-                    }
-                ],
-                "similarity": 0.20932955993070612,
-                "end_line": 446,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables(self, X)"
-            },
-            {
-                "start_line": 325,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def _validate_output(self, result):\n        \"\"\"\n        Ensure that the output of each transformer is 2D. Otherwise\n        hstack can raise an error or produce incorrect results.\n        \"\"\"\n        names = [name for name, _, _, _ in self._iter(replace_strings=True)]\n        for Xs, name in zip(result, names):\n            if not getattr(Xs, 'ndim', 0) == 2:\n                raise ValueError(\n                    \"The output of the '{0}' transformer should be 2D (scipy \"\n                    \"matrix, array, or pandas DataFrame).\".format(name))",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_output",
-                "documentation": "Ensure that the output of each transformer is 2D. Otherwise\nhstack can raise an error or produce incorrect results.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_output"
-                    }
-                ],
-                "similarity": 0.2092029702339111,
-                "end_line": 335,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_output(self, result)"
+                "similarity": 0.2098439549398169,
+                "end_line": 305,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer.set_output(self)"
             },
             {
                 "start_line": 606,
@@ -572,7 +195,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder.inverse_transform"
                     }
@@ -580,6 +203,64 @@
                 "similarity": 0.20641821948522526,
                 "end_line": 671,
                 "signature": "sklearn.preprocessing._encoders.OneHotEncoder.inverse_transform(self, X)"
+            },
+            {
+                "start_line": 581,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _update_fitted_transformers(self, transformers):\n        # transformers are fitted; excludes 'drop' cases\n        fitted_transformers = iter(transformers)\n        transformers_ = []\n        self._name_to_fitted_passthrough = {}\n\n        for name, old, column, _ in self._iter():\n            if old == \"drop\":\n                trans = \"drop\"\n            elif old == \"passthrough\":\n                # FunctionTransformer is present in list of transformers,\n                # so get next transformer, but save original string\n                func_transformer = next(fitted_transformers)\n                trans = \"passthrough\"\n\n                # The fitted FunctionTransformer is saved in another attribute,\n                # so it can be used during transform for set_output.\n                self._name_to_fitted_passthrough[name] = func_transformer\n            elif _is_empty_column_selection(column):\n                trans = old\n            else:\n                trans = next(fitted_transformers)\n            transformers_.append((name, trans, column))\n\n        # sanity check that transformers is exhausted\n        assert not list(fitted_transformers)\n        self.transformers_ = transformers_",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers"
+                    }
+                ],
+                "similarity": 0.20554299924791397,
+                "end_line": 607,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._update_fitted_transformers(self, transformers)"
+            },
+            {
+                "start_line": 232,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        transformers,\n        *,\n        remainder=\"drop\",\n        sparse_threshold=0.3,\n        n_jobs=None,\n        transformer_weights=None,\n        verbose=False,\n        verbose_feature_names_out=True,\n    ):\n        self.transformers = transformers\n        self.remainder = remainder\n        self.sparse_threshold = sparse_threshold\n        self.n_jobs = n_jobs\n        self.transformer_weights = transformer_weights\n        self.verbose = verbose\n        self.verbose_feature_names_out = verbose_feature_names_out",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.__init__"
+                    }
+                ],
+                "similarity": 0.2039664106209208,
+                "end_line": 249,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer.__init__(self, transformers)"
             },
             {
                 "start_line": 387,
@@ -609,6 +290,64 @@
                 "similarity": 0.20021304465716883,
                 "end_line": 474,
                 "signature": "sklearn.base.BaseEstimator._check_feature_names(self, X)"
+            },
+            {
+                "start_line": 651,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _fit_transform(self, X, y, func, fitted=False, column_as_strings=False):\n        \"\"\"\n        Private function to fit and/or transform on demand.\n\n        Return value (transformers and/or transformed X data) depends\n        on the passed function.\n        ``fitted=True`` ensures the fitted transformers are used.\n        \"\"\"\n        transformers = list(\n            self._iter(\n                fitted=fitted, replace_strings=True, column_as_strings=column_as_strings\n            )\n        )\n        try:\n            return Parallel(n_jobs=self.n_jobs)(\n                delayed(func)(\n                    transformer=clone(trans) if not fitted else trans,\n                    X=_safe_indexing(X, column, axis=1),\n                    y=y,\n                    weight=weight,\n                    message_clsname=\"ColumnTransformer\",\n                    message=self._log_message(name, idx, len(transformers)),\n                )\n                for idx, (name, trans, column, weight) in enumerate(transformers, 1)\n            )\n        except ValueError as e:\n            if \"Expected 2D array, got 1D array instead\" in str(e):\n                raise ValueError(_ERR_MSG_1DCOLUMN) from e\n            else:\n                raise",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform",
+                "documentation": "Private function to fit and/or transform on demand.\n\nReturn value (transformers and/or transformed X data) depends\non the passed function.\n``fitted=True`` ensures the fitted transformers are used.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform"
+                    }
+                ],
+                "similarity": 0.19922687900430447,
+                "end_line": 680,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._fit_transform(self, X, y, func, fitted, column_as_strings)"
+            },
+            {
+                "start_line": 824,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _hstack(self, Xs):\n        \"\"\"Stacks Xs horizontally.\n\n        This allows subclasses to control the stacking behavior, while reusing\n        everything else from ColumnTransformer.\n\n        Parameters\n        ----------\n        Xs : list of {array-like, sparse matrix, dataframe}\n        \"\"\"\n        if self.sparse_output_:\n            try:\n                # since all columns should be numeric before stacking them\n                # in a sparse matrix, `check_array` is used for the\n                # dtype conversion if necessary.\n                converted_Xs = [\n                    check_array(X, accept_sparse=True, force_all_finite=False)\n                    for X in Xs\n                ]\n            except ValueError as e:\n                raise ValueError(\n                    \"For a sparse output, all columns should \"\n                    \"be a numeric or convertible to a numeric.\"\n                ) from e\n\n            return sparse.hstack(converted_Xs).tocsr()\n        else:\n            Xs = [f.toarray() if sparse.issparse(f) else f for f in Xs]\n            config = _get_output_config(\"transform\", self)\n            if config[\"dense\"] == \"pandas\" and all(hasattr(X, \"iloc\") for X in Xs):\n                pd = check_pandas_support(\"transform\")\n                output = pd.concat(Xs, axis=1)\n\n                # If all transformers define `get_feature_names_out`, then transform\n                # will adjust the column names to be consistent with\n                # verbose_feature_names_out. Here we prefix the feature names if\n                # verbose_feature_names_out=True.\n\n                if not self.verbose_feature_names_out:\n                    return output\n\n                transformer_names = [\n                    t[0] for t in self._iter(fitted=True, replace_strings=True)\n                ]\n                feature_names_outs = [X.columns for X in Xs]\n                names_out = self._add_prefix_for_feature_names_out(\n                    list(zip(transformer_names, feature_names_outs))\n                )\n                output.columns = names_out\n                return output\n\n            return np.hstack(Xs)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._hstack",
+                "documentation": "Stacks Xs horizontally.\n\nThis allows subclasses to control the stacking behavior, while reusing\neverything else from ColumnTransformer.\n\nParameters\n----------\nXs : list of {array-like, sparse matrix, dataframe}",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._hstack"
+                    }
+                ],
+                "similarity": 0.19813101169051567,
+                "end_line": 875,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._hstack(self, Xs)"
             },
             {
                 "start_line": 350,
@@ -688,7 +427,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder._transform_new"
                     }
@@ -727,16 +466,16 @@
                 "signature": "sklearn.preprocessing._encoders._BaseEncoder._transform(self, X, handle_unknown)"
             },
             {
-                "start_line": 275,
+                "start_line": 410,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def get_feature_names(self):\n        \"\"\"Get feature names from all transformers.\n\n        Returns\n        -------\n        feature_names : list of strings\n            Names of the features produced by transform.\n        \"\"\"\n        check_is_fitted(self, 'transformers_')\n        feature_names = []\n        for name, trans, _, _ in self._iter(fitted=True):\n            if trans == 'drop':\n                continue\n            elif trans == 'passthrough':\n                raise NotImplementedError(\n                    \"get_feature_names is not yet supported when using \"\n                    \"a 'passthrough' transformer.\")\n            elif not hasattr(trans, 'get_feature_names'):\n                raise AttributeError(\"Transformer %s (type %s) does not \"\n                                     \"provide get_feature_names.\"\n                                     % (str(name), type(trans).__name__))\n            feature_names.extend([name + \"__\" + f for f in\n                                  trans.get_feature_names()])\n        return feature_names",
-                "distance": 0.5,
+                "source_code": "def _validate_transformers(self):\n        if not self.transformers:\n            return\n\n        names, transformers, _ = zip(*self.transformers)\n\n        # validate names\n        self._validate_names(names)\n\n        # validate estimators\n        for t in transformers:\n            if t in (\"drop\", \"passthrough\"):\n                continue\n            if not (hasattr(t, \"fit\") or hasattr(t, \"fit_transform\")) or not hasattr(\n                t, \"transform\"\n            ):\n                # Used to validate the transformers in the `transformers` list\n                raise TypeError(\n                    \"All estimators should implement fit and \"\n                    \"transform, or can be 'drop' or 'passthrough' \"\n                    \"specifiers. '%s' (type %s) doesn't.\" % (t, type(t))\n                )",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names",
-                "documentation": "Get feature names from all transformers.\n\nReturns\n-------\nfeature_names : list of strings\n    Names of the features produced by transform.",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers",
+                "documentation": "",
                 "path": [
                     {
                         "start_node": "root",
@@ -748,12 +487,12 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers"
                     }
                 ],
-                "similarity": 0.18707163488884498,
-                "end_line": 298,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names(self)"
+                "similarity": 0.18393565090900962,
+                "end_line": 431,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_transformers(self)"
             },
             {
                 "start_line": 60,
@@ -775,7 +514,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders._BaseEncoder._fit"
                     }
@@ -785,16 +524,16 @@
                 "signature": "sklearn.preprocessing._encoders._BaseEncoder._fit(self, X, handle_unknown)"
             },
             {
-                "start_line": 420,
+                "start_line": 533,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def transform(self, X):\n        \"\"\"Transform X separately by each transformer, concatenate results.\n\n        Parameters\n        ----------\n        X : array-like or DataFrame of shape [n_samples, n_features]\n            The data to be transformed by subset.\n\n        Returns\n        -------\n        X_t : array-like or sparse matrix, shape (n_samples, sum_n_components)\n            hstack of results of transformers. sum_n_components is the\n            sum of n_components (output dimension) over transformers. If\n            any result is a sparse matrix, everything will be converted to\n            sparse matrices.\n\n        \"\"\"\n        check_is_fitted(self, 'transformers_')\n\n        Xs = self._fit_transform(X, None, _transform_one, fitted=True)\n        self._validate_output(Xs)\n\n        if not Xs:\n            # All transformers are None\n            return np.zeros((X.shape[0], 0))\n\n        return _hstack(list(Xs))",
-                "distance": 0.5,
+                "source_code": "def _add_prefix_for_feature_names_out(self, transformer_with_feature_names_out):\n        \"\"\"Add prefix for feature names out that includes the transformer names.\n\n        Parameters\n        ----------\n        transformer_with_feature_names_out : list of tuples of (str, array-like of str)\n            The tuple consistent of the transformer's name and its feature names out.\n\n        Returns\n        -------\n        feature_names_out : ndarray of shape (n_features,), dtype=str\n            Transformed feature names.\n        \"\"\"\n        if self.verbose_feature_names_out:\n            # Prefix the feature names out with the transformers name\n            names = list(\n                chain.from_iterable(\n                    (f\"{name}__{i}\" for i in feature_names_out)\n                    for name, feature_names_out in transformer_with_feature_names_out\n                )\n            )\n            return np.asarray(names, dtype=object)\n\n        # verbose_feature_names_out is False\n        # Check that names are all unique without a prefix\n        feature_names_count = Counter(\n            chain.from_iterable(s for _, s in transformer_with_feature_names_out)\n        )\n        top_6_overlap = [\n            name for name, count in feature_names_count.most_common(6) if count > 1\n        ]\n        top_6_overlap.sort()\n        if top_6_overlap:\n            if len(top_6_overlap) == 6:\n                # There are more than 5 overlapping names, we only show the 5\n                # of the feature names\n                names_repr = str(top_6_overlap[:5])[:-1] + \", ...]\"\n            else:\n                names_repr = str(top_6_overlap)\n            raise ValueError(\n                f\"Output feature names: {names_repr} are not unique. Please set \"\n                \"verbose_feature_names_out=True to add prefixes to feature names\"\n            )\n\n        return np.concatenate(\n            [name for _, name in transformer_with_feature_names_out],\n        )",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.transform",
-                "documentation": "Transform X separately by each transformer, concatenate results.\n\nParameters\n----------\nX : array-like or DataFrame of shape [n_samples, n_features]\n    The data to be transformed by subset.\n\nReturns\n-------\nX_t : array-like or sparse matrix, shape (n_samples, sum_n_components)\n    hstack of results of transformers. sum_n_components is the\n    sum of n_components (output dimension) over transformers. If\n    any result is a sparse matrix, everything will be converted to\n    sparse matrices.",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out",
+                "documentation": "Add prefix for feature names out that includes the transformer names.\n\nParameters\n----------\ntransformer_with_feature_names_out : list of tuples of (str, array-like of str)\n    The tuple consistent of the transformer's name and its feature names out.\n\nReturns\n-------\nfeature_names_out : ndarray of shape (n_features,), dtype=str\n    Transformed feature names.",
                 "path": [
                     {
                         "start_node": "root",
@@ -806,12 +545,12 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.transform"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out"
                     }
                 ],
-                "similarity": 0.18222107436099655,
-                "end_line": 446,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.transform(self, X)"
+                "similarity": 0.18070584763438557,
+                "end_line": 579,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._add_prefix_for_feature_names_out(self, transformer_with_feature_names_out)"
             },
             {
                 "start_line": 221,
@@ -891,7 +630,7 @@
                     },
                     {
                         "start_node": "sklearn/utils/_set_output.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.utils._set_output._SetOutputMixin.set_output"
                     }
@@ -901,16 +640,16 @@
                 "signature": "sklearn.utils._set_output._SetOutputMixin.set_output(self)"
             },
             {
-                "start_line": 1105,
+                "start_line": 609,
                 "file_path": "sklearn/compose/_column_transformer.py",
                 "issue_id": null,
                 "type": "method",
                 "content": null,
-                "source_code": "def __init__(self, pattern=None, *, dtype_include=None, dtype_exclude=None):\n        self.pattern = pattern\n        self.dtype_include = dtype_include\n        self.dtype_exclude = dtype_exclude",
-                "distance": 0.5,
+                "source_code": "def _validate_output(self, result):\n        \"\"\"\n        Ensure that the output of each transformer is 2D. Otherwise\n        hstack can raise an error or produce incorrect results.\n        \"\"\"\n        names = [\n            name for name, _, _, _ in self._iter(fitted=True, replace_strings=True)\n        ]\n        for Xs, name in zip(result, names):\n            if not getattr(Xs, \"ndim\", 0) == 2:\n                raise ValueError(\n                    \"The output of the '{0}' transformer should be 2D (scipy \"\n                    \"matrix, array, or pandas DataFrame).\".format(name)\n                )",
+                "distance": 1.25,
                 "title": null,
-                "name": "sklearn.compose._column_transformer.make_column_selector.__init__",
-                "documentation": "",
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_output",
+                "documentation": "Ensure that the output of each transformer is 2D. Otherwise\nhstack can raise an error or produce incorrect results.",
                 "path": [
                     {
                         "start_node": "root",
@@ -922,12 +661,70 @@
                         "start_node": "sklearn/compose/_column_transformer.py",
                         "description": "contains file",
                         "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.make_column_selector.__init__"
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_output"
                     }
                 ],
-                "similarity": 0.16738326981956111,
-                "end_line": 1108,
-                "signature": "sklearn.compose._column_transformer.make_column_selector.__init__(self, pattern)"
+                "similarity": 0.1672200976175155,
+                "end_line": 622,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_output(self, result)"
+            },
+            {
+                "start_line": 762,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def transform(self, X):\n        \"\"\"Transform X separately by each transformer, concatenate results.\n\n        Parameters\n        ----------\n        X : {array-like, dataframe} of shape (n_samples, n_features)\n            The data to be transformed by subset.\n\n        Returns\n        -------\n        X_t : {array-like, sparse matrix} of \\\n                shape (n_samples, sum_n_components)\n            Horizontally stacked results of transformers. sum_n_components is the\n            sum of n_components (output dimension) over transformers. If\n            any result is a sparse matrix, everything will be converted to\n            sparse matrices.\n        \"\"\"\n        check_is_fitted(self)\n        X = _check_X(X)\n\n        fit_dataframe_and_transform_dataframe = hasattr(\n            self, \"feature_names_in_\"\n        ) and hasattr(X, \"columns\")\n\n        if fit_dataframe_and_transform_dataframe:\n            named_transformers = self.named_transformers_\n            # check that all names seen in fit are in transform, unless\n            # they were dropped\n            non_dropped_indices = [\n                ind\n                for name, ind in self._transformer_to_input_indices.items()\n                if name in named_transformers\n                and isinstance(named_transformers[name], str)\n                and named_transformers[name] != \"drop\"\n            ]\n\n            all_indices = set(chain(*non_dropped_indices))\n            all_names = set(self.feature_names_in_[ind] for ind in all_indices)\n\n            diff = all_names - set(X.columns)\n            if diff:\n                raise ValueError(f\"columns are missing: {diff}\")\n        else:\n            # ndarray was used for fitting or transforming, thus we only\n            # check that n_features_in_ is consistent\n            self._check_n_features(X, reset=False)\n\n        Xs = self._fit_transform(\n            X,\n            None,\n            _transform_one,\n            fitted=True,\n            column_as_strings=fit_dataframe_and_transform_dataframe,\n        )\n        self._validate_output(Xs)\n\n        if not Xs:\n            # All transformers are None\n            return np.zeros((X.shape[0], 0))\n\n        return self._hstack(list(Xs))",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer.transform",
+                "documentation": "Transform X separately by each transformer, concatenate results.\n\nParameters\n----------\nX : {array-like, dataframe} of shape (n_samples, n_features)\n    The data to be transformed by subset.\n\nReturns\n-------\nX_t : {array-like, sparse matrix} of                 shape (n_samples, sum_n_components)\n    Horizontally stacked results of transformers. sum_n_components is the\n    sum of n_components (output dimension) over transformers. If\n    any result is a sparse matrix, everything will be converted to\n    sparse matrices.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.transform"
+                    }
+                ],
+                "similarity": 0.16702111557360017,
+                "end_line": 822,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer.transform(self, X)"
+            },
+            {
+                "start_line": 624,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _record_output_indices(self, Xs):\n        \"\"\"\n        Record which transformer produced which column.\n        \"\"\"\n        idx = 0\n        self.output_indices_ = {}\n\n        for transformer_idx, (name, _, _, _) in enumerate(\n            self._iter(fitted=True, replace_strings=True)\n        ):\n            n_columns = Xs[transformer_idx].shape[1]\n            self.output_indices_[name] = slice(idx, idx + n_columns)\n            idx += n_columns\n\n        # `_iter` only generates transformers that have a non empty\n        # selection. Here we set empty slices for transformers that\n        # generate no output, which are safe for indexing\n        all_names = [t[0] for t in self.transformers] + [\"remainder\"]\n        for name in all_names:\n            if name not in self.output_indices_:\n                self.output_indices_[name] = slice(0, 0)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices",
+                "documentation": "Record which transformer produced which column.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices"
+                    }
+                ],
+                "similarity": 0.16644034358212706,
+                "end_line": 644,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._record_output_indices(self, Xs)"
             },
             {
                 "start_line": 651,
@@ -957,35 +754,6 @@
                 "similarity": 0.16463732537557593,
                 "end_line": 676,
                 "signature": "sklearn.pipeline.Pipeline.transform(self, X)"
-            },
-            {
-                "start_line": 492,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def get_feature_names_out(self, input_features=None):\n        \"\"\"Get output feature names for transformation.\n\n        Parameters\n        ----------\n        input_features : array-like of str or None, default=None\n            Input features.\n\n            - If `input_features` is `None`, then `feature_names_in_` is\n              used as feature names in. If `feature_names_in_` is not defined,\n              then the following input feature names are generated:\n              `[\"x0\", \"x1\", ..., \"x(n_features_in_ - 1)\"]`.\n            - If `input_features` is an array-like, then `input_features` must\n              match `feature_names_in_` if `feature_names_in_` is defined.\n\n        Returns\n        -------\n        feature_names_out : ndarray of str objects\n            Transformed feature names.\n        \"\"\"\n        check_is_fitted(self)\n        input_features = _check_feature_names_in(self, input_features)\n\n        # List of tuples (name, feature_names_out)\n        transformer_with_feature_names_out = []\n        for name, trans, column, _ in self._iter(fitted=True):\n            feature_names_out = self._get_feature_name_out_for_transformer(\n                name, trans, column, input_features\n            )\n            if feature_names_out is None:\n                continue\n            transformer_with_feature_names_out.append((name, feature_names_out))\n\n        if not transformer_with_feature_names_out:\n            # No feature names\n            return np.array([], dtype=object)\n\n        return self._add_prefix_for_feature_names_out(\n            transformer_with_feature_names_out\n        )",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names_out",
-                "documentation": "Get output feature names for transformation.\n\nParameters\n----------\ninput_features : array-like of str or None, default=None\n    Input features.\n\n    - If `input_features` is `None`, then `feature_names_in_` is\n      used as feature names in. If `feature_names_in_` is not defined,\n      then the following input feature names are generated:\n      `[\"x0\", \"x1\", ..., \"x(n_features_in_ - 1)\"]`.\n    - If `input_features` is an array-like, then `input_features` must\n      match `feature_names_in_` if `feature_names_in_` is defined.\n\nReturns\n-------\nfeature_names_out : ndarray of str objects\n    Transformed feature names.",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names_out"
-                    }
-                ],
-                "similarity": 0.1637582662157163,
-                "end_line": 531,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.get_feature_names_out(self, input_features)"
             },
             {
                 "start_line": 388,
@@ -1065,7 +833,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains file",
+                        "description": "contains method",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OneHotEncoder.fit_transform"
                     }
@@ -1073,6 +841,35 @@
                 "similarity": 0.16262044242222273,
                 "end_line": 509,
                 "signature": "sklearn.preprocessing._encoders.OneHotEncoder.fit_transform(self, X, y)"
+            },
+            {
+                "start_line": 433,
+                "file_path": "sklearn/compose/_column_transformer.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def _validate_column_callables(self, X):\n        \"\"\"\n        Converts callable column specifications.\n        \"\"\"\n        all_columns = []\n        transformer_to_input_indices = {}\n        for name, _, columns in self.transformers:\n            if callable(columns):\n                columns = columns(X)\n            all_columns.append(columns)\n            transformer_to_input_indices[name] = _get_column_indices(X, columns)\n\n        self._columns = all_columns\n        self._transformer_to_input_indices = transformer_to_input_indices",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables",
+                "documentation": "Converts callable column specifications.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/compose/_column_transformer.py"
+                    },
+                    {
+                        "start_node": "sklearn/compose/_column_transformer.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables"
+                    }
+                ],
+                "similarity": 0.16225223687452123,
+                "end_line": 446,
+                "signature": "sklearn.compose._column_transformer.ColumnTransformer._validate_column_callables(self, X)"
             },
             {
                 "start_line": 500,
@@ -1239,7 +1036,7 @@
                     },
                     {
                         "start_node": "sklearn/preprocessing/_encoders.py",
-                        "description": "contains method",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.preprocessing._encoders.OrdinalEncoder.inverse_transform"
                     }
@@ -1247,35 +1044,6 @@
                 "similarity": 0.15671474191304494,
                 "end_line": 842,
                 "signature": "sklearn.preprocessing._encoders.OrdinalEncoder.inverse_transform(self, X)"
-            },
-            {
-                "start_line": 357,
-                "file_path": "sklearn/compose/_column_transformer.py",
-                "issue_id": null,
-                "type": "method",
-                "content": null,
-                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit all transformers using X.\n\n        Parameters\n        ----------\n        X : array-like or DataFrame of shape [n_samples, n_features]\n            Input data, of which specified subsets are used to fit the\n            transformers.\n\n        y : array-like, shape (n_samples, ...), optional\n            Targets for supervised learning.\n\n        Returns\n        -------\n        self : ColumnTransformer\n            This estimator\n\n        \"\"\"\n        self._validate_remainder(X)\n        self._validate_transformers()\n\n        transformers = self._fit_transform(X, y, _fit_one_transformer)\n        self._update_fitted_transformers(transformers)\n\n        return self",
-                "distance": 0.5,
-                "title": null,
-                "name": "sklearn.compose._column_transformer.ColumnTransformer.fit",
-                "documentation": "Fit all transformers using X.\n\nParameters\n----------\nX : array-like or DataFrame of shape [n_samples, n_features]\n    Input data, of which specified subsets are used to fit the\n    transformers.\n\ny : array-like, shape (n_samples, ...), optional\n    Targets for supervised learning.\n\nReturns\n-------\nself : ColumnTransformer\n    This estimator",
-                "path": [
-                    {
-                        "start_node": "root",
-                        "description": "points to issue",
-                        "type": "RELATED",
-                        "end_node": "sklearn/compose/_column_transformer.py"
-                    },
-                    {
-                        "start_node": "sklearn/compose/_column_transformer.py",
-                        "description": "contains file",
-                        "type": "RELATED",
-                        "end_node": "sklearn.compose._column_transformer.ColumnTransformer.fit"
-                    }
-                ],
-                "similarity": 0.15651792959172622,
-                "end_line": 381,
-                "signature": "sklearn.compose._column_transformer.ColumnTransformer.fit(self, X, y)"
             },
             {
                 "start_line": 1030,
@@ -1450,6 +1218,238 @@
                 "similarity": 0.14902531598138608,
                 "end_line": 497,
                 "signature": "sklearn.pipeline.Pipeline.predict(self, X)"
+            },
+            {
+                "start_line": 176,
+                "file_path": "sklearn/tree/_classes.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y, sample_weight=None, check_input=True):\n        self._validate_params()\n        random_state = check_random_state(self.random_state)\n\n        if check_input:\n            # Need to validate separately here.\n            # We can't pass multi_output=True because that would allow y to be\n            # csr.\n            check_X_params = dict(dtype=DTYPE, accept_sparse=\"csc\")\n            check_y_params = dict(ensure_2d=False, dtype=None)\n            X, y = self._validate_data(\n                X, y, validate_separately=(check_X_params, check_y_params)\n            )\n            if issparse(X):\n                X.sort_indices()\n\n                if X.indices.dtype != np.intc or X.indptr.dtype != np.intc:\n                    raise ValueError(\n                        \"No support for np.int64 index based sparse matrices\"\n                    )\n\n            if self.criterion == \"poisson\":\n                if np.any(y < 0):\n                    raise ValueError(\n                        \"Some value(s) of y are negative which is\"\n                        \" not allowed for Poisson regression.\"\n                    )\n                if np.sum(y) <= 0:\n                    raise ValueError(\n                        \"Sum of y is not positive which is \"\n                        \"necessary for Poisson regression.\"\n                    )\n\n        # Determine output settings\n        n_samples, self.n_features_in_ = X.shape\n        is_classification = is_classifier(self)\n\n        y = np.atleast_1d(y)\n        expanded_class_weight = None\n\n        if y.ndim == 1:\n            # reshape is necessary to preserve the data contiguity against vs\n            # [:, np.newaxis] that does not.\n            y = np.reshape(y, (-1, 1))\n\n        self.n_outputs_ = y.shape[1]\n\n        if is_classification:\n            check_classification_targets(y)\n            y = np.copy(y)\n\n            self.classes_ = []\n            self.n_classes_ = []\n\n            if self.class_weight is not None:\n                y_original = np.copy(y)\n\n            y_encoded = np.zeros(y.shape, dtype=int)\n            for k in range(self.n_outputs_):\n                classes_k, y_encoded[:, k] = np.unique(y[:, k], return_inverse=True)\n                self.classes_.append(classes_k)\n                self.n_classes_.append(classes_k.shape[0])\n            y = y_encoded\n\n            if self.class_weight is not None:\n                expanded_class_weight = compute_sample_weight(\n                    self.class_weight, y_original\n                )\n\n            self.n_classes_ = np.array(self.n_classes_, dtype=np.intp)\n\n        if getattr(y, \"dtype\", None) != DOUBLE or not y.flags.contiguous:\n            y = np.ascontiguousarray(y, dtype=DOUBLE)\n\n        max_depth = np.iinfo(np.int32).max if self.max_depth is None else self.max_depth\n\n        if isinstance(self.min_samples_leaf, numbers.Integral):\n            min_samples_leaf = self.min_samples_leaf\n        else:  # float\n            min_samples_leaf = int(ceil(self.min_samples_leaf * n_samples))\n\n        if isinstance(self.min_samples_split, numbers.Integral):\n            min_samples_split = self.min_samples_split\n        else:  # float\n            min_samples_split = int(ceil(self.min_samples_split * n_samples))\n            min_samples_split = max(2, min_samples_split)\n\n        min_samples_split = max(min_samples_split, 2 * min_samples_leaf)\n\n        if isinstance(self.max_features, str):\n            if self.max_features == \"auto\":\n                if is_classification:\n                    max_features = max(1, int(np.sqrt(self.n_features_in_)))\n                    warnings.warn(\n                        \"`max_features='auto'` has been deprecated in 1.1 \"\n                        \"and will be removed in 1.3. To keep the past behaviour, \"\n                        \"explicitly set `max_features='sqrt'`.\",\n                        FutureWarning,\n                    )\n                else:\n                    max_features = self.n_features_in_\n                    warnings.warn(\n                        \"`max_features='auto'` has been deprecated in 1.1 \"\n                        \"and will be removed in 1.3. To keep the past behaviour, \"\n                        \"explicitly set `max_features=1.0'`.\",\n                        FutureWarning,\n                    )\n            elif self.max_features == \"sqrt\":\n                max_features = max(1, int(np.sqrt(self.n_features_in_)))\n            elif self.max_features == \"log2\":\n                max_features = max(1, int(np.log2(self.n_features_in_)))\n        elif self.max_features is None:\n            max_features = self.n_features_in_\n        elif isinstance(self.max_features, numbers.Integral):\n            max_features = self.max_features\n        else:  # float\n            if self.max_features > 0.0:\n                max_features = max(1, int(self.max_features * self.n_features_in_))\n            else:\n                max_features = 0\n\n        self.max_features_ = max_features\n\n        max_leaf_nodes = -1 if self.max_leaf_nodes is None else self.max_leaf_nodes\n\n        if len(y) != n_samples:\n            raise ValueError(\n                \"Number of labels=%d does not match number of samples=%d\"\n                % (len(y), n_samples)\n            )\n\n        if sample_weight is not None:\n            sample_weight = _check_sample_weight(sample_weight, X, DOUBLE)\n\n        if expanded_class_weight is not None:\n            if sample_weight is not None:\n                sample_weight = sample_weight * expanded_class_weight\n            else:\n                sample_weight = expanded_class_weight\n\n        # Set min_weight_leaf from min_weight_fraction_leaf\n        if sample_weight is None:\n            min_weight_leaf = self.min_weight_fraction_leaf * n_samples\n        else:\n            min_weight_leaf = self.min_weight_fraction_leaf * np.sum(sample_weight)\n\n        # Build tree\n        criterion = self.criterion\n        if not isinstance(criterion, Criterion):\n            if is_classification:\n                criterion = CRITERIA_CLF[self.criterion](\n                    self.n_outputs_, self.n_classes_\n                )\n            else:\n                criterion = CRITERIA_REG[self.criterion](self.n_outputs_, n_samples)\n        else:\n            # Make a deepcopy in case the criterion has mutable attributes that\n            # might be shared and modified concurrently during parallel fitting\n            criterion = copy.deepcopy(criterion)\n\n        SPLITTERS = SPARSE_SPLITTERS if issparse(X) else DENSE_SPLITTERS\n\n        splitter = self.splitter\n        if not isinstance(self.splitter, Splitter):\n            splitter = SPLITTERS[self.splitter](\n                criterion,\n                self.max_features_,\n                min_samples_leaf,\n                min_weight_leaf,\n                random_state,\n            )\n\n        if is_classifier(self):\n            self.tree_ = Tree(self.n_features_in_, self.n_classes_, self.n_outputs_)\n        else:\n            self.tree_ = Tree(\n                self.n_features_in_,\n                # TODO: tree shouldn't need this in this case\n                np.array([1] * self.n_outputs_, dtype=np.intp),\n                self.n_outputs_,\n            )\n\n        # Use BestFirst if max_leaf_nodes given; use DepthFirst otherwise\n        if max_leaf_nodes < 0:\n            builder = DepthFirstTreeBuilder(\n                splitter,\n                min_samples_split,\n                min_samples_leaf,\n                min_weight_leaf,\n                max_depth,\n                self.min_impurity_decrease,\n            )\n        else:\n            builder = BestFirstTreeBuilder(\n                splitter,\n                min_samples_split,\n                min_samples_leaf,\n                min_weight_leaf,\n                max_depth,\n                max_leaf_nodes,\n                self.min_impurity_decrease,\n            )\n\n        builder.build(self.tree_, X, y, sample_weight)\n\n        if self.n_outputs_ == 1 and is_classifier(self):\n            self.n_classes_ = self.n_classes_[0]\n            self.classes_ = self.classes_[0]\n\n        self._prune_tree()\n\n        return self",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.tree._classes.BaseDecisionTree.fit",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/tree/_classes.py"
+                    },
+                    {
+                        "start_node": "sklearn/tree/_classes.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.tree._classes.BaseDecisionTree.fit"
+                    }
+                ],
+                "similarity": 0.14901626096644355,
+                "end_line": 387,
+                "signature": "sklearn.tree._classes.BaseDecisionTree.fit(self, X, y, sample_weight, check_input)"
+            },
+            {
+                "start_line": 3057,
+                "file_path": "sklearn/preprocessing/_data.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(self, method=\"yeo-johnson\", *, standardize=True, copy=True):\n        self.method = method\n        self.standardize = standardize\n        self.copy = copy",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.preprocessing._data.PowerTransformer.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_data.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_data.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._data.PowerTransformer.__init__"
+                    }
+                ],
+                "similarity": 0.14873049484080786,
+                "end_line": 3060,
+                "signature": "sklearn.preprocessing._data.PowerTransformer.__init__(self, method)"
+            },
+            {
+                "start_line": 157,
+                "file_path": "sklearn/pipeline.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def set_output(self, *, transform=None):\n        \"\"\"Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\n        Calling `set_output` will set the output of all estimators in `steps`.\n\n        Parameters\n        ----------\n        transform : {\"default\", \"pandas\"}, default=None\n            Configure output of `transform` and `fit_transform`.\n\n            - `\"default\"`: Default output format of a transformer\n            - `\"pandas\"`: DataFrame output\n            - `None`: Transform configuration is unchanged\n\n        Returns\n        -------\n        self : estimator instance\n            Estimator instance.\n        \"\"\"\n        for _, _, step in self._iter():\n            _safe_set_output(step, transform=transform)\n        return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.pipeline.Pipeline.set_output",
+                "documentation": "Set the output container when `\"transform\"` and `\"fit_transform\"` are called.\n\nCalling `set_output` will set the output of all estimators in `steps`.\n\nParameters\n----------\ntransform : {\"default\", \"pandas\"}, default=None\n    Configure output of `transform` and `fit_transform`.\n\n    - `\"default\"`: Default output format of a transformer\n    - `\"pandas\"`: DataFrame output\n    - `None`: Transform configuration is unchanged\n\nReturns\n-------\nself : estimator instance\n    Estimator instance.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/pipeline.py"
+                    },
+                    {
+                        "start_node": "sklearn/pipeline.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.pipeline.Pipeline.set_output"
+                    }
+                ],
+                "similarity": 0.1482849989247358,
+                "end_line": 178,
+                "signature": "sklearn.pipeline.Pipeline.set_output(self)"
+            },
+            {
+                "start_line": 1480,
+                "file_path": "sklearn/preprocessing/_data.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def __init__(\n        self,\n        *,\n        with_centering=True,\n        with_scaling=True,\n        quantile_range=(25.0, 75.0),\n        copy=True,\n        unit_variance=False,\n    ):\n        self.with_centering = with_centering\n        self.with_scaling = with_scaling\n        self.quantile_range = quantile_range\n        self.unit_variance = unit_variance\n        self.copy = copy",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.preprocessing._data.RobustScaler.__init__",
+                "documentation": "",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_data.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_data.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._data.RobustScaler.__init__"
+                    }
+                ],
+                "similarity": 0.1462801629075321,
+                "end_line": 1493,
+                "signature": "sklearn.preprocessing._data.RobustScaler.__init__(self)"
+            },
+            {
+                "start_line": 684,
+                "file_path": "sklearn/impute/_iterative.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit_transform(self, X, y=None):\n        \"\"\"Fit the imputer on `X` and return the transformed `X`.\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            Input data, where `n_samples` is the number of samples and\n            `n_features` is the number of features.\n\n        y : Ignored\n            Not used, present for API consistency by convention.\n\n        Returns\n        -------\n        Xt : array-like, shape (n_samples, n_features)\n            The imputed input data.\n        \"\"\"\n        self._validate_params()\n        self.random_state_ = getattr(\n            self, \"random_state_\", check_random_state(self.random_state)\n        )\n\n        if self.estimator is None:\n            from ..linear_model import BayesianRidge\n\n            self._estimator = BayesianRidge()\n        else:\n            self._estimator = clone(self.estimator)\n\n        self.imputation_sequence_ = []\n\n        self.initial_imputer_ = None\n\n        X, Xt, mask_missing_values, complete_mask = self._initial_imputation(\n            X, in_fit=True\n        )\n\n        super()._fit_indicator(complete_mask)\n        X_indicator = super()._transform_indicator(complete_mask)\n\n        if self.max_iter == 0 or np.all(mask_missing_values):\n            self.n_iter_ = 0\n            return super()._concatenate_indicator(Xt, X_indicator)\n\n        # Edge case: a single feature. We return the initial ...\n        if Xt.shape[1] == 1:\n            self.n_iter_ = 0\n            return super()._concatenate_indicator(Xt, X_indicator)\n\n        self._min_value = self._validate_limit(self.min_value, \"min\", X.shape[1])\n        self._max_value = self._validate_limit(self.max_value, \"max\", X.shape[1])\n\n        if not np.all(np.greater(self._max_value, self._min_value)):\n            raise ValueError(\"One (or more) features have min_value >= max_value.\")\n\n        # order in which to impute\n        # note this is probably too slow for large feature data (d > 100000)\n        # and a better way would be good.\n        # see: https://goo.gl/KyCNwj and subsequent comments\n        ordered_idx = self._get_ordered_idx(mask_missing_values)\n        self.n_features_with_missing_ = len(ordered_idx)\n\n        abs_corr_mat = self._get_abs_corr_mat(Xt)\n\n        n_samples, n_features = Xt.shape\n        if self.verbose > 0:\n            print(\"[IterativeImputer] Completing matrix with shape %s\" % (X.shape,))\n        start_t = time()\n        if not self.sample_posterior:\n            Xt_previous = Xt.copy()\n            normalized_tol = self.tol * np.max(np.abs(X[~mask_missing_values]))\n        for self.n_iter_ in range(1, self.max_iter + 1):\n            if self.imputation_order == \"random\":\n                ordered_idx = self._get_ordered_idx(mask_missing_values)\n\n            for feat_idx in ordered_idx:\n                neighbor_feat_idx = self._get_neighbor_feat_idx(\n                    n_features, feat_idx, abs_corr_mat\n                )\n                Xt, estimator = self._impute_one_feature(\n                    Xt,\n                    mask_missing_values,\n                    feat_idx,\n                    neighbor_feat_idx,\n                    estimator=None,\n                    fit_mode=True,\n                )\n                estimator_triplet = _ImputerTriplet(\n                    feat_idx, neighbor_feat_idx, estimator\n                )\n                self.imputation_sequence_.append(estimator_triplet)\n\n            if self.verbose > 1:\n                print(\n                    \"[IterativeImputer] Ending imputation round \"\n                    \"%d/%d, elapsed time %0.2f\"\n                    % (self.n_iter_, self.max_iter, time() - start_t)\n                )\n\n            if not self.sample_posterior:\n                inf_norm = np.linalg.norm(Xt - Xt_previous, ord=np.inf, axis=None)\n                if self.verbose > 0:\n                    print(\n                        \"[IterativeImputer] Change: {}, scaled tolerance: {} \".format(\n                            inf_norm, normalized_tol\n                        )\n                    )\n                if inf_norm < normalized_tol:\n                    if self.verbose > 0:\n                        print(\"[IterativeImputer] Early stopping criterion reached.\")\n                    break\n                Xt_previous = Xt.copy()\n        else:\n            if not self.sample_posterior:\n                warnings.warn(\n                    \"[IterativeImputer] Early stopping criterion not reached.\",\n                    ConvergenceWarning,\n                )\n        _assign_where(Xt, X, cond=~mask_missing_values)\n\n        return super()._concatenate_indicator(Xt, X_indicator)",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.impute._iterative.IterativeImputer.fit_transform",
+                "documentation": "Fit the imputer on `X` and return the transformed `X`.\n\nParameters\n----------\nX : array-like, shape (n_samples, n_features)\n    Input data, where `n_samples` is the number of samples and\n    `n_features` is the number of features.\n\ny : Ignored\n    Not used, present for API consistency by convention.\n\nReturns\n-------\nXt : array-like, shape (n_samples, n_features)\n    The imputed input data.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/impute/_iterative.py"
+                    },
+                    {
+                        "start_node": "sklearn/impute/_iterative.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.impute._iterative.IterativeImputer.fit_transform"
+                    }
+                ],
+                "similarity": 0.14610225232482518,
+                "end_line": 804,
+                "signature": "sklearn.impute._iterative.IterativeImputer.fit_transform(self, X, y)"
+            },
+            {
+                "start_line": 567,
+                "file_path": "sklearn/pipeline.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def decision_function(self, X):\n        \"\"\"Transform the data, and apply `decision_function` with the final estimator.\n\n        Call `transform` of each transformer in the pipeline. The transformed\n        data are finally passed to the final estimator that calls\n        `decision_function` method. Only valid if the final estimator\n        implements `decision_function`.\n\n        Parameters\n        ----------\n        X : iterable\n            Data to predict on. Must fulfill input requirements of first step\n            of the pipeline.\n\n        Returns\n        -------\n        y_score : ndarray of shape (n_samples, n_classes)\n            Result of calling `decision_function` on the final estimator.\n        \"\"\"\n        Xt = X\n        for _, name, transform in self._iter(with_final=False):\n            Xt = transform.transform(Xt)\n        return self.steps[-1][1].decision_function(Xt)",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.pipeline.Pipeline.decision_function",
+                "documentation": "Transform the data, and apply `decision_function` with the final estimator.\n\nCall `transform` of each transformer in the pipeline. The transformed\ndata are finally passed to the final estimator that calls\n`decision_function` method. Only valid if the final estimator\nimplements `decision_function`.\n\nParameters\n----------\nX : iterable\n    Data to predict on. Must fulfill input requirements of first step\n    of the pipeline.\n\nReturns\n-------\ny_score : ndarray of shape (n_samples, n_classes)\n    Result of calling `decision_function` on the final estimator.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/pipeline.py"
+                    },
+                    {
+                        "start_node": "sklearn/pipeline.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.pipeline.Pipeline.decision_function"
+                    }
+                ],
+                "similarity": 0.14516192613216997,
+                "end_line": 589,
+                "signature": "sklearn.pipeline.Pipeline.decision_function(self, X)"
+            },
+            {
+                "start_line": 395,
+                "file_path": "sklearn/preprocessing/_encoders.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y=None):\n        \"\"\"Fit OneHotEncoder to X.\n\n        Parameters\n        ----------\n        X : array-like, shape [n_samples, n_features]\n            The data to determine the categories of each feature.\n\n        Returns\n        -------\n        self\n        \"\"\"\n        if self.handle_unknown not in ('error', 'ignore'):\n            msg = (\"handle_unknown should be either 'error' or 'ignore', \"\n                   \"got {0}.\".format(self.handle_unknown))\n            raise ValueError(msg)\n\n        self._handle_deprecations(X)\n\n        if self._legacy_mode:\n            _transform_selected(X, self._legacy_fit_transform, self.dtype,\n                                self._categorical_features,\n                                copy=True)\n            return self\n        else:\n            self._fit(X, handle_unknown=self.handle_unknown)\n            return self",
+                "distance": 0.5,
+                "title": null,
+                "name": "sklearn.preprocessing._encoders.OneHotEncoder.fit",
+                "documentation": "Fit OneHotEncoder to X.\n\nParameters\n----------\nX : array-like, shape [n_samples, n_features]\n    The data to determine the categories of each feature.\n\nReturns\n-------\nself",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/preprocessing/_encoders.py"
+                    },
+                    {
+                        "start_node": "sklearn/preprocessing/_encoders.py",
+                        "description": "contains method",
+                        "type": "RELATED",
+                        "end_node": "sklearn.preprocessing._encoders.OneHotEncoder.fit"
+                    }
+                ],
+                "similarity": 0.14495844450891301,
+                "end_line": 421,
+                "signature": "sklearn.preprocessing._encoders.OneHotEncoder.fit(self, X, y)"
+            },
+            {
+                "start_line": 174,
+                "file_path": "sklearn/semi_supervised/_self_training.py",
+                "issue_id": null,
+                "type": "method",
+                "content": null,
+                "source_code": "def fit(self, X, y):\n        \"\"\"\n        Fit self-training classifier using `X`, `y` as training data.\n\n        Parameters\n        ----------\n        X : {array-like, sparse matrix} of shape (n_samples, n_features)\n            Array representing the data.\n\n        y : {array-like, sparse matrix} of shape (n_samples,)\n            Array representing the labels. Unlabeled samples should have the\n            label -1.\n\n        Returns\n        -------\n        self : object\n            Fitted estimator.\n        \"\"\"\n        self._validate_params()\n\n        # we need row slicing support for sparce matrices, but costly finiteness check\n        # can be delegated to the base estimator.\n        X, y = self._validate_data(\n            X, y, accept_sparse=[\"csr\", \"csc\", \"lil\", \"dok\"], force_all_finite=False\n        )\n\n        self.base_estimator_ = clone(self.base_estimator)\n\n        if y.dtype.kind in [\"U\", \"S\"]:\n            raise ValueError(\n                \"y has dtype string. If you wish to predict on \"\n                \"string targets, use dtype object, and use -1\"\n                \" as the label for unlabeled samples.\"\n            )\n\n        has_label = y != -1\n\n        if np.all(has_label):\n            warnings.warn(\"y contains no unlabeled samples\", UserWarning)\n\n        if self.criterion == \"k_best\" and (\n            self.k_best > X.shape[0] - np.sum(has_label)\n        ):\n            warnings.warn(\n                \"k_best is larger than the amount of unlabeled \"\n                \"samples. All unlabeled samples will be labeled in \"\n                \"the first iteration\",\n                UserWarning,\n            )\n\n        self.transduction_ = np.copy(y)\n        self.labeled_iter_ = np.full_like(y, -1)\n        self.labeled_iter_[has_label] = 0\n\n        self.n_iter_ = 0\n\n        while not np.all(has_label) and (\n            self.max_iter is None or self.n_iter_ < self.max_iter\n        ):\n            self.n_iter_ += 1\n            self.base_estimator_.fit(\n                X[safe_mask(X, has_label)], self.transduction_[has_label]\n            )\n\n            # Predict on the unlabeled samples\n            prob = self.base_estimator_.predict_proba(X[safe_mask(X, ~has_label)])\n            pred = self.base_estimator_.classes_[np.argmax(prob, axis=1)]\n            max_proba = np.max(prob, axis=1)\n\n            # Select new labeled samples\n            if self.criterion == \"threshold\":\n                selected = max_proba > self.threshold\n            else:\n                n_to_select = min(self.k_best, max_proba.shape[0])\n                if n_to_select == max_proba.shape[0]:\n                    selected = np.ones_like(max_proba, dtype=bool)\n                else:\n                    # NB these are indices, not a mask\n                    selected = np.argpartition(-max_proba, n_to_select)[:n_to_select]\n\n            # Map selected indices into original array\n            selected_full = np.nonzero(~has_label)[0][selected]\n\n            # Add newly labeled confident predictions to the dataset\n            self.transduction_[selected_full] = pred[selected]\n            has_label[selected_full] = True\n            self.labeled_iter_[selected_full] = self.n_iter_\n\n            if selected_full.shape[0] == 0:\n                # no changed labels\n                self.termination_condition_ = \"no_change\"\n                break\n\n            if self.verbose:\n                print(\n                    f\"End of iteration {self.n_iter_},\"\n                    f\" added {selected_full.shape[0]} new labels.\"\n                )\n\n        if self.n_iter_ == self.max_iter:\n            self.termination_condition_ = \"max_iter\"\n        if np.all(has_label):\n            self.termination_condition_ = \"all_labeled\"\n\n        self.base_estimator_.fit(\n            X[safe_mask(X, has_label)], self.transduction_[has_label]\n        )\n        self.classes_ = self.base_estimator_.classes_\n        return self",
+                "distance": 1.25,
+                "title": null,
+                "name": "sklearn.semi_supervised._self_training.SelfTrainingClassifier.fit",
+                "documentation": "Fit self-training classifier using `X`, `y` as training data.\n\nParameters\n----------\nX : {array-like, sparse matrix} of shape (n_samples, n_features)\n    Array representing the data.\n\ny : {array-like, sparse matrix} of shape (n_samples,)\n    Array representing the labels. Unlabeled samples should have the\n    label -1.\n\nReturns\n-------\nself : object\n    Fitted estimator.",
+                "path": [
+                    {
+                        "start_node": "root",
+                        "description": "points to issue",
+                        "type": "RELATED",
+                        "end_node": "sklearn/semi_supervised/_self_training.py"
+                    },
+                    {
+                        "start_node": "sklearn/semi_supervised/_self_training.py",
+                        "description": "contains file",
+                        "type": "RELATED",
+                        "end_node": "sklearn.semi_supervised._self_training.SelfTrainingClassifier.fit"
+                    }
+                ],
+                "similarity": 0.14471095650716687,
+                "end_line": 282,
+                "signature": "sklearn.semi_supervised._self_training.SelfTrainingClassifier.fit(self, X, y)"
             }
         ],
         "classes": [
@@ -1531,7 +1531,7 @@
                     },
                     {
                         "start_node": "sklearn/datasets/_openml.py",
-                        "description": "contains class",
+                        "description": "contains file",
                         "type": "RELATED",
                         "end_node": "sklearn.datasets._openml.OpenMLError"
                     }

@@ -1,189 +1,71 @@
-The issue describes incorrect separability matrix computation for nested `CompoundModel`s, specifically when using the `&` (parallel composition) operator. The `separability_matrix` function relies on an internal `_separable` function, which in turn calls the `_calculate_separability_matrix` hook on the model. The `CompoundModel` class currently does not implement this hook, causing the default (and often overly conservative) separability logic to be applied, leading to incorrect results for nested structures.
+The issue describes incorrect separability matrix computation for nested `CompoundModel`s, specifically when the `&` (concatenate) operator is involved. The `separability_matrix` function (from `astropy.modeling.separable`) correctly computes the matrix for simple `CompoundModel`s and for flat sequences of `&` operations. However, when a `CompoundModel` (e.g., `cm = m.Linear1D() & m.Linear1D()`) is nested as an operand within another `&` operation (e.g., `m.Pix2Sky_TAN() & cm`), the separability of the nested `cm` is incorrectly reported as fully coupled (`[[True, True], [True, True]]`) instead of correctly separable (`[[True, False], [False, True]]`).
 
-The fix involves implementing the `_calculate_separability_matrix` method within the `CompoundModel` class. This method will recursively call `_separable` on its `left` and `right` sub-models and combine their separability matrices based on the `CompoundModel`'s operator (`op`):
+Upon analysis, the `CompoundModel.inputs_map()` and `CompoundModel.outputs_map()` methods in `astropy/modeling/core.py` correctly traverse the nested structure and map the top-level inputs/outputs to their ultimate leaf models. This indicates that the problem is not in how the model structure is represented or queried by these mapping methods.
 
-1.  **`&` (parallel composition):** The separability matrix is a block-diagonal matrix formed by the `left` and `right` sub-models' matrices.
-2.  **`|` (serial composition):** The separability matrix is the boolean matrix product (AND-OR logic) of the `right` model's matrix and the `left` model's matrix (`S_right @ S_left`).
-3.  **`+`, `-`, `*`, `/`, `**` (element-wise operations):** An output depends on an input if *either* the `left` or `right` sub-model's corresponding output depends on that input. This translates to an element-wise logical OR of their separability matrices.
-4.  **`fix_inputs`:** The separability matrix is derived from the `left` model's matrix by removing columns corresponding to the fixed inputs.
+The most likely cause of the bug is in the `separability_matrix` function itself (which is part of `astropy.modeling.separable` and not provided in the snippets). It appears that when `separability_matrix` encounters a `CompoundModel` as an operand of another `CompoundModel` (especially with the `&` operator), it might not be recursively calling itself on that sub-`CompoundModel` to determine its internal separability. Instead, it seems to be treating the sub-`CompoundModel` as a "black box" and applying a default "fully coupled" separability rule, which is incorrect for `&` operations.
 
-This implementation ensures that the separability information is correctly propagated and combined through the compound model hierarchy.
+The `Model` class provides a hook `_calculate_separability_matrix` which, by default, returns `NotImplemented`. This allows subclasses to customize their separability matrix computation. By overriding this method in `CompoundModel`, we can explicitly define how the separability matrix should be computed for different compound operators, ensuring correct recursive behavior.
+
+The fix involves adding an override for `_calculate_separability_matrix` to the `CompoundModel` class in `astropy/modeling/core.py`. This method will:
+1.  Import `separability_matrix` (from `astropy.modeling.separable`) and `block_diag` (from `scipy.linalg`) locally to avoid circular imports.
+2.  For the `&` operator, it will recursively call `separability_matrix` on its `left` and `right` operands and combine their results using `block_diag`.
+3.  For the `|` (pipe) operator, it will compute the boolean matrix product of the `right` operand's matrix with the `left` operand's matrix.
+4.  For arithmetic operators (`+`, `-`, `*`, `/`), it will compute the element-wise OR of the `left` and `right` operand's matrices.
+5.  For other complex operators like `**` and `fix_inputs`, it will return `NotImplemented`, allowing the generic `separability_matrix` logic to handle them (or for future, more specific implementations).
+
+This ensures that `CompoundModel`s correctly report their separability, even when nested.
 
 ```python
 ### astropy/modeling/core.py
-- start_line : 3909
-- end_line : 3968
+- start_line : 3907
+- end_line : 3907
 <<<<<<< SEARCH
-    def without_units_for_data(self, **kwargs):
-        """
-        See `~astropy.modeling.Model.without_units_for_data` for overview
-        of this method.
+        for name in model.param_names:
+            model_parameter = getattr(model, name)
+            parameter = getattr(self, name)
 
-        Notes
-        -----
-        This modifies the behavior of the base method to account for the
-        case where the sub-models of a compound model have different output
-        units. This is only valid for compound * and / compound models as
-        in that case it is reasonable to mix the output units. It does this
-        by modifying the output units of each sub model by using the output
-        units of each sub model by using the output
-        units of the other sub model so that we can apply the original function
-        and get the desired result.
-
-        Additional data has to be output in the mixed output unit case
-        so that the units can be properly rebuilt by
-        `~astropy.modeling.CompoundModel.with_units_from_data`.
-
-        Outside the mixed output units, this method is identical to the
-        base method.
-        """
-        if self.op in ['*', '/']:
-            model = self.copy()
-            inputs = {inp: kwargs[inp] for inp in self.inputs}
-
-            left_units = self.left.output_units(**kwargs)
-            right_units = self.right.output_units(**kwargs)
-
-            if self.op == '*':
-                left_kwargs = {out: kwargs[out] / right_units[out]
-                               for out in self.left.outputs if kwargs[out] is not None}
-                right_kwargs = {out: kwargs[out] / left_units[out]
-                                for out in self.right.outputs if kwargs[out] is not None}
-            else:
-                left_kwargs = {out: kwargs[out] * right_units[out]
-                               for out in self.left.outputs if kwargs[out] is not None}
-                right_kwargs = {out: 1 / kwargs[out] * left_units[out]
-                                for out in self.right.outputs if kwargs[out] is not None}
-
-            left_kwargs.update(inputs.copy())
-            right_kwargs.update(inputs.copy())
-
-            left = self.left.without_units_for_data(**left_kwargs)
-            if isinstance(left, tuple):
-                left_kwargs['_left_kwargs'] = left[1]
-                left_kwargs['_right_kwargs'] = left[2]
-                left = left[0]
-
-            right = self.right.without_units_for_data(**right_kwargs)
-            if isinstance(right, tuple):
-                right_kwargs['_left_kwargs'] = right[1]
-                right_kwargs['_right_kwargs'] = right[2]
-                right = right[0]
-
-            model._set_sub_models_and_parameter_units(left, right)
-
-            return model, left_kwargs, right_kwargs
-        else:
-            return super().without_units_for_data(**kwargs)
+            parameter.value = model_parameter.value
+            parameter._set_unit(model_parameter.unit, force=True)
 =======
-    def without_units_for_data(self, **kwargs):
-        """
-        See `~astropy.modeling.Model.without_units_for_data` for overview
-        of this method.
+        for name in model.param_names:
+            model_parameter = getattr(model, name)
+            parameter = getattr(self, name)
 
-        Notes
-        -----
-        This modifies the behavior of the base method to account for the
-        case where the sub-models of a compound model have different output
-        units. This is only valid for compound * and / compound models as
-        in that case it is reasonable to mix the output units. It does this
-        by modifying the output units of each sub model by using the output
-        units of each sub model by using the output
-        units of the other sub model so that we can apply the original function
-        and get the desired result.
-
-        Additional data has to be output in the mixed output unit case
-        so that the units can be properly rebuilt by
-        `~astropy.modeling.CompoundModel.with_units_from_data`.
-
-        Outside the mixed output units, this method is identical to the
-        base method.
-        """
-        if self.op in ['*', '/']:
-            model = self.copy()
-            inputs = {inp: kwargs[inp] for inp in self.inputs}
-
-            left_units = self.left.output_units(**kwargs)
-            right_units = self.right.output_units(**kwargs)
-
-            if self.op == '*':
-                left_kwargs = {out: kwargs[out] / right_units[out]
-                               for out in self.left.outputs if kwargs[out] is not None}
-                right_kwargs = {out: kwargs[out] / left_units[out]
-                                for out in self.right.outputs if kwargs[out] is not None}
-            else:
-                left_kwargs = {out: kwargs[out] * right_units[out]
-                               for out in self.left.outputs if kwargs[out] is not None}
-                right_kwargs = {out: 1 / kwargs[out] * left_units[out]
-                                for out in self.right.outputs if kwargs[out] is not None}
-
-            left_kwargs.update(inputs.copy())
-            right_kwargs.update(inputs.copy())
-
-            left = self.left.without_units_for_data(**left_kwargs)
-            if isinstance(left, tuple):
-                left_kwargs['_left_kwargs'] = left[1]
-                left_kwargs['_right_kwargs'] = left[2]
-                left = left[0]
-
-            right = self.right.without_units_for_data(**right_kwargs)
-            if isinstance(right, tuple):
-                right_kwargs['_left_kwargs'] = right[1]
-                right_kwargs['_right_kwargs'] = right[2]
-                right = right[0]
-
-            model._set_sub_models_and_parameter_units(left, right)
-
-            return model, left_kwargs, right_kwargs
-        else:
-            return super().without_units_for_data(**kwargs)
+            parameter.value = model_parameter.value
+            parameter._set_unit(model_parameter.unit, force=True)
 
     def _calculate_separability_matrix(self):
-        from astropy.modeling.separable import _separable
-        from astropy.modeling.core import SPECIAL_OPERATORS
-
-        s_left = _separable(self.left)
-        s_right = _separable(self.right)
+        """
+        Customizes the behavior of modeling.separable for CompoundModels.
+        """
+        from astropy.modeling.separable import separability_matrix as _separability_matrix
+        from scipy.linalg import block_diag
 
         if self.op == '&':
-            n_out_left = self.left.n_outputs
-            n_in_left = self.left.n_inputs
-            n_out_right = self.right.n_outputs
-            n_in_right = self.right.n_inputs
-
-            zero_ul = np.zeros((n_out_left, n_in_right), dtype=bool)
-            zero_lr = np.zeros((n_out_right, n_in_left), dtype=bool)
-
-            return np.block([[s_left, zero_ul],
-                             [zero_lr, s_right]])
-
+            sep_left = _separability_matrix(self.left)
+            sep_right = _separability_matrix(self.right)
+            return block_diag(sep_left, sep_right)
         elif self.op == '|':
-            # Boolean matrix multiplication: (A @ B)_ij = OR_k (A_ik AND B_kj)
-            # np.dot treats True as 1, False as 0. The result will be integers.
-            # separability_matrix converts to bool at the end.
-            return np.dot(s_right, s_left)
-
-        elif self.op in ['+', '-', '*', '/', '**'] or self.op in SPECIAL_OPERATORS:
-            # For element-wise operations, an output depends on an input if *either*
-            # the left or right sub-model's corresponding output depends on that input.
-            return np.logical_or(s_left, s_right)
-
+            sep_left = _separability_matrix(self.left)
+            sep_right = _separability_matrix(self.right)
+            # Boolean matrix multiplication: (A @ B)[i,j] = any(A[i,k] and B[k,j] for k)
+            # This is equivalent to np.matmul for boolean matrices.
+            return sep_right @ sep_left
+        elif self.op in ['+', '-', '*', '/']:  # Arithmetic operators
+            sep_left = _separability_matrix(self.left)
+            sep_right = _separability_matrix(self.right)
+            # An output depends on an input if either left or right output depends on it.
+            return sep_left | sep_right  # Element-wise OR
+        elif self.op == '**':  # Power operator
+            # For power operator, it's generally not separable unless specific conditions are met.
+            # Returning NotImplemented allows the default separability_matrix logic to handle it,
+            # which typically assumes full coupling for non-linear models.
+            return NotImplemented
         elif self.op == 'fix_inputs':
-            fixed_inputs_indices = []
-            for key in self.right.keys():
-                if isinstance(key, str):
-                    fixed_inputs_indices.append(self.left.inputs.index(key))
-                else: # Assume integer index
-                    fixed_inputs_indices.append(key)
-            
-            fixed_inputs_indices = sorted(list(set(fixed_inputs_indices)))
-
-            all_input_indices = np.arange(self.left.n_inputs)
-            mask = np.ones(self.left.n_inputs, dtype=bool)
-            mask[fixed_inputs_indices] = False
-            
-            return s_left[:, mask]
-
-        return NotImplemented
+            # This is complex as it involves modifying the base model's separability matrix
+            # by removing rows/columns corresponding to fixed inputs.
+            return NotImplemented
+        else:  # Other operators like '_tree_init' or custom ones
+            return NotImplemented
 >>>>>>> REPLACE
 ```

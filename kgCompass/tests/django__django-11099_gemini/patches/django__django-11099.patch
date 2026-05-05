@@ -1,0 +1,36 @@
+The issue describes a problem with `ASCIIUsernameValidator` and `UnicodeUsernameValidator` in `contrib.auth.validators` where the `$` regex anchor incorrectly allows trailing newlines. The suggested fix is to use `\A` and `\Z` for strict start and end of string matching.
+
+The files `django/contrib/auth/validators.py`, which would contain `ASCIIUsernameValidator` and `UnicodeUsernameValidator`, are not provided in the given code segments. Therefore, the exact bug described in the issue statement cannot be directly fixed.
+
+However, the core problem is a general quirk of Python's regex engine regarding `$` and newlines. Upon reviewing the provided code, a similar regex pattern with `^` and `$` is found in `django/core/validators.py` within the `URLValidator.__call__` method. This regex, `r'^\[(.+)\](?::\d{2,5})?$'`, is used to validate IPv6 literal addresses within the `netloc` part of a URL.
+
+The `urlsplit` function can return a `netloc` string that includes a trailing newline (e.g., `urlsplit('http://[::1]\n/path').netloc` returns `'[::1]\n'`). The current regex would incorrectly match `[::1]` from `'[::1]\n'` because `$` matches before a trailing newline. This would lead to `validate_ipv6_address('::1')` being called and passing, making a URL with an invalid trailing newline in the IPv6 part appear valid.
+
+To address this similar regex quirk, the `^` and `$` anchors in the `URLValidator`'s IPv6 regex should be replaced with `\A` and `\Z` respectively, ensuring the regex matches the entire `netloc` string and rejects any trailing newlines.
+
+```python
+### django/core/validators.py
+- signature : django.core.validators.URLValidator.__call__(self, value)
+- start_line : 110
+- end_line : 149
+<<<<<<< SEARCH
+            super().__call__(url)
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+=======
+            super().__call__(url)
+        else:
+            # Now verify IPv6 in the netloc part
+            # Use \A and \Z to match the start/end of the string, not start/end of line.
+            host_match = re.search(r'\A\[(.+)\](?::\d{2,5})?\Z', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+>>>>>>> REPLACE
+```
