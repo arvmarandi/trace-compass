@@ -1231,8 +1231,8 @@ class Table:
         cols = []
         default_names = _auto_names(n_cols)
 
-        for col, name, default_name, dt in zip(data, names, default_names, dtype):
-            col = self._convert_data_to_col(col, copy, default_name, dt, name)
+        for col, name, default_name, dtype in zip(data, names, default_names, dtype):
+            col = self._convert_data_to_col(col, copy, default_name, dtype, name)
 
             cols.append(col)
 
@@ -4141,7 +4141,7 @@ class Table:
 
                     # When the numpy object array is represented as a list then
                     # numpy initializes to the correct string or unicode type.
-                    data = np.array(list(data))
+                    data = np.array([x for x in data])
 
             # Numpy datetime64
             if data.dtype.kind == "M":

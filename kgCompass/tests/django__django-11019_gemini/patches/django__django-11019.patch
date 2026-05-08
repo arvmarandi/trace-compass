@@ -1,114 +1,83 @@
-The issue describes how merging three or more `Media` objects can lead to `MediaOrderConflictWarning` and an incorrect final ordering of JavaScript (and CSS) files. The core problem lies in the sequential merging process within the `Media._js` and `Media._css` properties.
-
-Let's trace the example provided:
-`MyForm` combines media from `ColorPicker`, `SimpleTextWidget`, and `FancyTextWidget`.
-The `BaseForm.media` method iterates through `self.fields.values()`, which for `MyForm` would be `background_color`, `intro`, `body`. This means the `Media` objects are added in this order:
-1.  `M1 = ColorPicker().media` (js: `['color-picker.js']`)
-2.  `M2 = SimpleTextWidget().media` (js: `['text-editor.js']`)
-3.  `M3 = FancyTextWidget().media` (js: `['text-editor.js', 'text-editor-extras.js', 'color-picker.js']`)
-
-The `Media.__add__` method concatenates the `_js_lists` (and `_css_lists`). So, for `MyForm().media`, the `_js_lists` would become:
-`[['color-picker.js'], ['text-editor.js'], ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']]`
-
-The `Media._js` property then processes these lists sequentially:
-`js = self._js_lists[0]`
-`for obj in self._js_lists[1:]:`
-`    js = self.merge(js, obj)`
-
-Let's trace this with the example:
-1.  `js` starts as `['color-picker.js']` (from `_js_lists[0]`).
-2.  First `obj` is `['text-editor.js']` (from `_js_lists[1]`).
-    `js = merge(['color-picker.js'], ['text-editor.js'])` results in `['color-picker.js', 'text-editor.js']`. (This `js` becomes `list_1` for the next merge).
-    This intermediate result wrongly imposes that `color-picker.js` must appear before `text-editor.js`.
-3.  Second `obj` is `['text-editor.js', 'text-editor-extras.js', 'color-picker.js']` (from `_js_lists[2]`).
-    `js = merge(['color-picker.js', 'text-editor.js'], ['text-editor.js', 'text-editor-extras.js', 'color-picker.js'])`.
-    In this merge, `list_1` is `['color-picker.js', 'text-editor.js']` and `list_2` is `['text-editor.js', 'text-editor-extras.js', 'color-picker.js']`.
-    `list_1` implies `color-picker.js` before `text-editor.js`.
-    `list_2` implies `text-editor.js` before `color-picker.js`.
-    The `merge` function prioritizes `list_1`'s existing order. When `text-editor-extras.js` is inserted (from `list_2`), and `text-editor.js` is later found in `list_1` at a position that conflicts with `text-editor-extras.js`'s insertion, a `MediaOrderConflictWarning` is raised. The final result is `['text-editor-extras.js', 'color-picker.js', 'text-editor.js']`, which is incorrect and undesirable.
-
-**Root Cause:**
-The `merge` function is designed to take `list_1` as the base and integrate `list_2` into it, preserving `list_1`'s relative order as much as possible. When `Media._js` (and `Media._css`) merges sequentially, the accumulated `js` (or `css`) list becomes `list_1` for the next merge. This means that early, potentially less complete, `Media` definitions can establish ordering constraints that conflict with later, more comprehensive definitions (like `FancyTextWidget`'s media).
-
-**Proposed Solution:**
-The fix is to change the `Media._js` and `Media._css` properties to ensure that the ordering constraints from *later* `Media` objects (which are typically more specific or overriding) take precedence. This can be achieved by:
-1.  Initializing the combined list (`js` or `css`) as empty.
-2.  Iterating through *all* raw media lists (`self._js_lists` or `self._css_lists`).
-3.  In each iteration, calling `self.merge(obj, current_combined_list)`, where `obj` is the current raw media list/dict being processed, and `current_combined_list` is the result of previous merges. This effectively makes the current `obj` the `list_1` (prioritized list) and the accumulated result the `list_2`.
-
-Let's re-trace the `_js` with the proposed change:
-`js = []`
-`for obj in filter(None, self._js_lists):`
-`    js = self.merge(obj, js)`
-
-1.  `obj = ['color-picker.js']` (from `_js_lists[0]`)
-    `js = merge(['color-picker.js'], [])` -> `['color-picker.js']`
-2.  `obj = ['text-editor.js']` (from `_js_lists[1]`)
-    `js = merge(['text-editor.js'], ['color-picker.js'])` -> `['text-editor.js', 'color-picker.js']` (The order from `obj` is prioritized, `text-editor.js` comes first).
-3.  `obj = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']` (from `_js_lists[2]`)
-    `js = merge(['text-editor.js', 'text-editor-extras.js', 'color-picker.js'], ['text-editor.js', 'color-picker.js'])`
-    `list_1 = ['text-editor.js', 'text-editor-extras.js', 'color-picker.js']`
-    `list_2 = ['text-editor.js', 'color-picker.js']`
-    Tracing `merge(list_1, list_2)`:
-    `combined_list` starts as `['text-editor.js', 'text-editor-extras.js', 'color-picker.js']`.
-    `last_insert_index = 3`.
-    Processing `list_2` in reverse:
-    -   `path = 'color-picker.js'`: Found at `index = 2`. `last_insert_index` becomes `2`. No warning.
-    -   `path = 'text-editor.js'`: Found at `index = 0`. `last_insert_index` becomes `0`. No warning.
-    The final `js` list is `['text-editor.js', 'text-editor-extras.js', 'color-picker.js']`.
-
-This approach correctly resolves the dependencies without warnings and produces the desired order. The same logic applies to `_css`.
-
 ```python
 ### django/forms/widgets.py
-- signature : django.forms.widgets.Media._js(self)
-- start_line : 72
-- end_line : 77
+- start_line : 118
+- end_line : 150
 <<<<<<< SEARCH
-    def _js(self):
-        js = self._js_lists[0]
-        # filter(None, ...) avoids calling merge() with empty lists.
-        for obj in filter(None, self._js_lists[1:]):
-            js = self.merge(js, obj)
-        return js
-=======
-    def _js(self):
-        js = []
-        # filter(None, ...) avoids calling merge() with empty lists.
-        # The order of the lists is important, so we can't use a set.
-        # Prioritize later-added lists by merging them into the current result.
-        for obj in filter(None, self._js_lists):
-            js = self.merge(obj, js)
-        return js
->>>>>>> REPLACE
-```
+    def merge(list_1, list_2):
+        """
+        Merge two lists while trying to keep the relative order of the elements.
+        Warn if the lists have the same two elements in a different relative
+        order.
 
-```python
-### django/forms/widgets.py
-- signature : django.forms.widgets.Media._css(self)
-- start_line : 61
-- end_line : 69
-<<<<<<< SEARCH
-    def _css(self):
-        css = self._css_lists[0]
-        # filter(None, ...) avoids calling merge with empty dicts.
-        for obj in filter(None, self._css_lists[1:]):
-            css = {
-                medium: self.merge(css.get(medium, []), obj.get(medium, []))
-                for medium in css.keys() | obj.keys()
-            }
-        return css
+        For static assets it can be important to have them included in the DOM
+        in a certain order. In JavaScript you may not be able to reference a
+        global or in CSS you might want to override a style.
+        """
+        # Start with a copy of list_1.
+        combined_list = list(list_1)
+        last_insert_index = len(list_1)
+        # Walk list_2 in reverse, inserting each element into combined_list if
+        # it doesn't already exist.
+        for path in reversed(list_2):
+            try:
+                # Does path already exist in the list?
+                index = combined_list.index(path)
+            except ValueError:
+                # Add path to combined_list since it doesn't exist.
+                combined_list.insert(last_insert_index, path)
+            else:
+                if index > last_insert_index:
+                    warnings.warn(
+                        'Detected duplicate Media files in an opposite order:\n'
+                        '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
+                        MediaOrderConflictWarning,
+                    )
+                # path already exists in the list. Update last_insert_index so
+                # that the following elements are inserted in front of this one.
+                last_insert_index = index
+        return combined_list
 =======
-    def _css(self):
-        css = {}
-        # filter(None, ...) avoids calling merge with empty dicts.
-        # The order of the lists is important, so we can't use a set.
-        # Prioritize later-added lists by merging them into the current result.
-        for obj in filter(None, self._css_lists):
-            new_css = {}
-            for medium in obj.keys() | css.keys():
-                new_css[medium] = self.merge(obj.get(medium, []), css.get(medium, []))
-            css = new_css
-        return css
+    def merge(list_1, list_2):
+        """
+        Merge two lists while trying to keep the relative order of the elements.
+        Warn if the lists have the same two elements in a different relative
+        order.
+
+        For static assets it can be important to have them included in the DOM
+        in a certain order. In JavaScript you may not be able to reference a
+        global or in CSS you might want to override a style.
+        """
+        # Start with a copy of list_1.
+        combined_list = list(list_1)
+        # Position where the next new element from list_2 will be inserted.
+        insert_pos = len(combined_list)
+        # Index of the last element from list_2 that was already present.
+        last_existing_index = None
+        # Walk list_2 in forward order.
+        for path in list_2:
+            try:
+                # Does path already exist in the list?
+                index = combined_list.index(path)
+            except ValueError:
+                # Add path to combined_list at the current insert position.
+                combined_list.insert(insert_pos, path)
+                insert_pos += 1
+            else:
+                if last_existing_index is not None and index < insert_pos:
+                    # The element appears before the insertion point,
+                    # meaning that list_2 wants it to come after the
+                    # last previously seen element from list_2, but the
+                    # current combined list has it before that element.
+                    warnings.warn(
+                        'Detected duplicate Media files in an opposite order:\n'
+                        '%s\n%s' % (combined_list[last_existing_index], combined_list[index]),
+                        MediaOrderConflictWarning,
+                    )
+                # Update the reference to the most recent existing element.
+                last_existing_index = index
+                # Ensure subsequent insertions happen after this element.
+                if index + 1 > insert_pos:
+                    insert_pos = index + 1
+        return combined_list
 >>>>>>> REPLACE
 ```

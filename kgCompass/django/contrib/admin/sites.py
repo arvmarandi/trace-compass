@@ -77,9 +77,6 @@ class AdminSite:
         self._global_actions = self._actions.copy()
         all_sites.add(self)
 
-    def __repr__(self):
-        return f'{self.__class__.__name__}(name={self.name!r})'
-
     def check(self, app_configs):
         """
         Run the system checks on all ModelAdmins, except if they aren't
@@ -423,13 +420,14 @@ class AdminSite:
     def catch_all_view(self, request, url):
         if settings.APPEND_SLASH and not url.endswith('/'):
             urlconf = getattr(request, 'urlconf', None)
+            path = '%s/' % request.path_info
             try:
-                match = resolve('%s/' % request.path_info, urlconf)
+                match = resolve(path, urlconf)
             except Resolver404:
                 pass
             else:
                 if getattr(match.func, 'should_append_slash', True):
-                    return HttpResponsePermanentRedirect('%s/' % request.path)
+                    return HttpResponsePermanentRedirect(path)
         raise Http404
 
     def _build_app_dict(self, request, label=None):
@@ -563,9 +561,6 @@ class DefaultAdminSite(LazyObject):
     def _setup(self):
         AdminSiteClass = import_string(apps.get_app_config('admin').default_site)
         self._wrapped = AdminSiteClass()
-
-    def __repr__(self):
-        return repr(self._wrapped)
 
 
 # This global object represents the default admin site, for the common case.

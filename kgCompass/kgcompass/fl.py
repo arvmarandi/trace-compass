@@ -94,6 +94,68 @@ def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
     return scores
 
 
+def _normalize_trace_file_path(raw_path: str, repo_dir: str) -> str:
+    """Convert a settrace file path to a repo-relative path.
+
+    settrace paths can be absolute (/abs/.../playground/repo_dir/a/b.py)
+    or relative (playground/repo_dir/a/b.py). We strip everything up to
+    and including the repo directory, matching the format KG entities use.
+    """
+    normalized = os.path.normpath(raw_path).replace("\\", "/")
+    marker = f"playground/{repo_dir}/"
+    idx = normalized.find(marker)
+    if idx != -1:
+        return normalized[idx + len(marker):]
+    # Already relative to repo root (no playground prefix)
+    parts = normalized.split("/")
+    if parts and parts[0] == repo_dir:
+        return "/".join(parts[1:])
+    return normalized
+
+
+def _load_top_trace_candidates(instance_id: str, traces_dir: str, top_k: int = 5) -> list[dict]:
+    """Return top_k shallowest functions from all_calls as candidate dicts.
+
+    Sorted by call_depth ascending (0 = called directly from test).
+    Returns dicts compatible with the related_entities format expected by
+    fix_fl_line.py (file_path, signature, start_line, end_line, path).
+    """
+    traj_path = Path(traces_dir) / instance_id / f"{instance_id}.traj.json"
+    if not traj_path.exists():
+        return []
+    traj = json.loads(traj_path.read_text())
+    settrace = traj.get("info", {}).get("settrace_traces", {})
+    if not settrace:
+        return []
+
+    # Derive repo directory name from instance_id (e.g. django__django-12345 -> django__django)
+    repo_dir = "-".join(instance_id.split("-")[:-1])
+
+    seen: dict[str, tuple[int, str]] = {}  # func -> (min_depth, raw_file_path)
+    for entry in settrace.values():
+        calls = entry.get("all_calls", []) if isinstance(entry, dict) else entry
+        for f in calls:
+            fn = f.get("func")
+            fp = f.get("file", "")
+            d = f.get("call_depth", 999) or 999
+            if fn and (fn not in seen or d < seen[fn][0]):
+                seen[fn] = (d, fp)
+    ranked = sorted(seen.items(), key=lambda x: x[1][0])[:top_k]
+    return [
+        {
+            "name": fn,
+            "file_path": _normalize_trace_file_path(info[1], repo_dir),
+            "signature": fn,
+            "start_line": 0,
+            "end_line": 0,
+            "similarity": 0.0,
+            "source": "trace",
+            "path": [{"start_node": "root", "description": "trace candidate", "type": "TRACE", "end_node": fn}],
+        }
+        for fn, info in ranked
+    ]
+
+
 class CodeAnalyzer:
     def __init__(self, config):
         self.config = config
@@ -200,7 +262,24 @@ class CodeAnalyzer:
             print("Related entity statistics:")
             for entity_type, entities in related_entities.items():
                 print(f"{entity_type}: {len(entities)} entities")
-            
+
+            # Union approach: append top-5 trace candidates not already in the KG top-20
+            if traces_dir:
+                kg_methods  = related_entities.get('methods', [])
+                kg_classes  = related_entities.get('classes', [])
+                top20 = sorted(kg_methods + kg_classes, key=lambda x: x.get('similarity', 0), reverse=True)[:20]
+                kg_short_names = {e.get('name', '').split('.')[-1] for e in top20}
+                trace_extras = [
+                    c for c in _load_top_trace_candidates(self.config['instance_id'], traces_dir)
+                    if c['name'] not in kg_short_names
+                ]
+                if trace_extras:
+                    print(f"Appending {len(trace_extras)} trace candidate(s) not in KG top-20: "
+                          f"{[c['name'] for c in trace_extras]}")
+                    related_entities['methods'] = kg_methods + trace_extras
+                else:
+                    print("Trace candidates fully overlap with KG top-20; no extras appended.")
+
             return {
                 'related_entities': related_entities,
                 'artifact_stats': self.artifact_stats,

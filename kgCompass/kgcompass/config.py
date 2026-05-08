@@ -8,7 +8,7 @@ load_dotenv()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 # Bailian
-BAILIAN_API_KEY = os.getenv("GEMINI_API_KEY")
+BAILIAN_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
@@ -34,9 +34,9 @@ VECTOR_SIMILARITY_WEIGHT = 0.3
 TRACE_WEIGHT = 0.1  # Weight for stack trace score augmentation
 
 # API Configuration
-DEEPSEEK_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-MODEL_NAME = "gemini-2.5-flash"
-REVIEW_MODEL_NAME = "gemini-2.5-flash"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+MODEL_NAME = "deepseek-v4-flash"
+REVIEW_MODEL_NAME = "deepseek-v4-flash"
 
 # LLM Request Configuration
 MAX_TOKENS = 8192

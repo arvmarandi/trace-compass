@@ -1,34 +1,22 @@
-"""
-    sphinx.config
-    ~~~~~~~~~~~~~
-
-    Build configuration file handling.
-
-    :copyright: Copyright 2007-2021 by the Sphinx team, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-"""
+"""Build configuration file handling."""
 
 import re
 import traceback
 import types
-import warnings
 from collections import OrderedDict
 from os import getenv, path
-from typing import (Any, Callable, Dict, Generator, Iterator, List, NamedTuple, Set, Tuple,
-                    Union)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, NamedTuple,
+                    Optional, Set, Tuple, Union)
 
-from sphinx.deprecation import RemovedInSphinx40Warning
 from sphinx.errors import ConfigError, ExtensionError
 from sphinx.locale import _, __
 from sphinx.util import logging
 from sphinx.util.i18n import format_date
-from sphinx.util.osutil import cd
-from sphinx.util.pycompat import execfile_
+from sphinx.util.osutil import cd, fs_encoding
 from sphinx.util.tags import Tags
 from sphinx.util.typing import NoneType
 
-if False:
-    # For type annotation
+if TYPE_CHECKING:
     from sphinx.application import Sphinx
     from sphinx.environment import BuildEnvironment
 
@@ -38,9 +26,11 @@ CONFIG_FILENAME = 'conf.py'
 UNSERIALIZABLE_TYPES = (type, types.ModuleType, types.FunctionType)
 copyright_year_re = re.compile(r'^((\d{4}-)?)(\d{4})(?=[ ,])')
 
-ConfigValue = NamedTuple('ConfigValue', [('name', str),
-                                         ('value', Any),
-                                         ('rebuild', Union[bool, str])])
+
+class ConfigValue(NamedTuple):
+    name: str
+    value: Any
+    rebuild: Union[bool, str]
 
 
 def is_serializable(obj: Any) -> bool:
@@ -58,7 +48,7 @@ def is_serializable(obj: Any) -> bool:
 
 
 class ENUM:
-    """represents the config value should be a one of candidates.
+    """Represents the candidates which a config value should be one of.
 
     Example:
         app.add_config_value('latex_show_urls', 'no', None, ENUM('no', 'footnote', 'inline'))
@@ -71,10 +61,6 @@ class ENUM:
             return all(item in self.candidates for item in value)
         else:
             return value in self.candidates
-
-
-# RemovedInSphinx40Warning
-string_classes = [str]  # type: List
 
 
 class Config:
@@ -94,7 +80,7 @@ class Config:
     # If you add a value here, don't forget to include it in the
     # quickstart.py file template as well as in the docs!
 
-    config_values = {
+    config_values: Dict[str, Tuple] = {
         # general options
         'project': ('Python', 'env', []),
         'author': ('unknown', 'env', []),
@@ -106,14 +92,15 @@ class Config:
         # the real default is locale-dependent
         'today_fmt': (None, 'env', [str]),
 
-        'language': (None, 'env', [str]),
+        'language': ('en', 'env', [str]),
         'locale_dirs': (['locales'], 'env', []),
         'figure_language_filename': ('{root}.{language}{ext}', 'env', [str]),
+        'gettext_allow_fuzzy_translations': (False, 'gettext', []),
 
         'master_doc': ('index', 'env', []),
+        'root_doc': (lambda config: config.master_doc, 'env', []),
         'source_suffix': ({'.rst': 'restructuredtext'}, 'env', Any),
         'source_encoding': ('utf-8-sig', 'env', []),
-        'source_parsers': ({}, 'env', []),
         'exclude_patterns': ([], 'env', []),
         'default_role': (None, 'env', [str]),
         'add_function_parentheses': (True, 'env', []),
@@ -137,6 +124,7 @@ class Config:
         'manpages_url': (None, 'env', []),
         'nitpicky': (False, None, []),
         'nitpick_ignore': ([], None, []),
+        'nitpick_ignore_regex': ([], None, []),
         'numfig': (False, 'env', []),
         'numfig_secnum_depth': (1, 'env', []),
         'numfig_format': ({}, 'env', []),  # will be initialized in init_numfig_format()
@@ -152,25 +140,28 @@ class Config:
         'smartquotes_excludes': ({'languages': ['ja'],
                                   'builders': ['man', 'text']},
                                  'env', []),
-    }  # type: Dict[str, Tuple]
+    }
 
     def __init__(self, config: Dict[str, Any] = {}, overrides: Dict[str, Any] = {}) -> None:
         self.overrides = dict(overrides)
         self.values = Config.config_values.copy()
         self._raw_config = config
-        self.setup = config.get('setup', None)  # type: Callable
+        self.setup: Optional[Callable] = config.get('setup', None)
 
         if 'extensions' in self.overrides:
             if isinstance(self.overrides['extensions'], str):
                 config['extensions'] = self.overrides.pop('extensions').split(',')
             else:
                 config['extensions'] = self.overrides.pop('extensions')
-        self.extensions = config.get('extensions', [])  # type: List[str]
+        self.extensions: List[str] = config.get('extensions', [])
 
     @classmethod
     def read(cls, confdir: str, overrides: Dict = None, tags: Tags = None) -> "Config":
         """Create a Config object from configuration file."""
         filename = path.join(confdir, CONFIG_FILENAME)
+        if not path.isfile(filename):
+            raise ConfigError(__("config directory doesn't contain a conf.py file (%s)") %
+                              confdir)
         namespace = eval_config_file(filename, tags)
         return cls(namespace, overrides or {})
 
@@ -207,7 +198,7 @@ class Config:
                 except ValueError as exc:
                     raise ValueError(__('invalid number %r for config value %r, ignoring') %
                                      (value, name)) from exc
-            elif hasattr(defvalue, '__call__'):
+            elif callable(defvalue):
                 return value
             elif defvalue is not None and not isinstance(defvalue, str):
                 raise ValueError(__('cannot override config setting %r with unsupported '
@@ -217,7 +208,8 @@ class Config:
 
     def pre_init_values(self) -> None:
         """
-        Initialize some limited config variables before initialize i18n and loading extensions
+        Initialize some limited config variables before initializing i18n and loading
+        extensions.
         """
         variables = ['needs_sphinx', 'suppress_warnings', 'language', 'locale_dirs']
         for name in variables:
@@ -251,17 +243,28 @@ class Config:
             if name in self.values:
                 self.__dict__[name] = config[name]
 
+    def post_init_values(self) -> None:
+        """
+        Initialize additional config variables that are added after init_values() called.
+        """
+        config = self._raw_config
+        for name in config:
+            if name not in self.__dict__ and name in self.values:
+                self.__dict__[name] = config[name]
+
+        check_confval_types(None, self)
+
     def __getattr__(self, name: str) -> Any:
         if name.startswith('_'):
             raise AttributeError(name)
         if name not in self.values:
             raise AttributeError(__('No such config value: %s') % name)
         default = self.values[name][0]
-        if hasattr(default, '__call__'):
+        if callable(default):
             return default(self)
         return default
 
-    def __getitem__(self, name: str) -> str:
+    def __getitem__(self, name: str) -> Any:
         return getattr(self, name)
 
     def __setitem__(self, name: str, value: Any) -> None:
@@ -315,16 +318,18 @@ class Config:
         self.__dict__.update(state)
 
 
-def eval_config_file(filename: str, tags: Tags) -> Dict[str, Any]:
+def eval_config_file(filename: str, tags: Optional[Tags]) -> Dict[str, Any]:
     """Evaluate a config file."""
-    namespace = {}  # type: Dict[str, Any]
+    namespace: Dict[str, Any] = {}
     namespace['__file__'] = filename
     namespace['tags'] = tags
 
     with cd(path.dirname(filename)):
         # during executing config file, current dir is changed to ``confdir``.
         try:
-            execfile_(filename, namespace)
+            with open(filename, 'rb') as f:
+                code = compile(f.read(), filename.encode(fs_encoding), 'exec')
+                exec(code, namespace)
         except SyntaxError as err:
             msg = __("There is a syntax error in your configuration file: %s\n")
             raise ConfigError(msg % err) from err
@@ -343,7 +348,7 @@ def eval_config_file(filename: str, tags: Tags) -> Dict[str, Any]:
 
 
 def convert_source_suffix(app: "Sphinx", config: Config) -> None:
-    """This converts old styled source_suffix to new styled one.
+    """Convert old styled source_suffix to new styled one.
 
     * old style: str or list
     * new style: a dict which maps from fileext to filetype
@@ -371,7 +376,7 @@ def convert_highlight_options(app: "Sphinx", config: Config) -> None:
     """Convert old styled highlight_options to new styled one.
 
     * old style: options
-    * new style: dict that maps language names to options
+    * new style: a dict which maps from language name to options
     """
     options = config.highlight_options
     if options and not all(isinstance(v, dict) for v in options.values()):
@@ -392,7 +397,7 @@ def init_numfig_format(app: "Sphinx", config: Config) -> None:
 
 
 def correct_copyright_year(app: "Sphinx", config: Config) -> None:
-    """correct values of copyright year that are not coherent with
+    """Correct values of copyright year that are not coherent with
     the SOURCE_DATE_EPOCH environment variable (if set)
 
     See https://reproducible-builds.org/specs/source-date-epoch/
@@ -400,21 +405,21 @@ def correct_copyright_year(app: "Sphinx", config: Config) -> None:
     if getenv('SOURCE_DATE_EPOCH') is not None:
         for k in ('copyright', 'epub_copyright'):
             if k in config:
-                replace = r'\g<1>%s' % format_date('%Y')
+                replace = r'\g<1>%s' % format_date('%Y', language='en')
                 config[k] = copyright_year_re.sub(replace, config[k])
 
 
 def check_confval_types(app: "Sphinx", config: Config) -> None:
-    """check all values for deviation from the default value's type, since
+    """Check all values for deviation from the default value's type, since
     that can result in TypeErrors all over the place NB.
     """
     for confval in config:
         default, rebuild, annotations = config.values[confval.name]
 
-        if hasattr(default, '__call__'):
+        if callable(default):
             default = default(config)  # evaluate default value
         if default is None and not annotations:
-            continue  # neither inferrable nor expliclitly annotated types
+            continue  # neither inferable nor expliclitly annotated types
 
         if annotations is Any:
             # any type of value is accepted
@@ -425,7 +430,7 @@ def check_confval_types(app: "Sphinx", config: Config) -> None:
                          "but `{current}` is given.")
                 logger.warning(msg.format(name=confval.name,
                                           current=confval.value,
-                                          candidates=annotations.candidates))
+                                          candidates=annotations.candidates), once=True)
         else:
             if type(confval.value) is type(default):
                 continue
@@ -450,29 +455,13 @@ def check_confval_types(app: "Sphinx", config: Config) -> None:
                     permitted = " or ".join(wrapped_annotations)
                 logger.warning(msg.format(name=confval.name,
                                           current=type(confval.value),
-                                          permitted=permitted))
+                                          permitted=permitted), once=True)
             else:
                 msg = __("The config value `{name}' has type `{current.__name__}', "
                          "defaults to `{default.__name__}'.")
                 logger.warning(msg.format(name=confval.name,
                                           current=type(confval.value),
-                                          default=type(default)))
-
-
-def check_unicode(config: Config) -> None:
-    """check all string values for non-ASCII characters in bytestrings,
-    since that can result in UnicodeErrors all over the place
-    """
-    warnings.warn('sphinx.config.check_unicode() is deprecated.',
-                  RemovedInSphinx40Warning, stacklevel=2)
-
-    nonascii_re = re.compile(br'[\x80-\xff]')
-
-    for name, value in config._raw_config.items():
-        if isinstance(value, bytes) and nonascii_re.search(value):
-            logger.warning(__('the config value %r is set to a string with non-ASCII '
-                              'characters; this can lead to Unicode errors occurring. '
-                              'Please use Unicode strings, e.g. %r.'), name, 'Content')
+                                          default=type(default)), once=True)
 
 
 def check_primary_domain(app: "Sphinx", config: Config) -> None:
@@ -482,17 +471,17 @@ def check_primary_domain(app: "Sphinx", config: Config) -> None:
         config.primary_domain = None  # type: ignore
 
 
-def check_master_doc(app: "Sphinx", env: "BuildEnvironment", added: Set[str],
-                     changed: Set[str], removed: Set[str]) -> Set[str]:
-    """Adjust master_doc to 'contents' to support an old project which does not have
-    no master_doc setting.
+def check_root_doc(app: "Sphinx", env: "BuildEnvironment", added: Set[str],
+                   changed: Set[str], removed: Set[str]) -> Set[str]:
+    """Adjust root_doc to 'contents' to support an old project which does not have
+    any root_doc setting.
     """
-    if (app.config.master_doc == 'index' and
+    if (app.config.root_doc == 'index' and
             'index' not in app.project.docnames and
             'contents' in app.project.docnames):
-        logger.warning(__('Since v2.0, Sphinx uses "index" as master_doc by default. '
-                          'Please add "master_doc = \'contents\'" to your conf.py.'))
-        app.config.master_doc = "contents"  # type: ignore
+        logger.warning(__('Since v2.0, Sphinx uses "index" as root_doc by default. '
+                          'Please add "root_doc = \'contents\'" to your conf.py.'))
+        app.config.root_doc = "contents"  # type: ignore
 
     return changed
 
@@ -504,7 +493,7 @@ def setup(app: "Sphinx") -> Dict[str, Any]:
     app.connect('config-inited', correct_copyright_year, priority=800)
     app.connect('config-inited', check_confval_types, priority=800)
     app.connect('config-inited', check_primary_domain, priority=800)
-    app.connect('env-get-outdated', check_master_doc)
+    app.connect('env-get-outdated', check_root_doc)
 
     return {
         'version': 'builtin',
