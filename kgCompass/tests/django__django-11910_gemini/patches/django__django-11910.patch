@@ -1,0 +1,124 @@
+The bug is in `RenameField.state_forwards`: when a ForeignKey with an implicit `to_field` (pointing to the primary key) is affected by a primary key rename, the `to_fields` attribute (which is `None`) is not updated. This causes the autodetector to see a mismatch and generate an `AlterField` with the old field name. The fix ensures that `to_fields` is explicitly set to the new field name when it was `None` and the remote field name matches the renamed field.
+
+```python
+### django/db/migrations/operations/fields.py
+- start_line : 302
+- end_line : 355
+<<<<<<< SEARCH
+    def state_forwards(self, app_label, state):
+        model_state = state.models[app_label, self.model_name_lower]
+        # Rename the field
+        fields = model_state.fields
+        found = False
+        delay = True
+        for index, (name, field) in enumerate(fields):
+            if not found and name == self.old_name:
+                fields[index] = (self.new_name, field)
+                found = True
+            # Fix from_fields to refer to the new field.
+            from_fields = getattr(field, 'from_fields', None)
+            if from_fields:
+                field.from_fields = tuple([
+                    self.new_name if from_field_name == self.old_name else from_field_name
+                    for from_field_name in from_fields
+                ])
+            # Delay rendering of relationships if it's not a relational
+            # field and not referenced by a foreign key.
+            delay = delay and (
+                not field.is_relation and
+                not is_referenced_by_foreign_key(state, self.model_name_lower, field, self.name)
+            )
+        if not found:
+            raise FieldDoesNotExist(
+                "%s.%s has no field named '%s'" % (app_label, self.model_name, self.old_name)
+            )
+        # Fix index/unique_together to refer to the new field
+        options = model_state.options
+        for option in ('index_together', 'unique_together'):
+            if option in options:
+                options[option] = [
+                    [self.new_name if n == self.old_name else n for n in together]
+                    for together in options[option]
+                ]
+        # Fix to_fields to refer to the new field.
+        model_tuple = app_label, self.model_name_lower
+        for (model_app_label, model_name), model_state in state.models.items():
+            for index, (name, field) in enumerate(model_state.fields):
+                remote_field = field.remote_field
+                if remote_field:
+                    remote_model_tuple = self._get_model_tuple(
+                        remote_field.model, model_app_label, model_name
+                    )
+                    if remote_model_tuple == model_tuple:
+                        if getattr(remote_field, 'field_name', None) == self.old_name:
+                            remote_field.field_name = self.new_name
+                        to_fields = getattr(field, 'to_fields', None)
+                        if to_fields:
+                            field.to_fields = tuple([
+                                self.new_name if to_field_name == self.old_name else to_field_name
+                                for to_field_name in to_fields
+                            ])
+        state.reload_model(app_label, self.model_name_lower, delay=delay)
+=======
+    def state_forwards(self, app_label, state):
+        model_state = state.models[app_label, self.model_name_lower]
+        # Rename the field
+        fields = model_state.fields
+        found = False
+        delay = True
+        for index, (name, field) in enumerate(fields):
+            if not found and name == self.old_name:
+                fields[index] = (self.new_name, field)
+                found = True
+            # Fix from_fields to refer to the new field.
+            from_fields = getattr(field, 'from_fields', None)
+            if from_fields:
+                field.from_fields = tuple([
+                    self.new_name if from_field_name == self.old_name else from_field_name
+                    for from_field_name in from_fields
+                ])
+            # Delay rendering of relationships if it's not a relational
+            # field and not referenced by a foreign key.
+            delay = delay and (
+                not field.is_relation and
+                not is_referenced_by_foreign_key(state, self.model_name_lower, field, self.name)
+            )
+        if not found:
+            raise FieldDoesNotExist(
+                "%s.%s has no field named '%s'" % (app_label, self.model_name, self.old_name)
+            )
+        # Fix index/unique_together to refer to the new field
+        options = model_state.options
+        for option in ('index_together', 'unique_together'):
+            if option in options:
+                options[option] = [
+                    [self.new_name if n == self.old_name else n for n in together]
+                    for together in options[option]
+                ]
+        # Fix to_fields to refer to the new field.
+        model_tuple = app_label, self.model_name_lower
+        for (model_app_label, model_name), model_state in state.models.items():
+            for index, (name, field) in enumerate(model_state.fields):
+                remote_field = field.remote_field
+                if remote_field:
+                    remote_model_tuple = self._get_model_tuple(
+                        remote_field.model, model_app_label, model_name
+                    )
+                    if remote_model_tuple == model_tuple:
+                        if getattr(remote_field, 'field_name', None) == self.old_name:
+                            remote_field.field_name = self.new_name
+                        to_fields = getattr(field, 'to_fields', None)
+                        if to_fields:
+                            field.to_fields = tuple([
+                                self.new_name if to_field_name == self.old_name else to_field_name
+                                for to_field_name in to_fields
+                            ])
+                        else:
+                            # If to_fields was None (implicit reference to the
+                            # primary key), explicitly set it so the
+                            # autodetector correctly sees the update.
+                            if getattr(remote_field, 'field_name', None) == self.new_name:
+                                field.to_fields = (self.new_name,)
+        state.reload_model(app_label, self.model_name_lower, delay=delay)
+>>>>>>> REPLACE
+```

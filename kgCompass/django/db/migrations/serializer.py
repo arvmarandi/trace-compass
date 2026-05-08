@@ -5,8 +5,6 @@ import decimal
 import enum
 import functools
 import math
-import os
-import pathlib
 import re
 import types
 import uuid
@@ -122,10 +120,9 @@ class EnumSerializer(BaseSerializer):
     def serialize(self):
         enum_class = self.value.__class__
         module = enum_class.__module__
-        return (
-            '%s.%s[%r]' % (module, enum_class.__qualname__, self.value.name),
-            {'import %s' % module},
-        )
+        v_string, v_imports = serializer_factory(self.value.value).serialize()
+        imports = {'import %s' % module, *v_imports}
+        return "%s.%s(%s)" % (module, enum_class.__name__, v_string), imports
 
 
 class FloatSerializer(BaseSimpleSerializer):
@@ -219,19 +216,6 @@ class OperationSerializer(BaseSerializer):
         return string.rstrip(','), imports
 
 
-class PathLikeSerializer(BaseSerializer):
-    def serialize(self):
-        return repr(os.fspath(self.value)), {}
-
-
-class PathSerializer(BaseSerializer):
-    def serialize(self):
-        # Convert concrete paths to pure paths to avoid issues with migrations
-        # generated on one platform being used on a different platform.
-        prefix = 'Pure' if isinstance(self.value, pathlib.Path) else ''
-        return 'pathlib.%s%r' % (prefix, self.value), {'import pathlib'}
-
-
 class RegexSerializer(BaseSerializer):
     def serialize(self):
         regex_pattern, pattern_imports = serializer_factory(self.value.pattern).serialize()
@@ -284,7 +268,7 @@ class TypeSerializer(BaseSerializer):
             if module == builtins.__name__:
                 return self.value.__name__, set()
             else:
-                return "%s.%s" % (module, self.value.__qualname__), {"import %s" % module}
+                return "%s.%s" % (module, self.value.__name__), {"import %s" % module}
 
 
 class UUIDSerializer(BaseSerializer):
@@ -313,8 +297,6 @@ class Serializer:
         collections.abc.Iterable: IterableSerializer,
         (COMPILED_REGEX_TYPE, RegexObject): RegexSerializer,
         uuid.UUID: UUIDSerializer,
-        pathlib.PurePath: PathSerializer,
-        os.PathLike: PathLikeSerializer,
     }
 
     @classmethod

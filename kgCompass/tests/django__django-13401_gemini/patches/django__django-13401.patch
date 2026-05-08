@@ -1,0 +1,61 @@
+We need to fix the equality, ordering, and hashing of `Field` instances to consider the `model` attribute. This prevents fields from different abstract model subclasses from being considered equal.
+
+### Changes:
+1. **`__eq__`**: Compare both `creation_counter` and `model` identity.
+2. **`__lt__`**: Primary key on `creation_counter`, then break ties using `model` identity (via `id`).
+3. **`__hash__`**: Hash both `creation_counter` and `model`.
+
+---
+
+### django/db/models/fields/__init__.py (3 edits)
+
+```python
+### django/db/models/fields/__init__.py
+- start_line : 516
+- end_line : 520
+<<<<<<< SEARCH
+    def __eq__(self, other):
+        # Needed for @total_ordering
+        if isinstance(other, Field):
+            return self.creation_counter == other.creation_counter
+        return NotImplemented
+=======
+    def __eq__(self, other):
+        # Needed for @total_ordering
+        if isinstance(other, Field):
+            return self.creation_counter == other.creation_counter and self.model is other.model
+        return NotImplemented
+>>>>>>> REPLACE
+```
+
+```python
+### django/db/models/fields/__init__.py
+- start_line : 522
+- end_line : 526
+<<<<<<< SEARCH
+    def __lt__(self, other):
+        # This is needed because bisect does not take a comparison function.
+        if isinstance(other, Field):
+            return self.creation_counter < other.creation_counter
+        return NotImplemented
+=======
+    def __lt__(self, other):
+        # This is needed because bisect does not take a comparison function.
+        if isinstance(other, Field):
+            return (self.creation_counter, id(self.model)) < (other.creation_counter, id(other.model))
+        return NotImplemented
+>>>>>>> REPLACE
+```
+
+```python
+### django/db/models/fields/__init__.py
+- start_line : 528
+- end_line : 529
+<<<<<<< SEARCH
+    def __hash__(self):
+        return hash(self.creation_counter)
+=======
+    def __hash__(self):
+        return hash((self.creation_counter, self.model))
+>>>>>>> REPLACE
+```

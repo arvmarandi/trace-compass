@@ -29,66 +29,29 @@ If there is a (anti)symmetric metric, the indices can be raised and
 lowered when the tensor is put in canonical form.
 """
 
-from typing import Any, Dict as tDict, List, Set as tSet, Tuple as tTuple
-from functools import reduce
+from __future__ import print_function, division
 
-from abc import abstractmethod, ABCMeta
 from collections import defaultdict
 import operator
 import itertools
-from sympy.core.mul import prod
-from sympy.core.numbers import (Integer, Rational)
-from sympy.combinatorics import Permutation
+from sympy import Rational, prod, Integer
 from sympy.combinatorics.tensor_can import get_symmetric_group_sgs, \
     bsgs_direct_product, canonicalize, riemann_bsgs
 from sympy.core import Basic, Expr, sympify, Add, Mul, S
-from sympy.core.assumptions import ManagedProperties
+from sympy.core.compatibility import string_types, reduce, range, SYMPY_INTS
 from sympy.core.containers import Tuple, Dict
-from sympy.core.sorting import default_sort_key
+from sympy.core.decorators import deprecated
 from sympy.core.symbol import Symbol, symbols
 from sympy.core.sympify import CantSympify, _sympify
 from sympy.core.operations import AssocOp
-from sympy.external.gmpy import SYMPY_INTS
 from sympy.matrices import eye
-from sympy.utilities.exceptions import (sympy_deprecation_warning,
-                                        SymPyDeprecationWarning,
-                                        ignore_warnings)
-from sympy.utilities.decorator import memoize_property, deprecated
+from sympy.utilities.exceptions import SymPyDeprecationWarning
+import warnings
 
 
+@deprecated(useinstead=".replace_with_arrays", issue=15276, deprecated_since_version="1.4")
 def deprecate_data():
-    sympy_deprecation_warning(
-        """
-        The data attribute of TensorIndexType is deprecated. Use The
-        replace_with_arrays() method instead.
-        """,
-        deprecated_since_version="1.4",
-        active_deprecations_target="deprecated-tensorindextype-attrs",
-        stacklevel=4,
-    )
-
-def deprecate_fun_eval():
-    sympy_deprecation_warning(
-        """
-        The Tensor.fun_eval() method is deprecated. Use
-        Tensor.substitute_indices() instead.
-        """,
-        deprecated_since_version="1.5",
-        active_deprecations_target="deprecated-tensor-fun-eval",
-        stacklevel=4,
-    )
-
-
-def deprecate_call():
-    sympy_deprecation_warning(
-        """
-        Calling a tensor like Tensor(*indices) is deprecated. Use
-        Tensor.substitute_indices() instead.
-        """,
-        deprecated_since_version="1.5",
-        active_deprecations_target="deprecated-tensor-fun-eval",
-        stacklevel=4,
-    )
+    pass
 
 
 class _IndexStructure(CantSympify):
@@ -112,10 +75,7 @@ class _IndexStructure(CantSympify):
     @staticmethod
     def from_indices(*indices):
         """
-        Create a new ``_IndexStructure`` object from a list of ``indices``.
-
-        Explanation
-        ===========
+        Create a new ``_IndexStructure`` object from a list of ``indices``
 
         ``indices``     ``TensorIndex`` objects, the indices. Contractions are
                         detected upon construction.
@@ -124,12 +84,17 @@ class _IndexStructure(CantSympify):
         ========
 
         >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, _IndexStructure
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2, m3 = tensor_indices('m0,m1,m2,m3', Lorentz)
         >>> _IndexStructure.from_indices(m0, m1, -m1, m3)
         _IndexStructure([(m0, 0), (m3, 3)], [(1, 2)], [Lorentz, Lorentz, Lorentz, Lorentz])
-        """
 
+        In case of many components the same indices have slightly different
+        indexes:
+
+        >>> _IndexStructure.from_indices(m0, m1, -m1, m3)
+        _IndexStructure([(m0, 0), (m3, 3)], [(1, 2)], [Lorentz, Lorentz, Lorentz, Lorentz])
+        """
         free, dum = _IndexStructure._free_dum_from_indices(*indices)
         index_types = [i.tensor_index_type for i in indices]
         indices = _IndexStructure._replace_dummy_names(indices, free, dum)
@@ -146,10 +111,7 @@ class _IndexStructure(CantSympify):
     @staticmethod
     def _free_dum_from_indices(*indices):
         """
-        Convert ``indices`` into ``free``, ``dum`` for single component tensor.
-
-        Explanation
-        ===========
+        Convert ``indices`` into ``free``, ``dum`` for single component tensor
 
         ``free``     list of tuples ``(index, pos, 0)``,
                      where ``pos`` is the position of index in
@@ -162,7 +124,7 @@ class _IndexStructure(CantSympify):
 
         >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, \
             _IndexStructure
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2, m3 = tensor_indices('m0,m1,m2,m3', Lorentz)
         >>> _IndexStructure._free_dum_from_indices(m0, m1, -m1, m3)
         ([(m0, 0), (m3, 3)], [(1, 2)])
@@ -176,9 +138,9 @@ class _IndexStructure(CantSympify):
         index_dict = {}
         dum = []
         for i, index in enumerate(indices):
-            name = index.name
+            name = index._name
             typ = index.tensor_index_type
-            contr = index.is_up
+            contr = index._is_up
             if (name, typ) in index_dict:
                 # found a pair of dummy indices
                 is_contr, pos = index_dict[(name, typ)]
@@ -200,7 +162,7 @@ class _IndexStructure(CantSympify):
                 else:
                     dum.append((pos, i))
             else:
-                index_dict[(name, typ)] = index.is_up, i
+                index_dict[(name, typ)] = index._is_up, i
 
         free = [(index, i) for i, index in enumerate(indices) if free[i]]
         free.sort()
@@ -230,19 +192,20 @@ class _IndexStructure(CantSympify):
     @staticmethod
     def _get_generator_for_dummy_indices(free):
         cdt = defaultdict(int)
-        # if the free indices have names with dummy_name, start with an
+        # if the free indices have names with dummy_fmt, start with an
         # index higher than those for the dummy indices
         # to avoid name collisions
         for indx, ipos in free:
-            if indx.name.split('_')[0] == indx.tensor_index_type.dummy_name:
-                cdt[indx.tensor_index_type] = max(cdt[indx.tensor_index_type], int(indx.name.split('_')[1]) + 1)
+            if indx._name.split('_')[0] == indx.tensor_index_type.dummy_fmt[:-3]:
+                cdt[indx.tensor_index_type] = max(cdt[indx.tensor_index_type], int(indx._name.split('_')[1]) + 1)
 
-        def dummy_name_gen(tensor_index_type):
-            nd = str(cdt[tensor_index_type])
+        def dummy_fmt_gen(tensor_index_type):
+            fmt = tensor_index_type.dummy_fmt
+            nd = cdt[tensor_index_type]
             cdt[tensor_index_type] += 1
-            return tensor_index_type.dummy_name + '_' + nd
+            return fmt % nd
 
-        return dummy_name_gen
+        return dummy_fmt_gen
 
     @staticmethod
     def _replace_dummy_names(indices, free, dum):
@@ -257,7 +220,7 @@ class _IndexStructure(CantSympify):
             new_indices[ipos2] = TensorIndex(indname, typ1, False)
         return new_indices
 
-    def get_free_indices(self):  # type: () -> List[TensorIndex]
+    def get_free_indices(self):
         """
         Get a list of free indices.
         """
@@ -266,7 +229,7 @@ class _IndexStructure(CantSympify):
         return [i[0] for i in free]
 
     def __str__(self):
-        return "_IndexStructure({}, {}, {})".format(self.free, self.dum, self.index_types)
+        return "_IndexStructure({0}, {1}, {2})".format(self.free, self.dum, self.index_types)
 
     def __repr__(self):
         return self.__str__()
@@ -295,10 +258,7 @@ class _IndexStructure(CantSympify):
 
     def perm2tensor(self, g, is_canon_bp=False):
         """
-        Returns a ``_IndexStructure`` instance corresponding to the permutation ``g``.
-
-        Explanation
-        ===========
+        Returns a ``_IndexStructure`` instance corresponding to the permutation ``g``
 
         ``g``  permutation corresponding to the tensor in the representation
         used in canonicalization
@@ -339,24 +299,12 @@ class _IndexStructure(CantSympify):
         """
         Returns ``(g, dummies, msym, v)``, the entries of ``canonicalize``
 
-        See ``canonicalize`` in ``tensor_can.py`` in combinatorics module.
+        see ``canonicalize`` in ``tensor_can.py``
         """
         # to be called after sorted_components
         from sympy.combinatorics.permutations import _af_new
         n = self._ext_rank
         g = [None]*n + [n, n+1]
-
-        # Converts the symmetry of the metric into msym from .canonicalize()
-        # method in the combinatorics module
-        def metric_symmetry_to_msym(metric):
-            if metric is None:
-                return None
-            sym = metric.symmetry
-            if sym == TensorSymmetry.fully_symmetric(2):
-                return 0
-            if sym == TensorSymmetry.fully_symmetric(-2):
-                return 1
-            return None
 
         # ordered indices: first the free indices, ordered by types
         # then the dummy indices, ordered by types and contravariant before
@@ -380,7 +328,7 @@ class _IndexStructure(CantSympify):
                     dummies.append(a)
                 a = [pos, pos + 1]
                 prev = typ
-                msym.append(metric_symmetry_to_msym(typ.metric))
+                msym.append(typ.metric_antisym)
             else:
                 a.extend([pos, pos + 1])
             pos += 2
@@ -401,11 +349,11 @@ def components_canon_args(components):
             numtyp.append([prev, 1])
     v = []
     for h, n in numtyp:
-        if h.comm in (0, 1):
-            comm = h.comm
+        if h._comm == 0 or h._comm == 1:
+            comm = h._comm
         else:
-            comm = TensorManager.get_comm(h.comm, h.comm)
-        v.append((h.symmetry.base, h.symmetry.generators, n, comm))
+            comm = TensorManager.get_comm(h._comm, h._comm)
+        v.append((h._symmetry.base, h._symmetry.generators, n, comm))
     return v
 
 
@@ -413,9 +361,6 @@ class _TensorDataLazyEvaluator(CantSympify):
     """
     EXPERIMENTAL: do not rely on this class, it may change without deprecation
     warnings in future versions of SymPy.
-
-    Explanation
-    ===========
 
     This object contains the logic to associate components data to a tensor
     expression. Components data are set via the ``.data`` property of tensor
@@ -427,8 +372,8 @@ class _TensorDataLazyEvaluator(CantSympify):
     computed until they are accessed by reading the ``.data`` property
     associated to the tensor expression.
     """
-    _substitutions_dict = dict()  # type: tDict[Any, Any]
-    _substitutions_dict_tensmul = dict()  # type: tDict[Any, Any]
+    _substitutions_dict = dict()
+    _substitutions_dict_tensmul = dict()
 
     def __getitem__(self, key):
         dat = self._get(key)
@@ -448,9 +393,6 @@ class _TensorDataLazyEvaluator(CantSympify):
     def _get(self, key):
         """
         Retrieve ``data`` associated with ``key``.
-
-        Explanation
-        ===========
 
         This algorithm looks into ``self._substitutions_dict`` for all
         ``TensorHead`` in the ``TensExpr`` (or just ``TensorHead`` if key is a
@@ -491,9 +433,9 @@ class _TensorDataLazyEvaluator(CantSympify):
             #data_list = [self.data_from_tensor(i) for i in tensmul_args if isinstance(i, TensExpr)]
             data_list = [self.data_from_tensor(i) if isinstance(i, Tensor) else i.data for i in tensmul_args if isinstance(i, TensExpr)]
             coeff = prod([i for i in tensmul_args if not isinstance(i, TensExpr)])
-            if all(i is None for i in data_list):
+            if all([i is None for i in data_list]):
                 return None
-            if any(i is None for i in data_list):
+            if any([i is None for i in data_list]):
                 raise ValueError("Mixing tensors with associated components "\
                                  "data with tensors without components data")
             data_result = self.data_contract_dum(data_list, key.dum, key.ext_rank)
@@ -509,9 +451,9 @@ class _TensorDataLazyEvaluator(CantSympify):
                 else:
                     data_list.append(arg)
                     free_args_list.append([])
-            if all(i is None for i in data_list):
+            if all([i is None for i in data_list]):
                 return None
-            if any(i is None for i in data_list):
+            if any([i is None for i in data_list]):
                 raise ValueError("Mixing tensors with associated components "\
                                  "data with tensors without components data")
 
@@ -580,7 +522,6 @@ class _TensorDataLazyEvaluator(CantSympify):
 
     def _check_permutations_on_data(self, tens, data):
         from .array import permutedims
-        from .array.arrayop import Flatten
 
         if isinstance(tens, TensorHead):
             rank = tens.rank
@@ -605,16 +546,13 @@ class _TensorDataLazyEvaluator(CantSympify):
             for i in range(gener.order()-1):
                 data_swapped = permutedims(data_swapped, permute_axes)
                 # if any value in the difference array is non-zero, raise an error:
-                if any(Flatten(last_data - sign_change*data_swapped)):
+                if any(last_data - sign_change*data_swapped):
                     raise ValueError("Component data symmetry structure error")
                 last_data = data_swapped
 
     def __setitem__(self, key, value):
         """
         Set the components data of a tensor object/expression.
-
-        Explanation
-        ===========
 
         Components data are transformed to the all-contravariant form and stored
         with the corresponding ``TensorHead`` object. If a ``TensorHead`` object
@@ -634,7 +572,7 @@ class _TensorDataLazyEvaluator(CantSympify):
                 if indextype.data is None:
                     raise ValueError("index type {} has no components data"\
                     " associated (needed to raise/lower index)".format(indextype))
-                if not indextype.dim.is_number:
+                if indextype.dim is None:
                     continue
                 if dim != indextype.dim:
                     raise ValueError("wrong dimension of ndarray")
@@ -651,9 +589,6 @@ class _TensorDataLazyEvaluator(CantSympify):
         Assign data to the ``metric`` tensor. The metric tensor behaves in an
         anomalous way when raising and lowering indices.
 
-        Explanation
-        ===========
-
         A fully covariant metric is the inverse transpose of the fully
         contravariant metric (it is meant matrix inverse). If the metric is
         symmetric, the transpose is not necessary and mixed
@@ -665,7 +600,7 @@ class _TensorDataLazyEvaluator(CantSympify):
         # inverse, this is not the case for other tensors.
         self._substitutions_dict_tensmul[metric, True, True] = data
         inverse_transpose = self.inverse_transpose_matrix(data)
-        # in symmetric spaces, the transpose is the same as the original matrix,
+        # in symmetric spaces, the traspose is the same as the original matrix,
         # the full covariant metric tensor is the inverse transpose, so this
         # code will be able to handle non-symmetric metrics.
         self._substitutions_dict_tensmul[metric, False, False] = inverse_transpose
@@ -760,7 +695,7 @@ class _TensorDataLazyEvaluator(CantSympify):
     def parse_data(data):
         """
         Transform ``data`` to array. The parameter ``data`` may
-        contain data in various formats, e.g. nested lists, SymPy ``Matrix``,
+        contain data in various formats, e.g. nested lists, sympy ``Matrix``,
         and so on.
 
         Examples
@@ -785,7 +720,7 @@ class _TensorDataLazyEvaluator(CantSympify):
 _tensor_data_substitution_dict = _TensorDataLazyEvaluator()
 
 
-class _TensorManager:
+class _TensorManager(object):
     """
     Class to manage tensor properties.
 
@@ -825,9 +760,9 @@ class _TensorManager:
 
     def comm_symbols2i(self, i):
         """
-        Get the commutation group number corresponding to ``i``.
+        get the commutation group number corresponding to ``i``
 
-        ``i`` can be a symbol or a number or a string.
+        ``i`` can be a symbol or a number or a string
 
         If ``i`` is not already defined its commutation group number
         is set.
@@ -850,7 +785,7 @@ class _TensorManager:
 
     def set_comm(self, i, j, c):
         """
-        Set the commutation parameter ``c`` for commutation groups ``i, j``.
+        set the commutation parameter ``c`` for commutation groups ``i, j``
 
         Parameters
         ==========
@@ -884,12 +819,12 @@ class _TensorManager:
         ``G`` and ``GH`` do not commute with themselves and commute with
         each other; A is commuting.
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorHead, TensorManager, TensorSymmetry
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead, TensorManager
         >>> Lorentz = TensorIndexType('Lorentz')
         >>> i0,i1,i2,i3,i4 = tensor_indices('i0:5', Lorentz)
-        >>> A = TensorHead('A', [Lorentz])
-        >>> G = TensorHead('G', [Lorentz], TensorSymmetry.no_symmetry(1), 'Gcomm')
-        >>> GH = TensorHead('GH', [Lorentz], TensorSymmetry.no_symmetry(1), 'GHcomm')
+        >>> A = tensorhead('A', [Lorentz], [[1]])
+        >>> G = tensorhead('G', [Lorentz], [[1]], 'Gcomm')
+        >>> GH = tensorhead('GH', [Lorentz], [[1]], 'GHcomm')
         >>> TensorManager.set_comm('Gcomm', 'GHcomm', 0)
         >>> (GH(i1)*G(i0)).canon_bp()
         G(i0)*GH(i1)
@@ -922,7 +857,7 @@ class _TensorManager:
 
     def set_comms(self, *args):
         """
-        Set the commutation group numbers ``c`` for symbols ``i, j``.
+        set the commutation group numbers ``c`` for symbols ``i, j``
 
         Parameters
         ==========
@@ -958,49 +893,54 @@ class TensorIndexType(Basic):
     ==========
 
     name : name of the tensor type
-    dummy_name : name of the head of dummy indices
+
+    metric : metric symmetry or metric object or ``None``
+
+
     dim : dimension, it can be a symbol or an integer or ``None``
+
     eps_dim : dimension of the epsilon tensor
-    metric_symmetry : integer that denotes metric symmetry or ``None`` for no metirc
-    metric_name : string with the name of the metric tensor
+
+    dummy_fmt : name of the head of dummy indices
 
     Attributes
     ==========
 
+    ``name``
+    ``metric_name`` : it is 'metric' or metric.name
+    ``metric_antisym``
     ``metric`` : the metric tensor
     ``delta`` : ``Kronecker delta``
     ``epsilon`` : the ``Levi-Civita epsilon`` tensor
-    ``data`` : (deprecated) a property to add ``ndarray`` values, to work in a specified basis.
+    ``dim``
+    ``eps_dim``
+    ``dummy_fmt``
+    ``data`` : a property to add ``ndarray`` values, to work in a specified basis.
 
     Notes
     =====
 
-    The possible values of the ``metric_symmetry`` parameter are:
+    The ``metric`` parameter can be:
+    ``metric = False`` symmetric metric (in Riemannian geometry)
 
-        ``1``   :   metric tensor is fully symmetric
-        ``0``   :   metric tensor possesses no index symmetry
-        ``-1``  :   metric tensor is fully antisymmetric
-        ``None``:   there is no metric tensor (metric equals to ``None``)
+    ``metric = True`` antisymmetric metric (for spinor calculus)
 
-    The metric is assumed to be symmetric by default. It can also be set
-    to a custom tensor by the ``.set_metric()`` method.
+    ``metric = None``  there is no metric
+
+    ``metric`` can be an object having ``name`` and ``antisym`` attributes.
+
 
     If there is a metric the metric is used to raise and lower indices.
 
-    In the case of non-symmetric metric, the following raising and
+    In the case of antisymmetric metric, the following raising and
     lowering conventions will be adopted:
 
     ``psi(a) = g(a, b)*psi(-b); chi(-a) = chi(b)*g(-b, -a)``
 
-    From these it is easy to find:
-
-    ``g(-a, b) = delta(-a, b)``
+    ``g(-a, b) = delta(-a, b); g(b, -a) = -delta(a, -b)``
 
     where ``delta(-a, b) = delta(b, -a)`` is the ``Kronecker delta``
     (see ``TensorIndex`` for the conventions on indices).
-    For antisymmetric metrics there is also the following equality:
-
-    ``g(a, -b) = -delta(a, -b)``
 
     If there is no metric it is not possible to raise or lower indices;
     e.g. the index of the defining representation of ``SU(N)``
@@ -1015,139 +955,68 @@ class TensorIndexType(Basic):
     ========
 
     >>> from sympy.tensor.tensor import TensorIndexType
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
     >>> Lorentz.metric
     metric(Lorentz,Lorentz)
     """
 
-    def __new__(cls, name, dummy_name=None, dim=None, eps_dim=None,
-                metric_symmetry=1, metric_name='metric', **kwargs):
-        if 'dummy_fmt' in kwargs:
-            dummy_fmt = kwargs['dummy_fmt']
-            sympy_deprecation_warning(
-                f"""
-                The dummy_fmt keyword to TensorIndexType is deprecated. Use
-                dummy_name={dummy_fmt} instead.
-                """,
-                deprecated_since_version="1.5",
-                active_deprecations_target="deprecated-tensorindextype-dummy-fmt",
-            )
-            dummy_name = dummy_fmt
+    def __new__(cls, name, metric=False, dim=None, eps_dim=None,
+                dummy_fmt=None):
 
-        if isinstance(name, str):
+        if isinstance(name, string_types):
             name = Symbol(name)
-
-        if dummy_name is None:
-            dummy_name = str(name)[0]
-        if isinstance(dummy_name, str):
-            dummy_name = Symbol(dummy_name)
-
-        if dim is None:
-            dim = Symbol("dim_" + dummy_name.name)
+        obj = Basic.__new__(cls, name, S.One if metric else S.Zero)
+        obj._name = str(name)
+        if not dummy_fmt:
+            obj._dummy_fmt = '%s_%%d' % obj.name
         else:
-            dim = sympify(dim)
-
-        if eps_dim is None:
-            eps_dim = dim
+            obj._dummy_fmt = '%s_%%d' % dummy_fmt
+        if metric is None:
+            obj.metric_antisym = None
+            obj.metric = None
         else:
-            eps_dim = sympify(eps_dim)
+            if metric in (True, False, 0, 1):
+                metric_name = 'metric'
+                obj.metric_antisym = metric
+            else:
+                metric_name = metric.name
+                obj.metric_antisym = metric.antisym
+            sym2 = TensorSymmetry(get_symmetric_group_sgs(2, obj.metric_antisym))
+            S2 = TensorType([obj]*2, sym2)
+            obj.metric = S2(metric_name)
 
-        metric_symmetry = sympify(metric_symmetry)
-
-        if isinstance(metric_name, str):
-            metric_name = Symbol(metric_name)
-
-        if 'metric' in kwargs:
-            SymPyDeprecationWarning(
-                """
-                The 'metric' keyword argument to TensorIndexType is
-                deprecated. Use the 'metric_symmetry' keyword argument or the
-                TensorIndexType.set_metric() method instead.
-                """,
-                deprecated_since_version="1.5",
-                active_deprecations_target="deprecated-tensorindextype-metric",
-            )
-            metric = kwargs.get('metric')
-            if metric is not None:
-                if metric in (True, False, 0, 1):
-                    metric_name = 'metric'
-                    #metric_antisym = metric
-                else:
-                    metric_name = metric.name
-                    #metric_antisym = metric.antisym
-
-                if metric:
-                    metric_symmetry = -1
-                else:
-                    metric_symmetry = 1
-
-        obj = Basic.__new__(cls, name, dummy_name, dim, eps_dim,
-                            metric_symmetry, metric_name)
-
+        obj._dim = dim
+        obj._delta = obj.get_kronecker_delta()
+        obj._eps_dim = eps_dim if eps_dim else dim
+        obj._epsilon = obj.get_epsilon()
         obj._autogenerated = []
         return obj
 
     @property
-    def name(self):
-        return self.args[0].name
+    @deprecated(useinstead="TensorIndex", issue=12857, deprecated_since_version="1.1")
+    def auto_right(self):
+        if not hasattr(self, '_auto_right'):
+            self._auto_right = TensorIndex("auto_right", self)
+        return self._auto_right
 
     @property
-    def dummy_name(self):
-        return self.args[1].name
+    @deprecated(useinstead="TensorIndex", issue=12857, deprecated_since_version="1.1")
+    def auto_left(self):
+        if not hasattr(self, '_auto_left'):
+            self._auto_left = TensorIndex("auto_left", self)
+        return self._auto_left
 
     @property
-    def dim(self):
-        return self.args[2]
-
-    @property
-    def eps_dim(self):
-        return self.args[3]
-
-    @memoize_property
-    def metric(self):
-        metric_symmetry = self.args[4]
-        metric_name = self.args[5]
-        if metric_symmetry is None:
-            return None
-
-        if metric_symmetry == 0:
-            symmetry = TensorSymmetry.no_symmetry(2)
-        elif metric_symmetry == 1:
-            symmetry = TensorSymmetry.fully_symmetric(2)
-        elif metric_symmetry == -1:
-            symmetry = TensorSymmetry.fully_symmetric(-2)
-
-        return TensorHead(metric_name, [self]*2, symmetry)
-
-    @memoize_property
-    def delta(self):
-        return TensorHead('KD', [self]*2, TensorSymmetry.fully_symmetric(2))
-
-    @memoize_property
-    def epsilon(self):
-        if not isinstance(self.eps_dim, (SYMPY_INTS, Integer)):
-            return None
-        symmetry = TensorSymmetry.fully_symmetric(-self.eps_dim)
-        return TensorHead('Eps', [self]*self.eps_dim, symmetry)
-
-    def set_metric(self, tensor):
-        self._metric = tensor
-
-    def __lt__(self, other):
-        return self.name < other.name
-
-    def __str__(self):
-        return self.name
-
-    __repr__ = __str__
-
-    # Everything below this line is deprecated
+    @deprecated(useinstead="TensorIndex", issue=12857, deprecated_since_version="1.1")
+    def auto_index(self):
+        if not hasattr(self, '_auto_index'):
+            self._auto_index = TensorIndex("auto_index", self)
+        return self._auto_index
 
     @property
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return _tensor_data_substitution_dict[self]
+        return _tensor_data_substitution_dict[self]
 
     @data.setter
     def data(self, data):
@@ -1161,7 +1030,7 @@ class TensorIndexType(Basic):
         if data.rank() > 2:
             raise ValueError("data have to be of rank 1 (diagonal metric) or 2.")
         if data.rank() == 1:
-            if self.dim.is_number:
+            if self.dim is not None:
                 nda_dim = data.shape[0]
                 if nda_dim != self.dim:
                     raise ValueError("Dimension mismatch")
@@ -1174,54 +1043,72 @@ class TensorIndexType(Basic):
         dim1, dim2 = data.shape
         if dim1 != dim2:
             raise ValueError("Non-square matrix tensor.")
-        if self.dim.is_number:
+        if self.dim is not None:
             if self.dim != dim1:
                 raise ValueError("Dimension mismatch")
         _tensor_data_substitution_dict[self] = data
         _tensor_data_substitution_dict.add_metric_data(self.metric, data)
-        with ignore_warnings(SymPyDeprecationWarning):
-            delta = self.get_kronecker_delta()
+        delta = self.get_kronecker_delta()
         i1 = TensorIndex('i1', self)
         i2 = TensorIndex('i2', self)
-        with ignore_warnings(SymPyDeprecationWarning):
-            delta(i1, -i2).data = _TensorDataLazyEvaluator.parse_data(eye(dim1))
+        delta(i1, -i2).data = _TensorDataLazyEvaluator.parse_data(eye(dim1))
 
     @data.deleter
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            if self in _tensor_data_substitution_dict:
-                del _tensor_data_substitution_dict[self]
-            if self.metric in _tensor_data_substitution_dict:
-                del _tensor_data_substitution_dict[self.metric]
+        if self in _tensor_data_substitution_dict:
+            del _tensor_data_substitution_dict[self]
+        if self.metric in _tensor_data_substitution_dict:
+            del _tensor_data_substitution_dict[self.metric]
 
-    @deprecated(
-        """
-        The TensorIndexType.get_kronecker_delta() method is deprecated. Use
-        the TensorIndexType.delta attribute instead.
-        """,
-        deprecated_since_version="1.5",
-        active_deprecations_target="deprecated-tensorindextype-methods",
-    )
+    def _get_matrix_fmt(self, number):
+        return ("m" + self.dummy_fmt) % (number)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def dim(self):
+        return self._dim
+
+    @property
+    def delta(self):
+        return self._delta
+
+    @property
+    def eps_dim(self):
+        return self._eps_dim
+
+    @property
+    def epsilon(self):
+        return self._epsilon
+
+    @property
+    def dummy_fmt(self):
+        return self._dummy_fmt
+
     def get_kronecker_delta(self):
         sym2 = TensorSymmetry(get_symmetric_group_sgs(2))
-        delta = TensorHead('KD', [self]*2, sym2)
+        S2 = TensorType([self]*2, sym2)
+        delta = S2('KD')
         return delta
 
-    @deprecated(
-        """
-        The TensorIndexType.get_epsilon() method is deprecated. Use
-        the TensorIndexType.epsilon attribute instead.
-        """,
-        deprecated_since_version="1.5",
-        active_deprecations_target="deprecated-tensorindextype-methods",
-    )
     def get_epsilon(self):
         if not isinstance(self._eps_dim, (SYMPY_INTS, Integer)):
             return None
         sym = TensorSymmetry(get_symmetric_group_sgs(self._eps_dim, 1))
-        epsilon = TensorHead('Eps', [self]*self._eps_dim, sym)
+        Sdim = TensorType([self]*self._eps_dim, sym)
+        epsilon = Sdim('Eps')
         return epsilon
+
+    def __lt__(self, other):
+        return self.name < other.name
+
+    def __str__(self):
+        return self.name
+
+    __repr__ = __str__
 
     def _components_data_full_destroy(self):
         """
@@ -1254,20 +1141,20 @@ class TensorIndexType(Basic):
 
 class TensorIndex(Basic):
     """
-    Represents a tensor index
+    Represents an abstract tensor index.
 
     Parameters
     ==========
 
     name : name of the index, or ``True`` if you want it to be automatically assigned
-    tensor_index_type : ``TensorIndexType`` of the index
-    is_up :  flag for contravariant index (is_up=True by default)
+    tensortype : ``TensorIndexType`` of the index
+    is_up :  flag for contravariant index
 
     Attributes
     ==========
 
     ``name``
-    ``tensor_index_type``
+    ``tensortype``
     ``is_up``
 
     Notes
@@ -1276,68 +1163,84 @@ class TensorIndex(Basic):
     Tensor indices are contracted with the Einstein summation convention.
 
     An index can be in contravariant or in covariant form; in the latter
-    case it is represented prepending a ``-`` to the index name. Adding
-    ``-`` to a covariant (is_up=False) index makes it contravariant.
+    case it is represented prepending a ``-`` to the index name.
 
-    Dummy indices have a name with head given by
-    ``tensor_inde_type.dummy_name`` with underscore and a number.
-
-    Similar to ``symbols`` multiple contravariant indices can be created
-    at once using ``tensor_indices(s, typ)``, where ``s`` is a string
-    of names.
+    Dummy indices have a name with head given by ``tensortype._dummy_fmt``
 
 
     Examples
     ========
 
-    >>> from sympy.tensor.tensor import TensorIndexType, TensorIndex, TensorHead, tensor_indices
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
-    >>> mu = TensorIndex('mu', Lorentz, is_up=False)
-    >>> nu, rho = tensor_indices('nu, rho', Lorentz)
-    >>> A = TensorHead('A', [Lorentz, Lorentz])
-    >>> A(mu, nu)
-    A(-mu, nu)
-    >>> A(-mu, -rho)
-    A(mu, -rho)
-    >>> A(mu, -mu)
-    A(-L_0, L_0)
+    >>> from sympy.tensor.tensor import TensorIndexType, TensorIndex, TensorSymmetry, TensorType, get_symmetric_group_sgs
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> i = TensorIndex('i', Lorentz); i
+    i
+    >>> sym1 = TensorSymmetry(*get_symmetric_group_sgs(1))
+    >>> S1 = TensorType([Lorentz], sym1)
+    >>> A, B = S1('A,B')
+    >>> A(i)*B(-i)
+    A(L_0)*B(-L_0)
+
+    If you want the index name to be automatically assigned, just put ``True``
+    in the ``name`` field, it will be generated using the reserved character
+    ``_`` in front of its name, in order to avoid conflicts with possible
+    existing indices:
+
+    >>> i0 = TensorIndex(True, Lorentz)
+    >>> i0
+    _i0
+    >>> i1 = TensorIndex(True, Lorentz)
+    >>> i1
+    _i1
+    >>> A(i0)*B(-i1)
+    A(_i0)*B(-_i1)
+    >>> A(i0)*B(-i0)
+    A(L_0)*B(-L_0)
     """
-    def __new__(cls, name, tensor_index_type, is_up=True):
-        if isinstance(name, str):
+    def __new__(cls, name, tensortype, is_up=True):
+        if isinstance(name, string_types):
             name_symbol = Symbol(name)
         elif isinstance(name, Symbol):
             name_symbol = name
         elif name is True:
-            name = "_i{}".format(len(tensor_index_type._autogenerated))
+            name = "_i{0}".format(len(tensortype._autogenerated))
             name_symbol = Symbol(name)
-            tensor_index_type._autogenerated.append(name_symbol)
+            tensortype._autogenerated.append(name_symbol)
         else:
             raise ValueError("invalid name")
 
         is_up = sympify(is_up)
-        return Basic.__new__(cls, name_symbol, tensor_index_type, is_up)
+        obj = Basic.__new__(cls, name_symbol, tensortype, is_up)
+        obj._name = str(name)
+        obj._tensor_index_type = tensortype
+        obj._is_up = is_up
+        return obj
 
     @property
     def name(self):
-        return self.args[0].name
+        return self._name
+
+    @property
+    @deprecated(useinstead="tensor_index_type", issue=12857, deprecated_since_version="1.1")
+    def tensortype(self):
+        return self.tensor_index_type
 
     @property
     def tensor_index_type(self):
-        return self.args[1]
+        return self._tensor_index_type
 
     @property
     def is_up(self):
-        return self.args[2]
+        return self._is_up
 
     def _print(self):
-        s = self.name
-        if not self.is_up:
+        s = self._name
+        if not self._is_up:
             s = '-%s' % s
         return s
 
     def __lt__(self, other):
-        return ((self.tensor_index_type, self.name) <
-                (other.tensor_index_type, other.name))
+        return (self.tensor_index_type, self._name) < (other.tensor_index_type, other._name)
 
     def __neg__(self):
         t1 = TensorIndex(self.name, self.tensor_index_type,
@@ -1347,7 +1250,7 @@ class TensorIndex(Basic):
 
 def tensor_indices(s, typ):
     """
-    Returns list of tensor indices given their names and their types.
+    Returns list of tensor indices given their names and their types
 
     Parameters
     ==========
@@ -1360,10 +1263,10 @@ def tensor_indices(s, typ):
     ========
 
     >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
     >>> a, b, c, d = tensor_indices('a,b,c,d', Lorentz)
     """
-    if isinstance(s, str):
+    if isinstance(s, string_types):
         a = [x.name for x in symbols(s, seq=True)]
     else:
         raise ValueError('expecting a string')
@@ -1376,9 +1279,7 @@ def tensor_indices(s, typ):
 
 class TensorSymmetry(Basic):
     """
-    Monoterm symmetry of a tensor (i.e. any symmetric or anti-symmetric
-    index permutation). For the relevant terminology see ``tensor_can.py``
-    section of the combinatorics module.
+    Monoterm symmetry of a tensor
 
     Parameters
     ==========
@@ -1396,10 +1297,8 @@ class TensorSymmetry(Basic):
     =====
 
     A tensor can have an arbitrary monoterm symmetry provided by its BSGS.
-    Multiterm symmetries, like the cyclic symmetry of the Riemann tensor
-    (i.e., Bianchi identity), are not covered. See combinatorics module for
-    information on how to generate BSGS for a general index permutation group.
-    Simple symmetries can be generated using built-in methods.
+    Multiterm symmetries, like the cyclic symmetry of the Riemann tensor,
+    are not covered.
 
     See Also
     ========
@@ -1409,18 +1308,13 @@ class TensorSymmetry(Basic):
     Examples
     ========
 
-    Define a symmetric tensor of rank 2
+    Define a symmetric tensor
 
-    >>> from sympy.tensor.tensor import TensorIndexType, TensorSymmetry, get_symmetric_group_sgs, TensorHead
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
-    >>> sym = TensorSymmetry(get_symmetric_group_sgs(2))
-    >>> T = TensorHead('T', [Lorentz]*2, sym)
-
-    Note, that the same can also be done using built-in TensorSymmetry methods
-
-    >>> sym2 = TensorSymmetry.fully_symmetric(2)
-    >>> sym == sym2
-    True
+    >>> from sympy.tensor.tensor import TensorIndexType, TensorSymmetry, TensorType, get_symmetric_group_sgs
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> sym2 = TensorSymmetry(get_symmetric_group_sgs(2))
+    >>> S2 = TensorType([Lorentz]*2, sym2)
+    >>> V = S2('V')
     """
     def __new__(cls, *args, **kw_args):
         if len(args) == 1:
@@ -1434,8 +1328,8 @@ class TensorSymmetry(Basic):
             base = Tuple(*base)
         if not isinstance(generators, Tuple):
             generators = Tuple(*generators)
-
-        return Basic.__new__(cls, base, generators, **kw_args)
+        obj = Basic.__new__(cls, base, generators, **kw_args)
+        return obj
 
     @property
     def base(self):
@@ -1447,80 +1341,12 @@ class TensorSymmetry(Basic):
 
     @property
     def rank(self):
-        return self.generators[0].size - 2
-
-    @classmethod
-    def fully_symmetric(cls, rank):
-        """
-        Returns a fully symmetric (antisymmetric if ``rank``<0)
-        TensorSymmetry object for ``abs(rank)`` indices.
-        """
-        if rank > 0:
-            bsgs = get_symmetric_group_sgs(rank, False)
-        elif rank < 0:
-            bsgs = get_symmetric_group_sgs(-rank, True)
-        elif rank == 0:
-            bsgs = ([], [Permutation(1)])
-        return TensorSymmetry(bsgs)
-
-    @classmethod
-    def direct_product(cls, *args):
-        """
-        Returns a TensorSymmetry object that is being a direct product of
-        fully (anti-)symmetric index permutation groups.
-
-        Notes
-        =====
-
-        Some examples for different values of ``(*args)``:
-        ``(1)``         vector, equivalent to ``TensorSymmetry.fully_symmetric(1)``
-        ``(2)``         tensor with 2 symmetric indices, equivalent to ``.fully_symmetric(2)``
-        ``(-2)``        tensor with 2 antisymmetric indices, equivalent to ``.fully_symmetric(-2)``
-        ``(2, -2)``     tensor with the first 2 indices commuting and the last 2 anticommuting
-        ``(1, 1, 1)``   tensor with 3 indices without any symmetry
-        """
-        base, sgs = [], [Permutation(1)]
-        for arg in args:
-            if arg > 0:
-                bsgs2 = get_symmetric_group_sgs(arg, False)
-            elif arg < 0:
-                bsgs2 = get_symmetric_group_sgs(-arg, True)
-            else:
-                continue
-            base, sgs = bsgs_direct_product(base, sgs, *bsgs2)
-
-        return TensorSymmetry(base, sgs)
-
-    @classmethod
-    def riemann(cls):
-        """
-        Returns a monotorem symmetry of the Riemann tensor
-        """
-        return TensorSymmetry(riemann_bsgs)
-
-    @classmethod
-    def no_symmetry(cls, rank):
-        """
-        TensorSymmetry object for ``rank`` indices with no symmetry
-        """
-        return TensorSymmetry([], [Permutation(rank+1)])
+        return self.args[1][0].size - 2
 
 
-@deprecated(
-    """
-    The tensorsymmetry() function is deprecated. Use the TensorSymmetry
-    constructor instead.
-    """,
-    deprecated_since_version="1.5",
-    active_deprecations_target="deprecated-tensorsymmetry",
-)
 def tensorsymmetry(*args):
     """
-    Returns a ``TensorSymmetry`` object. This method is deprecated, use
-    ``TensorSymmetry.direct_product()`` or ``.riemann()`` instead.
-
-    Explanation
-    ===========
+    Return a ``TensorSymmetry`` object.
 
     One can represent a tensor with any monoterm slot symmetry group
     using a BSGS.
@@ -1549,6 +1375,24 @@ def tensorsymmetry(*args):
     since the shape ``[2, 2]`` corresponds usually to the irreducible
     representation characterized by the monoterm symmetries and by the
     cyclic symmetry.
+
+    Examples
+    ========
+
+    Symmetric tensor using a Young tableau
+
+    >>> from sympy.tensor.tensor import TensorIndexType, TensorType, tensorsymmetry
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> sym2 = tensorsymmetry([1, 1])
+    >>> S2 = TensorType([Lorentz]*2, sym2)
+    >>> V = S2('V')
+
+    Symmetric tensor using a ``BSGS`` (base, strong generator set)
+
+    >>> from sympy.tensor.tensor import get_symmetric_group_sgs
+    >>> sym2 = tensorsymmetry(*get_symmetric_group_sgs(2))
+    >>> S2 = TensorType([Lorentz]*2, sym2)
+    >>> V = S2('V')
     """
     from sympy.combinatorics import Permutation
 
@@ -1579,14 +1423,10 @@ def tensorsymmetry(*args):
         base, sgs = bsgs_direct_product(base, sgs, basex, sgsx)
     return TensorSymmetry(Tuple(base, sgs))
 
-@deprecated(
-    "TensorType is deprecated. Use tensor_heads() instead.",
-    deprecated_since_version="1.5",
-    active_deprecations_target="deprecated-tensortype",
-)
+
 class TensorType(Basic):
     """
-    Class of tensor types. Deprecated, use tensor_heads() instead.
+    Class of tensor types.
 
     Parameters
     ==========
@@ -1600,6 +1440,17 @@ class TensorType(Basic):
     ``index_types``
     ``symmetry``
     ``types`` : list of ``TensorIndexType`` without repetitions
+
+    Examples
+    ========
+
+    Define a symmetric tensor
+
+    >>> from sympy.tensor.tensor import TensorIndexType, tensorsymmetry, TensorType
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> sym2 = tensorsymmetry([1, 1])
+    >>> S2 = TensorType([Lorentz]*2, sym2)
+    >>> V = S2('V')
     """
     is_commutative = False
 
@@ -1627,41 +1478,48 @@ class TensorType(Basic):
         """
         Return a TensorHead object or a list of TensorHead objects.
 
-        Parameters
-        ==========
+        ``s``  name or string of names
 
-        s : name or string of names.
-
-        comm : Commutation group.
-
+        ``comm``: commutation group number
         see ``_TensorManager.set_comm``
+
+        Examples
+        ========
+
+        Define symmetric tensors ``V``, ``W`` and ``G``, respectively
+        commuting, anticommuting and with no commutation symmetry
+
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorsymmetry, TensorType, canon_bp
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+        >>> a, b = tensor_indices('a,b', Lorentz)
+        >>> sym2 = tensorsymmetry([1]*2)
+        >>> S2 = TensorType([Lorentz]*2, sym2)
+        >>> V = S2('V')
+        >>> W = S2('W', 1)
+        >>> G = S2('G', 2)
+        >>> canon_bp(V(a, b)*V(-b, -a))
+        V(L_0, L_1)*V(-L_0, -L_1)
+        >>> canon_bp(W(a, b)*W(-b, -a))
+        0
         """
-        if isinstance(s, str):
+        if isinstance(s, string_types):
             names = [x.name for x in symbols(s, seq=True)]
         else:
             raise ValueError('expecting a string')
         if len(names) == 1:
-            return TensorHead(names[0], self.index_types, self.symmetry, comm)
+            return TensorHead(names[0], self, comm)
         else:
-            return [TensorHead(name, self.index_types, self.symmetry, comm) for name in names]
+            return [TensorHead(name, self, comm) for name in names]
 
 
-@deprecated(
-    """
-    The tensorhead() function is deprecated. Use tensor_heads() instead.
-    """,
-    deprecated_since_version="1.5",
-    active_deprecations_target="deprecated-tensorhead",
-)
 def tensorhead(name, typ, sym=None, comm=0):
     """
-    Function generating tensorhead(s). This method is deprecated,
-    use TensorHead constructor or tensor_heads() instead.
+    Function generating tensorhead(s).
 
     Parameters
     ==========
 
-    name : name or sequence of names (as in ``symbols``)
+    name : name or sequence of names (as in ``symbol``)
 
     typ :  index types
 
@@ -1669,24 +1527,45 @@ def tensorhead(name, typ, sym=None, comm=0):
 
     comm : commutation group number
     see ``_TensorManager.set_comm``
+
+
+    Examples
+    ========
+
+    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> a, b = tensor_indices('a,b', Lorentz)
+    >>> A = tensorhead('A', [Lorentz]*2, [[1]*2])
+    >>> A(a, -b)
+    A(a, -b)
+
+    If no symmetry parameter is provided, assume there are not index
+    symmetries:
+
+    >>> B = tensorhead('B', [Lorentz, Lorentz])
+    >>> B(a, -b)
+    B(a, -b)
+
     """
     if sym is None:
         sym = [[1] for i in range(len(typ))]
-    with ignore_warnings(SymPyDeprecationWarning):
-        sym = tensorsymmetry(*sym)
-    return TensorHead(name, typ, sym, comm)
+    sym = tensorsymmetry(*sym)
+    S = TensorType(typ, sym)
+    th = S(name, comm)
+    return th
 
 
 class TensorHead(Basic):
-    """
-    Tensor head of the tensor.
+    r"""
+    Tensor head of the tensor
 
     Parameters
     ==========
 
     name : name of the tensor
-    index_types : list of TensorIndexType
-    symmetry : TensorSymmetry of the tensor
+
+    typ : list of TensorIndexType
+
     comm : commutation group number
 
     Attributes
@@ -1694,17 +1573,13 @@ class TensorHead(Basic):
 
     ``name``
     ``index_types``
-    ``rank`` : total number of indices
-    ``symmetry``
+    ``rank``
+    ``types``  :  equal to ``typ.types``
+    ``symmetry`` : equal to ``typ.symmetry``
     ``comm`` : commutation group
 
     Notes
     =====
-
-    Similar to ``symbols`` multiple TensorHeads can be created using
-    ``tensorhead(s, typ, sym=None, comm=0)`` function, where ``s``
-    is the string of names and ``sym`` is the monoterm tensor symmetry
-    (see ``tensorsymmetry``).
 
     A ``TensorHead`` belongs to a commutation group, defined by a
     symbol on number ``comm`` (see ``_TensorManager.set_comm``);
@@ -1714,12 +1589,9 @@ class TensorHead(Basic):
     Examples
     ========
 
-    Define a fully antisymmetric tensor of rank 2:
-
-    >>> from sympy.tensor.tensor import TensorIndexType, TensorHead, TensorSymmetry
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
-    >>> asym2 = TensorSymmetry.fully_symmetric(-2)
-    >>> A = TensorHead('A', [Lorentz, Lorentz], asym2)
+    >>> from sympy.tensor.tensor import TensorIndexType, tensorhead, TensorType
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> A = tensorhead('A', [Lorentz, Lorentz], [[1],[1]])
 
     Examples with ndarray values, the components data assigned to the
     ``TensorHead`` object are assumed to be in a fully-contravariant
@@ -1727,9 +1599,8 @@ class TensorHead(Basic):
     represents the values of a non-fully covariant tensor, see the other
     examples.
 
-    >>> from sympy.tensor.tensor import tensor_indices
+    >>> from sympy.tensor.tensor import tensor_indices, tensorhead
     >>> from sympy import diag
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
     >>> i0, i1 = tensor_indices('i0:2', Lorentz)
 
     Specify a replacement dictionary to keep track of the arrays to use for
@@ -1745,9 +1616,11 @@ class TensorHead(Basic):
     >>> Ex, Ey, Ez, Bx, By, Bz = symbols('E_x E_y E_z B_x B_y B_z')
     >>> c = symbols('c', positive=True)
 
-    Let's define `F`, an antisymmetric tensor:
+    Let's define `F`, an antisymmetric tensor, we have to assign an
+    antisymmetric matrix to it, because `[[2]]` stands for the Young tableau
+    representation of an antisymmetric set of two elements:
 
-    >>> F = TensorHead('F', [Lorentz, Lorentz], asym2)
+    >>> F = tensorhead('F', [Lorentz, Lorentz], [[2]])
 
     Let's update the dictionary to contain the matrix to use in the
     replacements:
@@ -1772,7 +1645,7 @@ class TensorHead(Basic):
     Energy-momentum of a particle may be represented as:
 
     >>> from sympy import symbols
-    >>> P = TensorHead('P', [Lorentz], TensorSymmetry.no_symmetry(1))
+    >>> P = tensorhead('P', [Lorentz], [[1]])
     >>> E, px, py, pz = symbols('E p_x p_y p_z', positive=True)
     >>> repl.update({P(i0): [E, px, py, pz]})
 
@@ -1791,38 +1664,51 @@ class TensorHead(Basic):
     """
     is_commutative = False
 
-    def __new__(cls, name, index_types, symmetry=None, comm=0):
-        if isinstance(name, str):
+    def __new__(cls, name, typ, comm=0, **kw_args):
+        if isinstance(name, string_types):
             name_symbol = Symbol(name)
         elif isinstance(name, Symbol):
             name_symbol = name
         else:
             raise ValueError("invalid name")
 
-        if symmetry is None:
-            symmetry = TensorSymmetry.no_symmetry(len(index_types))
-        else:
-            assert symmetry.rank == len(index_types)
+        comm2i = TensorManager.comm_symbols2i(comm)
 
-        obj = Basic.__new__(cls, name_symbol, Tuple(*index_types), symmetry)
-        obj.comm = TensorManager.comm_symbols2i(comm)
+        obj = Basic.__new__(cls, name_symbol, typ, **kw_args)
+
+        obj._name = obj.args[0].name
+        obj._rank = len(obj.index_types)
+        obj._symmetry = typ.symmetry
+        obj._comm = comm2i
         return obj
 
     @property
     def name(self):
-        return self.args[0].name
-
-    @property
-    def index_types(self):
-        return list(self.args[1])
-
-    @property
-    def symmetry(self):
-        return self.args[2]
+        return self._name
 
     @property
     def rank(self):
-        return len(self.index_types)
+        return self._rank
+
+    @property
+    def symmetry(self):
+        return self._symmetry
+
+    @property
+    def typ(self):
+        return self.args[1]
+
+    @property
+    def comm(self):
+        return self._comm
+
+    @property
+    def types(self):
+        return self.args[1].types[:]
+
+    @property
+    def index_types(self):
+        return self.args[1].index_types[:]
 
     def __lt__(self, other):
         return (self.name, self.index_types) < (other.name, other.index_types)
@@ -1833,7 +1719,7 @@ class TensorHead(Basic):
 
         Returns ``None`` if ``self`` and ``other`` neither commute nor anticommute.
         """
-        r = TensorManager.get_comm(self.comm, other.comm)
+        r = TensorManager.get_comm(self._comm, other._comm)
         return r
 
     def _print(self):
@@ -1843,9 +1729,6 @@ class TensorHead(Basic):
         """
         Returns a tensor with indices.
 
-        Explanation
-        ===========
-
         There is a special behavior in case of indices denoted by ``True``,
         they are considered auto-matrix indices, their slots are automatically
         filled, and confer to the tensor the behavior of a matrix or vector
@@ -1854,68 +1737,47 @@ class TensorHead(Basic):
         same way as in matrix multiplication. For matrix behavior, define two
         auto-matrix indices, for vector behavior define just one.
 
-        Indices can also be strings, in which case the attribute
-        ``index_types`` is used to convert them to proper ``TensorIndex``.
-
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorSymmetry, TensorHead
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> a, b = tensor_indices('a,b', Lorentz)
-        >>> A = TensorHead('A', [Lorentz]*2, TensorSymmetry.no_symmetry(2))
+        >>> A = tensorhead('A', [Lorentz]*2, [[1]*2])
         >>> t = A(a, -b)
         >>> t
         A(a, -b)
 
         """
-
-        updated_indices = []
-        for idx, typ in zip(indices, self.index_types):
-            if isinstance(idx, str):
-                idx = idx.strip().replace(" ", "")
-                if idx.startswith('-'):
-                    updated_indices.append(TensorIndex(idx[1:], typ,
-                                           is_up=False))
-                else:
-                    updated_indices.append(TensorIndex(idx, typ))
-            else:
-                updated_indices.append(idx)
-
-        updated_indices += indices[len(updated_indices):]
-
-        tensor = Tensor(self, updated_indices, **kw_args)
+        tensor = Tensor(self, indices, **kw_args)
         return tensor.doit()
 
-    # Everything below this line is deprecated
-
     def __pow__(self, other):
-        deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SymPyDeprecationWarning)
             if self.data is None:
                 raise ValueError("No power on abstract tensors.")
-            from .array import tensorproduct, tensorcontraction
-            metrics = [_.data for _ in self.index_types]
+        deprecate_data()
+        from .array import tensorproduct, tensorcontraction
+        metrics = [_.data for _ in self.args[1].args[0]]
 
-            marray = self.data
-            marraydim = marray.rank()
-            for metric in metrics:
-                marray = tensorproduct(marray, metric, marray)
-                marray = tensorcontraction(marray, (0, marraydim), (marraydim+1, marraydim+2))
+        marray = self.data
+        marraydim = marray.rank()
+        for metric in metrics:
+            marray = tensorproduct(marray, metric, marray)
+            marray = tensorcontraction(marray, (0, marraydim), (marraydim+1, marraydim+2))
 
-            return marray ** (other * S.Half)
+        return marray ** (Rational(1, 2) * other)
 
     @property
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return _tensor_data_substitution_dict[self]
+        return _tensor_data_substitution_dict[self]
 
     @data.setter
     def data(self, data):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            _tensor_data_substitution_dict[self] = data
+        _tensor_data_substitution_dict[self] = data
 
     @data.deleter
     def data(self):
@@ -1925,8 +1787,7 @@ class TensorHead(Basic):
 
     def __iter__(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return self.data.__iter__()
+        return self.data.__iter__()
 
     def _components_data_full_destroy(self):
         """
@@ -1937,7 +1798,6 @@ class TensorHead(Basic):
         """
         # do not garbage collect Kronecker tensor (it should be done by
         # ``TensorIndexType`` garbage collection)
-        deprecate_data()
         if self.name == "KD":
             return
 
@@ -1948,26 +1808,13 @@ class TensorHead(Basic):
             del _tensor_data_substitution_dict[self]
 
 
-def tensor_heads(s, index_types, symmetry=None, comm=0):
-    """
-    Returns a sequence of TensorHeads from a string `s`
-    """
-    if isinstance(s, str):
-        names = [x.name for x in symbols(s, seq=True)]
-    else:
-        raise ValueError('expecting a string')
-
-    thlist = [TensorHead(name, index_types, symmetry, comm) for name in names]
-    if len(thlist) == 1:
-        return thlist[0]
-    return thlist
+def _get_argtree_pos(expr, pos):
+    for p in pos:
+        expr = expr.args[p]
+    return expr
 
 
-class _TensorMetaclass(ManagedProperties, ABCMeta):
-    pass
-
-
-class TensExpr(Expr, metaclass=_TensorMetaclass):
+class TensExpr(Expr):
     """
     Abstract base class for tensor expressions
 
@@ -1978,6 +1825,9 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
     currently the sums of tensors are distributed.
 
     A ``TensExpr`` can be a ``TensAdd`` or a ``TensMul``.
+
+    ``TensAdd`` objects are put in canonical form using the Butler-Portugal
+    algorithm for canonicalization under monoterm symmetries.
 
     ``TensMul`` objects are formed by products of component tensors,
     and include a coefficient, which is a SymPy expression.
@@ -2016,20 +1866,17 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         """
         Multiply two tensors using Einstein summation convention.
 
-        Explanation
-        ===========
-
         If the two tensors have an index in common, one contravariant
         and the other covariant, in their product the indices are summed
 
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2 = tensor_indices('m0,m1,m2', Lorentz)
         >>> g = Lorentz.metric
-        >>> p, q = tensor_heads('p,q', [Lorentz])
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
         >>> t1 = p(m0)
         >>> t2 = q(-m0)
         >>> t1*t2
@@ -2040,62 +1887,64 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
     def __rmul__(self, other):
         return TensMul(other, self).doit()
 
-    def __truediv__(self, other):
+    def __div__(self, other):
         other = _sympify(other)
         if isinstance(other, TensExpr):
             raise ValueError('cannot divide by a tensor')
         return TensMul(self, S.One/other).doit()
 
-    def __rtruediv__(self, other):
+    def __rdiv__(self, other):
         raise ValueError('cannot divide by a tensor')
 
     def __pow__(self, other):
-        deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SymPyDeprecationWarning)
             if self.data is None:
                 raise ValueError("No power without ndarray data.")
-            from .array import tensorproduct, tensorcontraction
-            free = self.free
-            marray = self.data
-            mdim = marray.rank()
-            for metric in free:
-                marray = tensorcontraction(
-                    tensorproduct(
-                    marray,
-                    metric[0].tensor_index_type.data,
-                    marray),
-                    (0, mdim), (mdim+1, mdim+2)
-                )
-            return marray ** (other * S.Half)
+        deprecate_data()
+        from .array import tensorproduct, tensorcontraction
+        free = self.free
+        marray = self.data
+        mdim = marray.rank()
+        for metric in free:
+            marray = tensorcontraction(
+                tensorproduct(
+                marray,
+                metric[0].tensor_index_type.data,
+                marray),
+                (0, mdim), (mdim+1, mdim+2)
+            )
+        return marray ** (Rational(1, 2) * other)
 
     def __rpow__(self, other):
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def nocoeff(self):
-        raise NotImplementedError("abstract method")
-
-    @property
-    @abstractmethod
-    def coeff(self):
-        raise NotImplementedError("abstract method")
-
-    @abstractmethod
-    def get_indices(self):
-        raise NotImplementedError("abstract method")
-
-    @abstractmethod
-    def get_free_indices(self):  # type: () -> List[TensorIndex]
-        raise NotImplementedError("abstract method")
-
-    @abstractmethod
-    def _replace_indices(self, repl):  # type: (tDict[TensorIndex, TensorIndex]) -> TensExpr
-        raise NotImplementedError("abstract method")
+    __truediv__ = __div__
+    __rtruediv__ = __rdiv__
 
     def fun_eval(self, *index_tuples):
-        deprecate_fun_eval()
-        return self.substitute_indices(*index_tuples)
+        """
+        Return a tensor with free indices substituted according to ``index_tuples``
+
+        ``index_types`` list of tuples ``(old_index, new_index)``
+
+        Examples
+        ========
+
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+        >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
+        >>> A, B = tensorhead('A,B', [Lorentz]*2, [[1]*2])
+        >>> t = A(i, k)*B(-k, -j); t
+        A(i, L_0)*B(-L_0, -j)
+        >>> t.fun_eval((i, k),(-j, l))
+        A(k, L_0)*B(-L_0, l)
+        """
+        expr = self.xreplace(dict(index_tuples))
+        expr = expr.replace(lambda x: isinstance(x, Tensor), lambda x: x.args[0](*x.args[1]))
+        # For some reason, `TensMul` gets replaced by `Mul`, correct it:
+        expr = expr.replace(lambda x: isinstance(x, (Mul, TensMul)), lambda x: TensMul(*x.args).doit())
+        return expr
 
     def get_matrix(self):
         """
@@ -2104,26 +1953,25 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         Returns ndarray components data as a matrix, if components data are
         available and ndarray dimension does not exceed 2.
         """
-        from sympy.matrices.dense import Matrix
+        from sympy import Matrix
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            if 0 < self.rank <= 2:
-                rows = self.data.shape[0]
-                columns = self.data.shape[1] if self.rank == 2 else 1
-                if self.rank == 2:
-                    mat_list = [] * rows
-                    for i in range(rows):
-                        mat_list.append([])
-                        for j in range(columns):
-                            mat_list[i].append(self[i, j])
-                else:
-                    mat_list = [None] * rows
-                    for i in range(rows):
-                        mat_list[i] = self[i]
-                return Matrix(mat_list)
+        if 0 < self.rank <= 2:
+            rows = self.data.shape[0]
+            columns = self.data.shape[1] if self.rank == 2 else 1
+            if self.rank == 2:
+                mat_list = [] * rows
+                for i in range(rows):
+                    mat_list.append([])
+                    for j in range(columns):
+                        mat_list[i].append(self[i, j])
             else:
-                raise NotImplementedError(
-                    "missing multidimensional reduction to matrix.")
+                mat_list = [None] * rows
+                for i in range(rows):
+                    mat_list[i] = self[i]
+            return Matrix(mat_list)
+        else:
+            raise NotImplementedError(
+                "missing multidimensional reduction to matrix.")
 
     @staticmethod
     def _get_indices_permutation(indices1, indices2):
@@ -2136,21 +1984,21 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         return self
 
     def _get_free_indices_set(self):
-        indset = set()
+        indset = set([])
         for arg in self.args:
             if isinstance(arg, TensExpr):
                 indset.update(arg._get_free_indices_set())
         return indset
 
     def _get_dummy_indices_set(self):
-        indset = set()
+        indset = set([])
         for arg in self.args:
             if isinstance(arg, TensExpr):
                 indset.update(arg._get_dummy_indices_set())
         return indset
 
     def _get_indices_set(self):
-        indset = set()
+        indset = set([])
         for arg in self.args:
             if isinstance(arg, TensExpr):
                 indset.update(arg._get_indices_set())
@@ -2166,7 +2014,8 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
                     yield (expr, pos)
             elif isinstance(expr, (Tuple, TensExpr)):
                 for p, arg in enumerate(expr.args):
-                    yield from recursor(arg, pos+(p,))
+                    for i in recursor(arg, pos+(p,)):
+                        yield i
 
         return recursor(self, ())
 
@@ -2180,7 +2029,8 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
                     yield (expr, pos)
             elif isinstance(expr, (Tuple, TensExpr)):
                 for p, arg in enumerate(expr.args):
-                    yield from recursor(arg, pos+(p,))
+                    for i in recursor(arg, pos+(p,)):
+                        yield i
 
         return recursor(self, ())
 
@@ -2191,23 +2041,14 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
                 yield (expr, pos)
             elif isinstance(expr, (Tuple, TensExpr)):
                 for p, arg in enumerate(expr.args):
-                    yield from recursor(arg, pos+(p,))
+                    for i in recursor(arg, pos+(p,)):
+                        yield i
 
         return recursor(self, ())
 
     @staticmethod
-    def _contract_and_permute_with_metric(metric, array, pos, dim):
-        # TODO: add possibility of metric after (spinors)
-        from .array import tensorcontraction, tensorproduct, permutedims
-
-        array = tensorcontraction(tensorproduct(metric, array), (1, 2+pos))
-        permu = list(range(dim))
-        permu[0], permu[pos] = permu[pos], permu[0]
-        return permutedims(array, permu)
-
-    @staticmethod
     def _match_indices_with_other_tensor(array, free_ind1, free_ind2, replacement_dict):
-        from .array import permutedims
+        from .array import tensorcontraction, tensorproduct, permutedims
 
         index_types1 = [i.tensor_index_type for i in free_ind1]
 
@@ -2243,21 +2084,22 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         if len(set(free_ind1) & set(free_ind2)) < len(free_ind1):
             raise ValueError("incompatible indices: %s and %s" % (free_ind1, free_ind2))
 
+        # TODO: add possibility of metric after (spinors)
+        def contract_and_permute(metric, array, pos):
+            array = tensorcontraction(tensorproduct(metric, array), (1, 2+pos))
+            permu = list(range(len(free_ind1)))
+            permu[0], permu[pos] = permu[pos], permu[0]
+            return permutedims(array, permu)
+
         # Raise indices:
         for pos in pos2up:
-            index_type_pos = index_types1[pos]  # type: TensorIndexType
-            if index_type_pos not in replacement_dict:
-                raise ValueError("No metric provided to lower index")
-            metric = replacement_dict[index_type_pos]
+            metric = replacement_dict[index_types1[pos]]
             metric_inverse = _TensorDataLazyEvaluator.inverse_matrix(metric)
-            array = TensExpr._contract_and_permute_with_metric(metric_inverse, array, pos, len(free_ind1))
+            array = contract_and_permute(metric_inverse, array, pos)
         # Lower indices:
         for pos in pos2down:
-            index_type_pos = index_types1[pos]  # type: TensorIndexType
-            if index_type_pos not in replacement_dict:
-                raise ValueError("No metric provided to lower index")
-            metric = replacement_dict[index_type_pos]
-            array = TensExpr._contract_and_permute_with_metric(metric, array, pos, len(free_ind1))
+            metric = replacement_dict[index_types1[pos]]
+            array = contract_and_permute(metric, array, pos)
 
         if free_ind1:
             permutation = TensExpr._get_indices_permutation(free_ind2, free_ind1)
@@ -2287,12 +2129,12 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         ========
 
         >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices
-        >>> from sympy.tensor.tensor import TensorHead
+        >>> from sympy.tensor.tensor import tensorhead
         >>> from sympy import symbols, diag
 
         >>> L = TensorIndexType("L")
         >>> i, j = tensor_indices("i j", L)
-        >>> A = TensorHead("A", [L])
+        >>> A = tensorhead("A", [L], [[1]])
         >>> A(i).replace_with_arrays({A(i): [1, 2]}, [i])
         [1, 2]
 
@@ -2315,7 +2157,7 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
 
         Symmetrization of an array:
 
-        >>> H = TensorHead("H", [L, L])
+        >>> H = tensorhead("H", [L, L], [[1], [1]])
         >>> a, b, c, d = symbols("a b c d")
         >>> expr = H(i, j)/2 + H(j, i)/2
         >>> expr.replace_with_arrays({H(i, j): [[a, b], [c, d]]})
@@ -2337,14 +2179,6 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         from .array import Array
 
         indices = indices or []
-        remap = {k.args[0] if k.is_up else -k.args[0]: k for k in self.get_free_indices()}
-        for i, index in enumerate(indices):
-            if isinstance(index, (Symbol, Mul)):
-                if index in remap:
-                    indices[i] = remap[index]
-                else:
-                    indices[i] = -remap[-index]
-
         replacement_dict = {tensor: Array(array) for tensor, array in replacement_dict.items()}
 
         # Check dimensions of replaced arrays:
@@ -2353,9 +2187,9 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
                 expected_shape = [tensor.dim for i in range(2)]
             else:
                 expected_shape = [index_type.dim for index_type in tensor.index_types]
-            if len(expected_shape) != array.rank() or (not all(dim1 == dim2 if
-                dim1.is_number else True for dim1, dim2 in zip(expected_shape,
-                array.shape))):
+            if len(expected_shape) != array.rank() or (not all([dim1 == dim2 if
+                dim1 is not None else True for dim1, dim2 in zip(expected_shape,
+                array.shape)])):
                 raise ValueError("shapes for tensor %s expected to be %s, "\
                     "replacement array shape is %s" % (tensor, expected_shape,
                     array.shape))
@@ -2363,10 +2197,17 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
         ret_indices, array = self._extract_data(replacement_dict)
 
         last_indices, array = self._match_indices_with_other_tensor(array, indices, ret_indices, replacement_dict)
+        #permutation = self._get_indices_permutation(indices, ret_indices)
+        #if not hasattr(array, "rank"):
+            #return array
+        #if array.rank() == 0:
+            #array = array[()]
+            #return array
+        #array = permutedims(array, permutation)
         return array
 
     def _check_add_Sum(self, expr, index_symbols):
-        from sympy.concrete.summations import Sum
+        from sympy import Sum
         indices = self.get_indices()
         dum = self.dum
         sum_indices = [ (index_symbols[i], 0,
@@ -2375,18 +2216,10 @@ class TensExpr(Expr, metaclass=_TensorMetaclass):
             expr = Sum(expr, *sum_indices)
         return expr
 
-    def _expand_partial_derivative(self):
-        # simply delegate the _expand_partial_derivative() to
-        # its arguments to expand a possibly found PartialDerivative
-        return self.func(*[
-                    a._expand_partial_derivative()
-                    if isinstance(a, TensExpr) else a
-                    for a in self.args])
-
 
 class TensAdd(TensExpr, AssocOp):
     """
-    Sum of tensors.
+    Sum of tensors
 
     Parameters
     ==========
@@ -2400,15 +2233,22 @@ class TensAdd(TensExpr, AssocOp):
     ``rank`` : rank of the tensor
     ``free_args`` : list of the free indices in sorted order
 
+    Notes
+    =====
+
+    Sum of more than one tensor are put automatically in canonical form.
+
     Examples
     ========
 
-    >>> from sympy.tensor.tensor import TensorIndexType, tensor_heads, tensor_indices
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+    >>> from sympy.tensor.tensor import TensorIndexType, tensorhead, tensor_indices
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
     >>> a, b = tensor_indices('a,b', Lorentz)
-    >>> p, q = tensor_heads('p,q', [Lorentz])
+    >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
     >>> t = p(a) + q(a); t
     p(a) + q(a)
+    >>> t(b)
+    p(b) + q(b)
 
     Examples with components data added to the tensor expression:
 
@@ -2428,50 +2268,11 @@ class TensAdd(TensExpr, AssocOp):
 
     def __new__(cls, *args, **kw_args):
         args = [_sympify(x) for x in args if x]
+
         args = TensAdd._tensAdd_flatten(args)
-        args.sort(key=default_sort_key)
-        if not args:
-            return S.Zero
-        if len(args) == 1:
-            return args[0]
 
-        return Basic.__new__(cls, *args, **kw_args)
-
-    @property
-    def coeff(self):
-        return S.One
-
-    @property
-    def nocoeff(self):
-        return self
-
-    def get_free_indices(self):  # type: () -> List[TensorIndex]
-        return self.free_indices
-
-    def _replace_indices(self, repl):  # type: (tDict[TensorIndex, TensorIndex]) -> TensExpr
-        newargs = [arg._replace_indices(repl) if isinstance(arg, TensExpr) else arg for arg in self.args]
-        return self.func(*newargs)
-
-    @memoize_property
-    def rank(self):
-        if isinstance(self.args[0], TensExpr):
-            return self.args[0].rank
-        else:
-            return 0
-
-    @memoize_property
-    def free_args(self):
-        if isinstance(self.args[0], TensExpr):
-            return self.args[0].free_args
-        else:
-            return []
-
-    @memoize_property
-    def free_indices(self):
-        if isinstance(self.args[0], TensExpr):
-            return self.args[0].get_free_indices()
-        else:
-            return set()
+        obj = Basic.__new__(cls, *args, **kw_args)
+        return obj
 
     def doit(self, **kwargs):
         deep = kwargs.get('deep', True)
@@ -2509,12 +2310,10 @@ class TensAdd(TensExpr, AssocOp):
 
         # collect canonicalized terms
         def sort_key(t):
+            x = get_index_structure(t)
             if not isinstance(t, TensExpr):
-                return [], [], []
-            if hasattr(t, "_index_structure") and hasattr(t, "components"):
-                x = get_index_structure(t)
-                return t.components, x.free, x.dum
-            return [], [], []
+                return ([], [], [])
+            return (t.components, x.free, x.dum)
         args.sort(key=sort_key)
 
         if not args:
@@ -2541,14 +2340,8 @@ class TensAdd(TensExpr, AssocOp):
     @staticmethod
     def _tensAdd_check(args):
         # check that all addends have the same free indices
-
-        def get_indices_set(x):  # type: (Expr) -> tSet[TensorIndex]
-            if isinstance(x, TensExpr):
-                return set(x.get_free_indices())
-            return set()
-
-        indices0 = get_indices_set(args[0])  # type: tSet[TensorIndex]
-        list_indices = [get_indices_set(arg) for arg in args[1:]]  # type: List[tSet[TensorIndex]]
+        indices0 = set([x[0] for x in get_index_structure(args[0]).free])
+        list_indices = [set([y[0] for y in get_index_structure(x).free]) for x in args[1:]]
         if not all(x == indices0 for x in list_indices):
             raise ValueError('all tensors must have the same indices')
 
@@ -2560,11 +2353,11 @@ class TensAdd(TensExpr, AssocOp):
         if isinstance(args[0], TensExpr):
             free_indices = set(args[0].get_free_indices())
         else:
-            free_indices = set()
+            free_indices = set([])
 
         for arg in args:
             if not isinstance(arg, TensExpr):
-                if free_indices != set():
+                if free_indices != set([]):
                     raise ValueError("wrong valence")
                 scalars += arg
                 continue
@@ -2587,11 +2380,42 @@ class TensAdd(TensExpr, AssocOp):
             indices.extend([i for i in get_indices(arg) if i not in indices])
         return indices
 
+    @property
+    def rank(self):
+        return self.args[0].rank
+
+    @property
+    def free_args(self):
+        return self.args[0].free_args
+
     def _expand(self, **hints):
         return TensAdd(*[_expand(i, **hints) for i in self.args])
 
     def __call__(self, *indices):
-        deprecate_call()
+        """Returns tensor with ordered free indices replaced by ``indices``
+
+        Parameters
+        ==========
+
+        indices
+
+        Examples
+        ========
+
+        >>> from sympy import Symbol
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> D = Symbol('D')
+        >>> Lorentz = TensorIndexType('Lorentz', dim=D, dummy_fmt='L')
+        >>> i0,i1,i2,i3,i4 = tensor_indices('i0:5', Lorentz)
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
+        >>> g = Lorentz.metric
+        >>> t = p(i0)*p(i1) + g(i0,i1)*q(i2)*q(-i2)
+        >>> t(i0,i2)
+        metric(i0, i2)*q(L_0)*q(-L_0) + p(i0)*p(i2)
+        >>> from sympy.tensor.tensor import canon_bp
+        >>> canon_bp(t(i0,i1) - t(i1,i0))
+        0
+        """
         free_args = self.free_args
         indices = list(indices)
         if [x.tensor_index_type for x in indices] != [x.tensor_index_type for x in free_args]:
@@ -2599,13 +2423,13 @@ class TensAdd(TensExpr, AssocOp):
         if indices == free_args:
             return self
         index_tuples = list(zip(free_args, indices))
-        a = [x.func(*x.substitute_indices(*index_tuples).args) for x in self.args]
+        a = [x.func(*x.fun_eval(*index_tuples).args) for x in self.args]
         res = TensAdd(*a).doit()
         return res
 
     def canon_bp(self):
         """
-        Canonicalize using the Butler-Portugal algorithm for canonicalization
+        canonicalize using the Butler-Portugal algorithm for canonicalization
         under monoterm symmetries.
         """
         expr = self.expand()
@@ -2615,8 +2439,8 @@ class TensAdd(TensExpr, AssocOp):
 
     def equals(self, other):
         other = _sympify(other)
-        if isinstance(other, TensMul) and other.coeff == 0:
-            return all(x.coeff == 0 for x in self.args)
+        if isinstance(other, TensMul) and other._coeff == 0:
+            return all(x._coeff == 0 for x in self.args)
         if isinstance(other, TensExpr):
             if self.rank != other.rank:
                 return False
@@ -2630,14 +2454,13 @@ class TensAdd(TensExpr, AssocOp):
             return t == 0
         else:
             if isinstance(t, TensMul):
-                return t.coeff == 0
+                return t._coeff == 0
             else:
-                return all(x.coeff == 0 for x in t.args)
+                return all(x._coeff == 0 for x in t.args)
 
     def __getitem__(self, item):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return self.data[item]
+        return self.data[item]
 
     def contract_delta(self, delta):
         args = [x.contract_delta(delta) for x in self.args]
@@ -2646,7 +2469,7 @@ class TensAdd(TensExpr, AssocOp):
 
     def contract_metric(self, g):
         """
-        Raise or lower indices with the metric ``g``.
+        Raise or lower indices with the metric ``g``
 
         Parameters
         ==========
@@ -2665,19 +2488,67 @@ class TensAdd(TensExpr, AssocOp):
         t = TensAdd(*args).doit()
         return canon_bp(t)
 
+    def fun_eval(self, *index_tuples):
+        """
+        Return a tensor with free indices substituted according to ``index_tuples``
+
+        Parameters
+        ==========
+
+        index_types : list of tuples ``(old_index, new_index)``
+
+        Examples
+        ========
+
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+        >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
+        >>> A, B = tensorhead('A,B', [Lorentz]*2, [[1]*2])
+        >>> t = A(i, k)*B(-k, -j) + A(i, -j)
+        >>> t.fun_eval((i, k),(-j, l))
+        A(k, L_0)*B(-L_0, l) + A(k, l)
+        """
+        args = self.args
+        args1 = []
+        for x in args:
+            y = x.fun_eval(*index_tuples)
+            args1.append(y)
+        return TensAdd(*args1).doit()
+
     def substitute_indices(self, *index_tuples):
-        new_args = []
-        for arg in self.args:
-            if isinstance(arg, TensExpr):
-                arg = arg.substitute_indices(*index_tuples)
-            new_args.append(arg)
-        return TensAdd(*new_args).doit()
+        """
+        Return a tensor with free indices substituted according to ``index_tuples``
+
+        Parameters
+        ==========
+
+        index_types : list of tuples ``(old_index, new_index)``
+
+        Examples
+        ========
+
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+        >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
+        >>> A, B = tensorhead('A,B', [Lorentz]*2, [[1]*2])
+        >>> t = A(i, k)*B(-k, -j); t
+        A(i, L_0)*B(-L_0, -j)
+        >>> t.substitute_indices((i,j), (j, k))
+        A(j, L_0)*B(-L_0, -k)
+        """
+        args = self.args
+        args1 = []
+        for x in args:
+            y = x.substitute_indices(*index_tuples)
+            args1.append(y)
+        return TensAdd(*args1).doit()
 
     def _print(self):
         a = []
         args = self.args
         for x in args:
             a.append(str(x))
+        a.sort()
         s = ' + '.join(a)
         s = s.replace('+ -', '- ')
         return s
@@ -2700,21 +2571,18 @@ class TensAdd(TensExpr, AssocOp):
     @property
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return _tensor_data_substitution_dict[self.expand()]
+        return _tensor_data_substitution_dict[self.expand()]
 
     @data.setter
     def data(self, data):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            _tensor_data_substitution_dict[self] = data
+        _tensor_data_substitution_dict[self] = data
 
     @data.deleter
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            if self in _tensor_data_substitution_dict:
-                del _tensor_data_substitution_dict[self]
+        if self in _tensor_data_substitution_dict:
+            del _tensor_data_substitution_dict[self]
 
     def __iter__(self):
         deprecate_data()
@@ -2725,26 +2593,11 @@ class TensAdd(TensExpr, AssocOp):
     def _eval_rewrite_as_Indexed(self, *args):
         return Add.fromiter(args)
 
-    def _eval_partial_derivative(self, s):
-        # Evaluation like Add
-        list_addends = []
-        for a in self.args:
-            if isinstance(a, TensExpr):
-                list_addends.append(a._eval_partial_derivative(s))
-            # do not call diff if s is no symbol
-            elif s._diff_wrt:
-                list_addends.append(a._eval_derivative(s))
-
-        return self.func(*list_addends)
-
 
 class Tensor(TensExpr):
     """
     Base tensor class, i.e. this represents a tensor, the single unit to be
     put into an expression.
-
-    Explanation
-    ===========
 
     This object is usually created from a ``TensorHead``, by attaching indices
     to it. Indices preceded by a minus sign are considered contravariant,
@@ -2753,96 +2606,31 @@ class Tensor(TensExpr):
     Examples
     ========
 
-    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorHead
-    >>> Lorentz = TensorIndexType("Lorentz", dummy_name="L")
+    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+    >>> Lorentz = TensorIndexType("Lorentz", dummy_fmt="L")
     >>> mu, nu = tensor_indices('mu nu', Lorentz)
-    >>> A = TensorHead("A", [Lorentz, Lorentz])
+    >>> A = tensorhead("A", [Lorentz, Lorentz], [[1], [1]])
     >>> A(mu, -nu)
     A(mu, -nu)
     >>> A(mu, -mu)
-    A(L_0, -L_0)
-
-    It is also possible to use symbols instead of inidices (appropriate indices
-    are then generated automatically).
-
-    >>> from sympy import Symbol
-    >>> x = Symbol('x')
-    >>> A(x, mu)
-    A(x, mu)
-    >>> A(x, -x)
     A(L_0, -L_0)
 
     """
 
     is_commutative = False
 
-    _index_structure = None  # type: _IndexStructure
-    args: tTuple[TensorHead, Tuple]
-
-    def __new__(cls, tensor_head, indices, *, is_canon_bp=False, **kw_args):
+    def __new__(cls, tensor_head, indices, **kw_args):
+        is_canon_bp = kw_args.pop('is_canon_bp', False)
         indices = cls._parse_indices(tensor_head, indices)
         obj = Basic.__new__(cls, tensor_head, Tuple(*indices), **kw_args)
         obj._index_structure = _IndexStructure.from_indices(*indices)
-        obj._free = obj._index_structure.free[:]
-        obj._dum = obj._index_structure.dum[:]
-        obj._ext_rank = obj._index_structure._ext_rank
-        obj._coeff = S.One
-        obj._nocoeff = obj
-        obj._component = tensor_head
-        obj._components = [tensor_head]
+        obj._free_indices_set = set(obj._index_structure.get_free_indices())
         if tensor_head.rank != len(indices):
             raise ValueError("wrong number of indices")
-        obj.is_canon_bp = is_canon_bp
+        obj._indices = indices
+        obj._is_canon_bp = is_canon_bp
         obj._index_map = Tensor._build_index_map(indices, obj._index_structure)
         return obj
-
-    @property
-    def free(self):
-        return self._free
-
-    @property
-    def dum(self):
-        return self._dum
-
-    @property
-    def ext_rank(self):
-        return self._ext_rank
-
-    @property
-    def coeff(self):
-        return self._coeff
-
-    @property
-    def nocoeff(self):
-        return self._nocoeff
-
-    @property
-    def component(self):
-        return self._component
-
-    @property
-    def components(self):
-        return self._components
-
-    @property
-    def head(self):
-        return self.args[0]
-
-    @property
-    def indices(self):
-        return self.args[1]
-
-    @property
-    def free_indices(self):
-        return set(self._index_structure.get_free_indices())
-
-    @property
-    def index_types(self):
-        return self.head.index_types
-
-    @property
-    def rank(self):
-        return len(self.free_indices)
 
     @staticmethod
     def _build_index_map(indices, index_structure):
@@ -2877,28 +2665,52 @@ class Tensor(TensExpr):
         indices = im.get_indices()
         return self._set_indices(*indices, is_canon_bp=is_canon_bp)
 
-    def _set_indices(self, *indices, is_canon_bp=False, **kw_args):
+    def _set_indices(self, *indices, **kw_args):
         if len(indices) != self.ext_rank:
             raise ValueError("indices length mismatch")
-        return self.func(self.args[0], indices, is_canon_bp=is_canon_bp).doit()
+        return self.func(self.args[0], indices, is_canon_bp=kw_args.pop('is_canon_bp', False)).doit()
 
     def _get_free_indices_set(self):
-        return {i[0] for i in self._index_structure.free}
+        return set([i[0] for i in self._index_structure.free])
 
     def _get_dummy_indices_set(self):
         dummy_pos = set(itertools.chain(*self._index_structure.dum))
-        return {idx for i, idx in enumerate(self.args[1]) if i in dummy_pos}
+        return set(idx for i, idx in enumerate(self.args[1]) if i in dummy_pos)
 
     def _get_indices_set(self):
         return set(self.args[1].args)
+
+    @property
+    def is_canon_bp(self):
+        return self._is_canon_bp
+
+    @property
+    def indices(self):
+        return self._indices
+
+    @property
+    def free(self):
+        return self._index_structure.free[:]
 
     @property
     def free_in_args(self):
         return [(ind, pos, 0) for ind, pos in self.free]
 
     @property
+    def dum(self):
+        return self._index_structure.dum[:]
+
+    @property
     def dum_in_args(self):
         return [(p1, p2, 0, 0) for p1, p2 in self.dum]
+
+    @property
+    def rank(self):
+        return len(self.free)
+
+    @property
+    def ext_rank(self):
+        return self._index_structure._ext_rank
 
     @property
     def free_args(self):
@@ -2920,14 +2732,14 @@ class Tensor(TensExpr):
 
     def perm2tensor(self, g, is_canon_bp=False):
         """
-        Returns the tensor corresponding to the permutation ``g``.
+        Returns the tensor corresponding to the permutation ``g``
 
         For further details, see the method in ``TIDS`` with the same name.
         """
         return perm2tensor(self, g, is_canon_bp)
 
     def canon_bp(self):
-        if self.is_canon_bp:
+        if self._is_canon_bp:
             return self
         expr = self.expand()
         g, dummies, msym = expr._index_structure.indices_canon_args()
@@ -2938,6 +2750,26 @@ class Tensor(TensExpr):
         tensor = self.perm2tensor(can, True)
         return tensor
 
+    @property
+    def index_types(self):
+        return list(self.component.index_types)
+
+    @property
+    def coeff(self):
+        return S.One
+
+    @property
+    def nocoeff(self):
+        return self
+
+    @property
+    def component(self):
+        return self.args[0]
+
+    @property
+    def components(self):
+        return [self.args[0]]
+
     def split(self):
         return [self]
 
@@ -2947,85 +2779,64 @@ class Tensor(TensExpr):
     def sorted_components(self):
         return self
 
-    def get_indices(self):  # type: () -> List[TensorIndex]
+    def get_indices(self):
         """
         Get a list of indices, corresponding to those of the tensor.
         """
         return list(self.args[1])
 
-    def get_free_indices(self):  # type: () -> List[TensorIndex]
+    def get_free_indices(self):
         """
         Get a list of free indices, corresponding to those of the tensor.
         """
         return self._index_structure.get_free_indices()
 
-    def _replace_indices(self, repl):  # type: (tDict[TensorIndex, TensorIndex]) -> Tensor
-        # TODO: this could be optimized by only swapping the indices
-        # instead of visiting the whole expression tree:
-        return self.xreplace(repl)
-
     def as_base_exp(self):
         return self, S.One
 
     def substitute_indices(self, *index_tuples):
-        """
-        Return a tensor with free indices substituted according to ``index_tuples``.
+        return substitute_indices(self, *index_tuples)
 
-        ``index_types`` list of tuples ``(old_index, new_index)``.
+    def __call__(self, *indices):
+        """Returns tensor with ordered free indices replaced by ``indices``
 
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads, TensorSymmetry
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
-        >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
-        >>> A, B = tensor_heads('A,B', [Lorentz]*2, TensorSymmetry.fully_symmetric(2))
-        >>> t = A(i, k)*B(-k, -j); t
-        A(i, L_0)*B(-L_0, -j)
-        >>> t.substitute_indices((i, k),(-j, l))
-        A(k, L_0)*B(-L_0, l)
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+        >>> i0,i1,i2,i3,i4 = tensor_indices('i0:5', Lorentz)
+        >>> A = tensorhead('A', [Lorentz]*5, [[1]*5])
+        >>> t = A(i2, i1, -i2, -i3, i4)
+        >>> t
+        A(L_0, i1, -L_0, -i3, i4)
+        >>> t(i1, i2, i3)
+        A(L_0, i1, -L_0, i2, i3)
         """
-        indices = []
-        for index in self.indices:
-            for ind_old, ind_new in index_tuples:
-                if (index.name == ind_old.name and index.tensor_index_type ==
-                                                   ind_old.tensor_index_type):
-                    if index.is_up == ind_old.is_up:
-                        indices.append(ind_new)
-                    else:
-                        indices.append(-ind_new)
-                    break
-            else:
-                indices.append(index)
-        return self.head(*indices)
 
-    def __call__(self, *indices):
-        deprecate_call()
         free_args = self.free_args
         indices = list(indices)
         if [x.tensor_index_type for x in indices] != [x.tensor_index_type for x in free_args]:
             raise ValueError('incompatible types')
         if indices == free_args:
             return self
-        t = self.substitute_indices(*list(zip(free_args, indices)))
+        t = self.fun_eval(*list(zip(free_args, indices)))
 
         # object is rebuilt in order to make sure that all contracted indices
         # get recognized as dummies, but only if there are contracted indices.
-        if len({i if i.is_up else -i for i in indices}) != len(indices):
+        if len(set(i if i.is_up else -i for i in indices)) != len(indices):
             return t.func(*t.args)
         return t
 
     # TODO: put this into TensExpr?
     def __iter__(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return self.data.__iter__()
+        return self.data.__iter__()
 
     # TODO: put this into TensExpr?
     def __getitem__(self, item):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return self.data[item]
+        return self.data[item]
 
     def _extract_data(self, replacement_dict):
         from .array import Array
@@ -3052,17 +2863,10 @@ class Tensor(TensExpr):
             # Remove elements in `dum2` from `dum1`:
             dum1 = [pair for pair in dum1 if pair not in dum2]
         if len(dum1) > 0:
-            indices1 = self.get_indices()
             indices2 = other.get_indices()
             repl = {}
             for p1, p2 in dum1:
                 repl[indices2[p2]] = -indices2[p1]
-                for pos in (p1, p2):
-                    if indices1[pos].is_up ^ indices2[pos].is_up:
-                        metric = replacement_dict[indices1[pos].tensor_index_type]
-                        if indices1[pos].is_up:
-                            metric = _TensorDataLazyEvaluator.inverse_matrix(metric)
-                        array = self._contract_and_permute_with_metric(metric, array, pos, len(indices2))
             other = other.xreplace(repl).doit()
             array = _TensorDataLazyEvaluator.data_contract_dum([array], dum1, len(indices2))
 
@@ -3074,24 +2878,21 @@ class Tensor(TensExpr):
     @property
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return _tensor_data_substitution_dict[self]
+        return _tensor_data_substitution_dict[self]
 
     @data.setter
     def data(self, data):
         deprecate_data()
         # TODO: check data compatibility with properties of tensor.
-        with ignore_warnings(SymPyDeprecationWarning):
-            _tensor_data_substitution_dict[self] = data
+        _tensor_data_substitution_dict[self] = data
 
     @data.deleter
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            if self in _tensor_data_substitution_dict:
-                del _tensor_data_substitution_dict[self]
-            if self.metric in _tensor_data_substitution_dict:
-                del _tensor_data_substitution_dict[self.metric]
+        if self in _tensor_data_substitution_dict:
+            del _tensor_data_substitution_dict[self]
+        if self.metric in _tensor_data_substitution_dict:
+            del _tensor_data_substitution_dict[self.metric]
 
     def _print(self):
         indices = [str(ind) for ind in self.indices]
@@ -3125,24 +2926,20 @@ class Tensor(TensExpr):
         if len(self.free) != 0:
             return self
 
-        #antisym = g.index_types[0].metric_antisym
-        if g.symmetry == TensorSymmetry.fully_symmetric(-2):
-            antisym = 1
-        elif g.symmetry == TensorSymmetry.fully_symmetric(2):
-            antisym = 0
-        elif g.symmetry == TensorSymmetry.no_symmetry(2):
-            antisym = None
-        else:
-            raise NotImplementedError
+        antisym = g.index_types[0].metric_antisym
         sign = S.One
         typ = g.index_types[0]
 
         if not antisym:
             # g(i, -i)
-            sign = sign*typ.dim
+            if typ._dim is None:
+                raise ValueError('dimension not assigned')
+            sign = sign*typ._dim
         else:
             # g(i, -i)
-            sign = sign*typ.dim
+            if typ._dim is None:
+                raise ValueError('dimension not assigned')
+            sign = sign*typ._dim
 
             dp0, dp1 = self.dum[0]
             if dp0 < dp1:
@@ -3155,60 +2952,16 @@ class Tensor(TensExpr):
         return self.contract_metric(metric)
 
     def _eval_rewrite_as_Indexed(self, tens, indices):
-        from sympy.tensor.indexed import Indexed
+        from sympy import Indexed
         # TODO: replace .args[0] with .name:
         index_symbols = [i.args[0] for i in self.get_indices()]
         expr = Indexed(tens.args[0], *index_symbols)
         return self._check_add_Sum(expr, index_symbols)
 
-    def _eval_partial_derivative(self, s):  # type: (Tensor) -> Expr
-
-        if not isinstance(s, Tensor):
-            return S.Zero
-        else:
-
-            # @a_i/@a_k = delta_i^k
-            # @a_i/@a^k = g_ij delta^j_k
-            # @a^i/@a^k = delta^i_k
-            # @a^i/@a_k = g^ij delta_j^k
-            # TODO: if there is no metric present, the derivative should be zero?
-
-            if self.head != s.head:
-                return S.Zero
-
-            # if heads are the same, provide delta and/or metric products
-            # for every free index pair in the appropriate tensor
-            # assumed that the free indices are in proper order
-            # A contravariante index in the derivative becomes covariant
-            # after performing the derivative and vice versa
-
-            kronecker_delta_list = [1]
-
-            # not guarantee a correct index order
-
-            for (count, (iself, iother)) in enumerate(zip(self.get_free_indices(), s.get_free_indices())):
-                if iself.tensor_index_type != iother.tensor_index_type:
-                    raise ValueError("index types not compatible")
-                else:
-                    tensor_index_type = iself.tensor_index_type
-                    tensor_metric = tensor_index_type.metric
-                    dummy = TensorIndex("d_" + str(count), tensor_index_type,
-                                        is_up=iself.is_up)
-                    if iself.is_up == iother.is_up:
-                        kroneckerdelta = tensor_index_type.delta(iself, -iother)
-                    else:
-                        kroneckerdelta = (
-                            TensMul(tensor_metric(iself, dummy),
-                                    tensor_index_type.delta(-dummy, -iother))
-                        )
-                    kronecker_delta_list.append(kroneckerdelta)
-            return TensMul.fromiter(kronecker_delta_list).doit()
-            # doit necessary to rename dummy indices accordingly
-
 
 class TensMul(TensExpr, AssocOp):
     """
-    Product of tensors.
+    Product of tensors
 
     Parameters
     ==========
@@ -3247,8 +3000,6 @@ class TensMul(TensExpr, AssocOp):
     """
     identity = S.One
 
-    _index_structure = None  # type: _IndexStructure
-
     def __new__(cls, *args, **kw_args):
         is_canon_bp = kw_args.get('is_canon_bp', False)
         args = list(map(_sympify, args))
@@ -3264,23 +3015,12 @@ class TensMul(TensExpr, AssocOp):
 
         obj = TensExpr.__new__(cls, *args)
         obj._indices = indices
-        obj._index_types = index_types[:]
+        obj._index_types = index_types
         obj._index_structure = index_structure
-        obj._free = index_structure.free[:]
-        obj._dum = index_structure.dum[:]
-        obj._free_indices = {x[0] for x in obj.free}
-        obj._rank = len(obj.free)
         obj._ext_rank = len(obj._index_structure.free) + 2*len(obj._index_structure.dum)
         obj._coeff = S.One
         obj._is_canon_bp = is_canon_bp
         return obj
-
-    index_types = property(lambda self: self._index_types)
-    free = property(lambda self: self._free)
-    dum = property(lambda self: self._dum)
-    free_indices = property(lambda self: self._free_indices)
-    rank = property(lambda self: self._rank)
-    ext_rank = property(lambda self: self._ext_rank)
 
     @staticmethod
     def _indices_to_free_dum(args_indices):
@@ -3337,23 +3077,24 @@ class TensMul(TensExpr, AssocOp):
     def _tensMul_contract_indices(args, replace_indices=True):
         replacements = [{} for _ in args]
 
-        #_index_order = all(_has_index_order(arg) for arg in args)
+        #_index_order = all([_has_index_order(arg) for arg in args])
 
         args_indices = [get_indices(arg) for arg in args]
         indices, free, free_names, dummy_data = TensMul._indices_to_free_dum(args_indices)
 
         cdt = defaultdict(int)
 
-        def dummy_name_gen(tensor_index_type):
-            nd = str(cdt[tensor_index_type])
+        def dummy_fmt_gen(tensor_index_type):
+            fmt = tensor_index_type.dummy_fmt
+            nd = cdt[tensor_index_type]
             cdt[tensor_index_type] += 1
-            return tensor_index_type.dummy_name + '_' + nd
+            return fmt % nd
 
         if replace_indices:
             for old_index, pos1cov, pos1contra, pos2cov, pos2contra in dummy_data:
                 index_type = old_index.tensor_index_type
                 while True:
-                    dummy_name = dummy_name_gen(index_type)
+                    dummy_name = dummy_fmt_gen(index_type)
                     if dummy_name not in free_names:
                         break
                 dummy = TensorIndex(dummy_name, index_type, True)
@@ -3361,9 +3102,7 @@ class TensMul(TensExpr, AssocOp):
                 replacements[pos1contra][-old_index] = -dummy
                 indices[pos2cov] = dummy
                 indices[pos2contra] = -dummy
-            args = [
-                arg._replace_indices(repl) if isinstance(arg, TensExpr) else arg
-                for arg, repl in zip(args, replacements)]
+            args = [arg.xreplace(repl) for arg, repl in zip(args, replacements)]
 
         dum = TensMul._dummy_data_to_dum(dummy_data)
         return args, indices, free, dum
@@ -3458,11 +3197,11 @@ class TensMul(TensExpr, AssocOp):
         return tensors
 
     def _get_free_indices_set(self):
-        return {i[0] for i in self.free}
+        return set([i[0] for i in self.free])
 
     def _get_dummy_indices_set(self):
         dummy_pos = set(itertools.chain(*self.dum))
-        return {idx for i, idx in enumerate(self._index_structure.get_indices()) if i in dummy_pos}
+        return set(idx for i, idx in enumerate(self._index_structure.get_indices()) if i in dummy_pos)
 
     def _get_position_offset_for_indices(self):
         arg_offset = [None for i in range(self.ext_rank)]
@@ -3484,6 +3223,10 @@ class TensMul(TensExpr, AssocOp):
         return self._get_components_from_args(self.args)
 
     @property
+    def free(self):
+        return self._index_structure.free[:]
+
+    @property
     def free_in_args(self):
         arg_offset = self._get_position_offset_for_indices()
         argpos = self._get_indices_to_args_pos()
@@ -3491,7 +3234,6 @@ class TensMul(TensExpr, AssocOp):
 
     @property
     def coeff(self):
-        # return Mul.fromiter([c for c in self.args if not isinstance(c, TensExpr)])
         return self._coeff
 
     @property
@@ -3499,10 +3241,26 @@ class TensMul(TensExpr, AssocOp):
         return self.func(*[t for t in self.args if isinstance(t, TensExpr)]).doit()
 
     @property
+    def dum(self):
+        return self._index_structure.dum[:]
+
+    @property
     def dum_in_args(self):
         arg_offset = self._get_position_offset_for_indices()
         argpos = self._get_indices_to_args_pos()
         return [(p1-arg_offset[p1], p2-arg_offset[p2], argpos[p1], argpos[p2]) for p1, p2 in self.dum]
+
+    @property
+    def rank(self):
+        return len(self.free)
+
+    @property
+    def ext_rank(self):
+        return self._ext_rank
+
+    @property
+    def index_types(self):
+        return self._index_types[:]
 
     def equals(self, other):
         if other == 0:
@@ -3510,16 +3268,13 @@ class TensMul(TensExpr, AssocOp):
         other = _sympify(other)
         if not isinstance(other, TensExpr):
             assert not self.components
-            return self.coeff == other
+            return self._coeff == other
 
         return self.canon_bp() == other.canon_bp()
 
     def get_indices(self):
         """
-        Returns the list of indices of the tensor.
-
-        Explanation
-        ===========
+        Returns the list of indices of the tensor
 
         The indices are listed in the order in which they appear in the
         component tensors.
@@ -3529,11 +3284,11 @@ class TensMul(TensExpr, AssocOp):
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2 = tensor_indices('m0,m1,m2', Lorentz)
         >>> g = Lorentz.metric
-        >>> p, q = tensor_heads('p,q', [Lorentz])
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
         >>> t = p(m1)*g(m0,m2)
         >>> t.get_indices()
         [m1, m0, m2]
@@ -3543,12 +3298,9 @@ class TensMul(TensExpr, AssocOp):
         """
         return self._indices
 
-    def get_free_indices(self):  # type: () -> List[TensorIndex]
+    def get_free_indices(self):
         """
-        Returns the list of free indices of the tensor.
-
-        Explanation
-        ===========
+        Returns the list of free indices of the tensor
 
         The indices are listed in the order in which they appear in the
         component tensors.
@@ -3556,11 +3308,11 @@ class TensMul(TensExpr, AssocOp):
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2 = tensor_indices('m0,m1,m2', Lorentz)
         >>> g = Lorentz.metric
-        >>> p, q = tensor_heads('p,q', [Lorentz])
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
         >>> t = p(m1)*g(m0,m2)
         >>> t.get_free_indices()
         [m1, m0, m2]
@@ -3570,15 +3322,9 @@ class TensMul(TensExpr, AssocOp):
         """
         return self._index_structure.get_free_indices()
 
-    def _replace_indices(self, repl):  # type: (tDict[TensorIndex, TensorIndex]) -> TensExpr
-        return self.func(*[arg._replace_indices(repl) if isinstance(arg, TensExpr) else arg for arg in self.args])
-
     def split(self):
         """
-        Returns a list of tensors, whose product is ``self``.
-
-        Explanation
-        ===========
+        Returns a list of tensors, whose product is ``self``
 
         Dummy indices contracted among different tensor components
         become free indices with the same name as the one used to
@@ -3587,10 +3333,10 @@ class TensMul(TensExpr, AssocOp):
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads, TensorSymmetry
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> a, b, c, d = tensor_indices('a,b,c,d', Lorentz)
-        >>> A, B = tensor_heads('A,B', [Lorentz]*2, TensorSymmetry.fully_symmetric(2))
+        >>> A, B = tensorhead('A,B', [Lorentz]*2, [[1]*2])
         >>> t = A(a,b)*B(-b,c)
         >>> t
         A(a, L_0)*B(-L_0, c)
@@ -3623,8 +3369,7 @@ class TensMul(TensExpr, AssocOp):
 
     def __getitem__(self, item):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            return self.data[item]
+        return self.data[item]
 
     def _get_args_for_traditional_printer(self):
         args = list(self.args)
@@ -3644,9 +3389,6 @@ class TensMul(TensExpr, AssocOp):
         Returns the ``args`` sorted according to the components commutation
         properties.
 
-        Explanation
-        ===========
-
         The sorting is done taking into account the commutation group
         of the component tensors.
         """
@@ -3657,11 +3399,10 @@ class TensMul(TensExpr, AssocOp):
             for j in range(n, i, -1):
                 c = cv[j-1].commutes_with(cv[j])
                 # if `c` is `None`, it does neither commute nor anticommute, skip:
-                if c not in (0, 1):
+                if c not in [0, 1]:
                     continue
-                typ1 = sorted(set(cv[j-1].component.index_types), key=lambda x: x.name)
-                typ2 = sorted(set(cv[j].component.index_types), key=lambda x: x.name)
-                if (typ1, cv[j-1].component.name) > (typ2, cv[j].component.name):
+                if (cv[j-1].component.types, cv[j-1].component.name) > \
+                        (cv[j].component.types, cv[j].component.name):
                     cv[j-1], cv[j] = cv[j], cv[j-1]
                     # if `c` is 1, the anticommute, so change sign:
                     if c:
@@ -3694,10 +3435,10 @@ class TensMul(TensExpr, AssocOp):
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorHead, TensorSymmetry
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2 = tensor_indices('m0,m1,m2', Lorentz)
-        >>> A = TensorHead('A', [Lorentz]*2, TensorSymmetry.fully_symmetric(-2))
+        >>> A = tensorhead('A', [Lorentz]*2, [[2]])
         >>> t = A(m0,-m1)*A(m1,-m0)
         >>> t.canon_bp()
         -A(L_0, L_1)*A(-L_0, -L_1)
@@ -3742,7 +3483,7 @@ class TensMul(TensExpr, AssocOp):
 
     def contract_metric(self, g):
         """
-        Raise or lower indices with the metric ``g``.
+        Raise or lower indices with the metric ``g``
 
         Parameters
         ==========
@@ -3752,16 +3493,16 @@ class TensMul(TensExpr, AssocOp):
         Notes
         =====
 
-        See the ``TensorIndexType`` docstring for the contraction conventions.
+        see the ``TensorIndexType`` docstring for the contraction conventions
 
         Examples
         ========
 
-        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensor_heads
-        >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
         >>> m0, m1, m2 = tensor_indices('m0,m1,m2', Lorentz)
         >>> g = Lorentz.metric
-        >>> p, q = tensor_heads('p,q', [Lorentz])
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
         >>> t = p(m0)*q(m1)*g(-m0, -m1)
         >>> t.canon_bp()
         metric(L_0, L_1)*p(-L_0)*q(-L_1)
@@ -3775,15 +3516,7 @@ class TensMul(TensExpr, AssocOp):
         pos_map = self._get_indices_to_args_pos()
         args = list(self.args)
 
-        #antisym = g.index_types[0].metric_antisym
-        if g.symmetry == TensorSymmetry.fully_symmetric(-2):
-            antisym = 1
-        elif g.symmetry == TensorSymmetry.fully_symmetric(2):
-            antisym = 0
-        elif g.symmetry == TensorSymmetry.no_symmetry(2):
-            antisym = None
-        else:
-            raise NotImplementedError
+        antisym = g.index_types[0].metric_antisym
 
         # list of positions of the metric ``g`` inside ``args``
         gpos = [i for i, x in enumerate(self.args) if isinstance(x, Tensor) and x.component == g]
@@ -3853,7 +3586,9 @@ class TensMul(TensExpr, AssocOp):
                     if pos_map[dp0] == pos_map[dp1]:
                         # g(i, -i)
                         typ = g.index_types[0]
-                        sign = sign*typ.dim
+                        if typ._dim is None:
+                            raise ValueError('dimension not assigned')
+                        sign = sign*typ._dim
 
                     else:
                         # g(i0, i1)*p(-i1)
@@ -3869,7 +3604,9 @@ class TensMul(TensExpr, AssocOp):
                     if pos_map[dp0] == pos_map[dp1]:
                         # g(i, -i)
                         typ = g.index_types[0]
-                        sign = sign*typ.dim
+                        if typ._dim is None:
+                            raise ValueError('dimension not assigned')
+                        sign = sign*typ._dim
 
                         if dp0 < dp1:
                             # g(i, -i) = -D with antisymmetric metric
@@ -3908,11 +3645,12 @@ class TensMul(TensExpr, AssocOp):
         indices = im.get_indices()
         return self._set_indices(*indices, is_canon_bp=is_canon_bp)
 
-    def _set_indices(self, *indices, is_canon_bp=False, **kw_args):
+    def _set_indices(self, *indices, **kw_args):
         if len(indices) != self.ext_rank:
             raise ValueError("indices length mismatch")
         args = list(self.args)[:]
         pos = 0
+        is_canon_bp = kw_args.pop('is_canon_bp', False)
         for i, arg in enumerate(args):
             if not isinstance(arg, TensExpr):
                 continue
@@ -3930,26 +3668,36 @@ class TensMul(TensExpr, AssocOp):
             assert isinstance(arg, Tensor)
 
     def substitute_indices(self, *index_tuples):
-        new_args = []
-        for arg in self.args:
-            if isinstance(arg, TensExpr):
-                arg = arg.substitute_indices(*index_tuples)
-            new_args.append(arg)
-        return TensMul(*new_args).doit()
+        return substitute_indices(self, *index_tuples)
 
     def __call__(self, *indices):
-        deprecate_call()
+        """Returns tensor product with ordered free indices replaced by ``indices``
+
+        Examples
+        ========
+
+        >>> from sympy import Symbol
+        >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+        >>> D = Symbol('D')
+        >>> Lorentz = TensorIndexType('Lorentz', dim=D, dummy_fmt='L')
+        >>> i0,i1,i2,i3,i4 = tensor_indices('i0:5', Lorentz)
+        >>> g = Lorentz.metric
+        >>> p, q = tensorhead('p,q', [Lorentz], [[1]])
+        >>> t = p(i0)*q(i1)*q(-i1)
+        >>> t(i1)
+        p(i1)*q(L_0)*q(-L_0)
+        """
         free_args = self.free_args
         indices = list(indices)
         if [x.tensor_index_type for x in indices] != [x.tensor_index_type for x in free_args]:
             raise ValueError('incompatible types')
         if indices == free_args:
             return self
-        t = self.substitute_indices(*list(zip(free_args, indices)))
+        t = self.fun_eval(*list(zip(free_args, indices)))
 
         # object is rebuilt in order to make sure that all contracted indices
         # get recognized as dummies, but only if there are contracted indices.
-        if len({i if i.is_up else -i for i in indices}) != len(indices):
+        if len(set(i if i.is_up else -i for i in indices)) != len(indices):
             return t.func(*t.args)
         return t
 
@@ -3966,8 +3714,7 @@ class TensMul(TensExpr, AssocOp):
     @property
     def data(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            dat = _tensor_data_substitution_dict[self.expand()]
+        dat = _tensor_data_substitution_dict[self.expand()]
         return dat
 
     @data.setter
@@ -3982,35 +3729,16 @@ class TensMul(TensExpr, AssocOp):
 
     def __iter__(self):
         deprecate_data()
-        with ignore_warnings(SymPyDeprecationWarning):
-            if self.data is None:
-                raise ValueError("No iteration on abstract tensors")
-            return self.data.__iter__()
+        if self.data is None:
+            raise ValueError("No iteration on abstract tensors")
+        return self.data.__iter__()
 
     def _eval_rewrite_as_Indexed(self, *args):
-        from sympy.concrete.summations import Sum
+        from sympy import Sum
         index_symbols = [i.args[0] for i in self.get_indices()]
         args = [arg.args[0] if isinstance(arg, Sum) else arg for arg in args]
         expr = Mul.fromiter(args)
         return self._check_add_Sum(expr, index_symbols)
-
-    def _eval_partial_derivative(self, s):
-        # Evaluation like Mul
-        terms = []
-        for i, arg in enumerate(self.args):
-            # checking whether some tensor instance is differentiated
-            # or some other thing is necessary, but ugly
-            if isinstance(arg, TensExpr):
-                d = arg._eval_partial_derivative(s)
-            else:
-                # do not call diff is s is no symbol
-                if s._diff_wrt:
-                    d = arg._eval_derivative(s)
-                else:
-                    d = S.Zero
-            if d:
-                terms.append(TensMul.fromiter(self.args[:i] + (d,) + self.args[i + 1:]))
-        return TensAdd.fromiter(terms)
 
 
 class TensorElement(TensExpr):
@@ -4020,11 +3748,11 @@ class TensorElement(TensExpr):
     Examples
     ========
 
-    >>> from sympy.tensor.tensor import TensorIndexType, TensorHead, TensorSymmetry
+    >>> from sympy.tensor.tensor import TensorIndexType, tensorhead
     >>> from sympy import symbols
     >>> L = TensorIndexType("L")
     >>> i, j, k = symbols("i j k")
-    >>> A = TensorHead("A", [L, L], TensorSymmetry.fully_symmetric(2))
+    >>> A = tensorhead("A", [L, L], [[1], [1]])
     >>> A(i, j).get_free_indices()
     [i, j]
 
@@ -4076,20 +3804,8 @@ class TensorElement(TensExpr):
     def index_map(self):
         return self._args[1]
 
-    @property
-    def coeff(self):
-        return S.One
-
-    @property
-    def nocoeff(self):
-        return self
-
     def get_free_indices(self):
         return self._free_indices
-
-    def _replace_indices(self, repl):  # type: (tDict[TensorIndex, TensorIndex]) -> TensExpr
-        # TODO: can be improved:
-        return self.xreplace(repl)
 
     def get_indices(self):
         return self.get_free_indices()
@@ -4105,13 +3821,11 @@ class TensorElement(TensExpr):
 
 def canon_bp(p):
     """
-    Butler-Portugal canonicalization. See ``tensor_can.py`` from the
-    combinatorics module for the details.
+    Butler-Portugal canonicalization
     """
     if isinstance(p, TensExpr):
         return p.canon_bp()
     return p
-
 
 def tensor_mul(*a):
     """
@@ -4134,15 +3848,15 @@ def riemann_cyclic_replace(t_r):
     """
     free = sorted(t_r.free, key=lambda x: x[1])
     m, n, p, q = [x[0] for x in free]
-    t0 = t_r*Rational(2, 3)
-    t1 = -t_r.substitute_indices((m,m),(n,q),(p,n),(q,p))*Rational(1, 3)
-    t2 = t_r.substitute_indices((m,m),(n,p),(p,n),(q,q))*Rational(1, 3)
+    t0 = S(2)/3*t_r
+    t1 = - S(1)/3*t_r.substitute_indices((m,m),(n,q),(p,n),(q,p))
+    t2 = S(1)/3*t_r.substitute_indices((m,m),(n,p),(p,n),(q,q))
     t3 = t0 + t1 + t2
     return t3
 
 def riemann_cyclic(t2):
     """
-    Replace each Riemann tensor with an equivalent expression
+    replace each Riemann tensor with an equivalent expression
     satisfying the cyclic identity.
 
     This trick is discussed in the reference guide to Cadabra.
@@ -4150,10 +3864,10 @@ def riemann_cyclic(t2):
     Examples
     ========
 
-    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorHead, riemann_cyclic, TensorSymmetry
-    >>> Lorentz = TensorIndexType('Lorentz', dummy_name='L')
+    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead, riemann_cyclic
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
     >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
-    >>> R = TensorHead('R', [Lorentz]*4, TensorSymmetry.riemann())
+    >>> R = tensorhead('R', [Lorentz]*4, [[2, 2]])
     >>> t = R(i,j,k,l)*(R(-i,-j,-k,-l) - 2*R(-i,-k,-j,-l))
     >>> riemann_cyclic(t)
     0
@@ -4175,7 +3889,7 @@ def riemann_cyclic(t2):
 
 def get_lines(ex, index_type):
     """
-    Returns ``(lines, traces, rest)`` for an index type,
+    returns ``(lines, traces, rest)`` for an index type,
     where ``lines`` is the list of list of positions of a matrix line,
     ``traces`` is the list of list of traced matrix lines,
     ``rest`` is the rest of the elements ot the tensor.
@@ -4345,9 +4059,42 @@ def perm2tensor(t, g, is_canon_bp=False):
 
 
 def substitute_indices(t, *index_tuples):
+    """
+    Return a tensor with free indices substituted according to ``index_tuples``
+
+    ``index_types`` list of tuples ``(old_index, new_index)``
+
+    Note: this method will neither raise or lower the indices, it will just replace their symbol.
+
+    Examples
+    ========
+
+    >>> from sympy.tensor.tensor import TensorIndexType, tensor_indices, tensorhead
+    >>> Lorentz = TensorIndexType('Lorentz', dummy_fmt='L')
+    >>> i, j, k, l = tensor_indices('i,j,k,l', Lorentz)
+    >>> A, B = tensorhead('A,B', [Lorentz]*2, [[1]*2])
+    >>> t = A(i, k)*B(-k, -j); t
+    A(i, L_0)*B(-L_0, -j)
+    >>> t.substitute_indices((i,j), (j, k))
+    A(j, L_0)*B(-L_0, -k)
+    """
     if not isinstance(t, TensExpr):
         return t
-    return t.substitute_indices(*index_tuples)
+    free = t.free
+    free1 = []
+    for j, ipos in free:
+        for i, v in index_tuples:
+            if i._name == j._name and i.tensor_index_type == j.tensor_index_type:
+                if i._is_up == j._is_up:
+                    free1.append((v, ipos))
+                else:
+                    free1.append((-v, ipos))
+                break
+        else:
+            free1.append((j, ipos))
+
+    t = TensMul.from_data(t.coeff, t.components, free1, t.dum)
+    return t
 
 
 def _expand(expr, **kwargs):

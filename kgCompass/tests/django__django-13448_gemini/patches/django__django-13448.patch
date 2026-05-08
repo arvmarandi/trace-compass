@@ -1,0 +1,23 @@
+The bug occurs because when `TEST: {"MIGRATE": False}` is set, the test database is created without running migrations, leaving it empty. However, the test runner still attempts to serialize the database contents via `serialize_db_to_string()`, which queries model tables that do not exist, causing a `ProgrammingError`. The fix ensures that serialization is skipped if migrations are disabled, by combining the `SERIALIZE` and `MIGRATE` settings.
+
+### django/test/utils.py
+- start_line : 170
+- end_line : 176
+```python
+<<<<<<< SEARCH
+                    connection.creation.create_test_db(
+                        verbosity=verbosity,
+                        autoclobber=not interactive,
+                        keepdb=keepdb,
+                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', True),
+                    )
+=======
+                    connection.creation.create_test_db(
+                        verbosity=verbosity,
+                        autoclobber=not interactive,
+                        keepdb=keepdb,
+                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', True) and
+                            connection.settings_dict['TEST'].get('MIGRATE', True),
+                    )
+>>>>>>> REPLACE
+```

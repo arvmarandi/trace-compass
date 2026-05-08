@@ -1,17 +1,13 @@
 """sympify -- convert objects SymPy internal format"""
 
-import typing
-if typing.TYPE_CHECKING:
-    from typing import Any, Callable, Dict as tDict, Type
+from __future__ import print_function, division
+
+from typing import Dict, Type, Callable, Any
 
 from inspect import getmro
-import string
-from sympy.core.random import choice
 
+from .compatibility import iterable
 from .parameters import global_parameters
-
-from sympy.utilities.exceptions import SymPyDeprecationWarning
-from sympy.utilities.iterables import iterable
 
 
 class SympifyError(ValueError):
@@ -29,18 +25,17 @@ class SympifyError(ValueError):
 
 
 # See sympify docstring.
-converter = {}  # type: tDict[Type[Any], Callable[[Any], Basic]]
+converter = {}  # type: Dict[Type[Any], Callable[[Any], Basic]]
 
 
-class CantSympify:
+class CantSympify(object):
     """
     Mix in this trait to a class to disallow sympification of its instances.
 
     Examples
     ========
 
-    >>> from sympy import sympify
-    >>> from sympy.core.sympify import CantSympify
+    >>> from sympy.core.sympify import sympify, CantSympify
 
     >>> class Something(dict):
     ...     pass
@@ -60,16 +55,6 @@ class CantSympify:
     pass
 
 
-def _is_numpy_instance(a):
-    """
-    Checks if an object is an instance of a type from the numpy module.
-    """
-    # This check avoids unnecessarily importing NumPy.  We check the whole
-    # __mro__ in case any base type is a numpy type.
-    return any(type_.__module__ == 'numpy'
-               for type_ in type(a).__mro__)
-
-
 def _convert_numpy_types(a, **sympify_args):
     """
     Converts a numpy datatype input to an appropriate SymPy type.
@@ -82,7 +67,7 @@ def _convert_numpy_types(a, **sympify_args):
             return sympify(a.item(), **sympify_args)
     else:
         try:
-            from .numbers import Float
+            from sympy.core.numbers import Float
             prec = np.finfo(a).nmant + 1
             # E.g. double precision means prec=53 but nmant=52
             # Leading bit of mantissa is always 1, so is not stored
@@ -96,16 +81,19 @@ def _convert_numpy_types(a, **sympify_args):
 
 def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
         evaluate=None):
-    """
-    Converts an arbitrary expression to a type that can be used inside SymPy.
+    """Converts an arbitrary expression to a type that can be used inside SymPy.
 
-    Explanation
-    ===========
+    For example, it will convert Python ints into instances of sympy.Integer,
+    floats into instances of sympy.Float, etc. It is also able to coerce symbolic
+    expressions which inherit from Basic. This can be useful in cooperation
+    with SAGE.
 
-    It will convert Python ints into instances of :class:`~.Integer`, floats
-    into instances of :class:`~.Float`, etc. It is also able to coerce
-    symbolic expressions which inherit from :class:`~.Basic`. This can be
-    useful in cooperation with SAGE.
+    It currently accepts as arguments:
+       - any object defined in SymPy
+       - standard numeric python types: int, long, float, Decimal
+       - strings (like "0.09" or "2e-19")
+       - booleans, including ``None`` (will leave ``None`` unchanged)
+       - dict, lists, sets or tuples containing any of the above
 
     .. warning::
         Note that this function uses ``eval``, and thus shouldn't be used on
@@ -114,9 +102,6 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     If the argument is already a type that SymPy understands, it will do
     nothing but return that value. This can be used at the beginning of a
     function to ensure you are working with the correct type.
-
-    Examples
-    ========
 
     >>> from sympy import sympify
 
@@ -137,7 +122,7 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     >>> sympify("x***2")
     Traceback (most recent call last):
     ...
-    SympifyError: SympifyError: "could not parse 'x***2'"
+    SympifyError: SympifyError: "could not parse u'x***2'"
 
     Locals
     ------
@@ -146,7 +131,7 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     by ``from sympy import *``; anything used in a string that is not
     defined by that import will be converted to a symbol. In the following,
     the ``bitcount`` function is treated as a symbol and the ``O`` is
-    interpreted as the :class:`~.Order` object (used with series) and it raises
+    interpreted as the Order object (used with series) and it raises
     an error when used improperly:
 
     >>> s = 'bitcount(42)'
@@ -162,8 +147,9 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     In order to have ``bitcount`` be recognized it can be imported into a
     namespace dictionary and passed as locals:
 
+    >>> from sympy.core.compatibility import exec_
     >>> ns = {}
-    >>> exec('from sympy.core.evalf import bitcount', ns)
+    >>> exec_('from sympy.core.evalf import bitcount', ns)
     >>> sympify(s, locals=ns)
     6
 
@@ -173,20 +159,20 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
 
     >>> from sympy import Symbol
     >>> ns["O"] = Symbol("O")  # method 1
-    >>> exec('from sympy.abc import O', ns)  # method 2
+    >>> exec_('from sympy.abc import O', ns)  # method 2
     >>> ns.update(dict(O=Symbol("O")))  # method 3
     >>> sympify("O + 1", locals=ns)
     O + 1
 
     If you want *all* single-letter and Greek-letter variables to be symbols
     then you can use the clashing-symbols dictionaries that have been defined
-    there as private variables: ``_clash1`` (single-letter variables),
-    ``_clash2`` (the multi-letter Greek names) or ``_clash`` (both single and
-    multi-letter names that are defined in ``abc``).
+    there as private variables: _clash1 (single-letter variables), _clash2
+    (the multi-letter Greek names) or _clash (both single and multi-letter
+    names that are defined in abc).
 
     >>> from sympy.abc import _clash1
-    >>> set(_clash1)
-    {'E', 'I', 'N', 'O', 'Q', 'S'}
+    >>> _clash1
+    {'C': C, 'E': E, 'I': I, 'N': N, 'O': O, 'Q': Q, 'S': S}
     >>> sympify('I & Q', _clash1)
     I & Q
 
@@ -212,21 +198,12 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     ``evaluate=False`` option will be added. Nested ``Add`` or ``Mul`` will
     be denested first. This is done via an AST transformation that replaces
     operators with their SymPy equivalents, so if an operand redefines any
-    of those operations, the redefined operators will not be used. If
-    argument a is not a string, the mathematical expression is evaluated
-    before being passed to sympify, so adding ``evaluate=False`` will still
-    return the evaluated result of expression.
+    of those operations, the redefined operators will not be used.
 
     >>> sympify('2**2 / 3 + 5')
     19/3
     >>> sympify('2**2 / 3 + 5', evaluate=False)
     2**2/3 + 5
-    >>> sympify('4/2+7', evaluate=True)
-    9
-    >>> sympify('4/2+7', evaluate=False)
-    4/2 + 7
-    >>> sympify(4/2+7, evaluate=False)
-    9.00000000000000
 
     Extending
     ---------
@@ -272,27 +249,11 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     The keywords ``rational`` and ``convert_xor`` are only used
     when the input is a string.
 
-    convert_xor
-    -----------
-
-    >>> sympify('x^y',convert_xor=True)
-    x**y
-    >>> sympify('x^y',convert_xor=False)
-    x ^ y
-
-    rational
-    --------
-
-    >>> sympify('0.1',rational=False)
-    0.1
-    >>> sympify('0.1',rational=True)
-    1/10
-
     Sometimes autosimplification during sympification results in expressions
     that are very different in structure than what was entered. Until such
     autosimplification is no longer done, the ``kernS`` function might be of
     some use. In the example below you can see how an expression reduces to
-    $-1$ by autosimplification, but does not do so when ``kernS`` is used.
+    -1 by autosimplification, but does not do so when ``kernS`` is used.
 
     >>> from sympy.core.sympify import kernS
     >>> from sympy.abc import x
@@ -304,57 +265,10 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     >>> kernS(s)
     -2*(-(-x + 1/x)/(x*(x - 1/x)**2) - 1/(x*(x - 1/x))) - 1
 
-    Parameters
-    ==========
-
-    a :
-        - any object defined in SymPy
-        - standard numeric Python types: ``int``, ``long``, ``float``, ``Decimal``
-        - strings (like ``"0.09"``, ``"2e-19"`` or ``'sin(x)'``)
-        - booleans, including ``None`` (will leave ``None`` unchanged)
-        - dicts, lists, sets or tuples containing any of the above
-
-    convert_xor : bool, optional
-        If true, treats ``^`` as exponentiation.
-        If False, treats ``^`` as XOR itself.
-        Used only when input is a string.
-
-    locals : any object defined in SymPy, optional
-        In order to have strings be recognized it can be imported
-        into a namespace dictionary and passed as locals.
-
-    strict : bool, optional
-        If the option strict is set to ``True``, only the types for which
-        an explicit conversion has been defined are converted. In the
-        other cases, a SympifyError is raised.
-
-    rational : bool, optional
-        If ``True``, converts floats into :class:`~.Rational`.
-        If ``False``, it lets floats remain as it is.
-        Used only when input is a string.
-
-    evaluate : bool, optional
-        If False, then arithmetic and operators will be converted into
-        their SymPy equivalents. If True the expression will be evaluated
-        and the result will be returned.
-
     """
-    # XXX: If a is a Basic subclass rather than instance (e.g. sin rather than
-    # sin(x)) then a.__sympy__ will be the property. Only on the instance will
-    # a.__sympy__ give the *value* of the property (True). Since sympify(sin)
-    # was used for a long time we allow it to pass. However if strict=True as
-    # is the case in internal calls to _sympify then we only allow
-    # is_sympy=True.
-    #
-    # https://github.com/sympy/sympy/issues/20124
     is_sympy = getattr(a, '__sympy__', None)
-    if is_sympy is True:
+    if is_sympy is not None:
         return a
-    elif is_sympy is not None:
-        if not strict:
-            return a
-        else:
-            raise SympifyError(a)
 
     if isinstance(a, CantSympify):
         raise SympifyError(a)
@@ -381,7 +295,8 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
         evaluate = global_parameters.evaluate
 
     # Support for basic numpy datatypes
-    if _is_numpy_instance(a):
+    # Note that this check exists to avoid importing NumPy when not necessary
+    if type(a).__module__ == 'numpy':
         import numpy as np
         if np.isscalar(a):
             return _convert_numpy_types(a, locals=locals,
@@ -392,7 +307,7 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     if _sympy_ is not None:
         try:
             return a._sympy_()
-        # XXX: Catches AttributeError: 'SymPyConverter' object has no
+        # XXX: Catches AttributeError: 'SympyConverter' object has no
         # attribute 'tuple'
         # This is probably a bug somewhere but for now we catch it here.
         except AttributeError:
@@ -405,34 +320,19 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
         if flat is not None:
             shape = getattr(a, "shape", None)
             if shape is not None:
-                from sympy.tensor.array import Array
+                from ..tensor.array import Array
                 return Array(a.flat, a.shape)  # works with e.g. NumPy arrays
 
     if not isinstance(a, str):
-        if _is_numpy_instance(a):
-            import numpy as np
-            assert not isinstance(a, np.number)
-            if isinstance(a, np.ndarray):
-                # Scalar arrays (those with zero dimensions) have sympify
-                # called on the scalar element.
-                if a.ndim == 0:
-                    try:
-                        return sympify(a.item(),
-                                       locals=locals,
-                                       convert_xor=convert_xor,
-                                       strict=strict,
-                                       rational=rational,
-                                       evaluate=evaluate)
-                    except SympifyError:
-                        pass
-        else:
-            # float and int can coerce size-one numpy arrays to their lone
-            # element.  See issue https://github.com/numpy/numpy/issues/10404.
-            for coerce in (float, int):
-                try:
-                    return sympify(coerce(a))
-                except (TypeError, ValueError, AttributeError, SympifyError):
-                    continue
+        for coerce in (float, int):
+            try:
+                coerced = coerce(a)
+            except (TypeError, ValueError):
+                continue
+            try:
+                return sympify(coerced)
+            except SympifyError:
+                continue
 
     if strict:
         raise SympifyError(a)
@@ -440,24 +340,31 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
     if iterable(a):
         try:
             return type(a)([sympify(x, locals=locals, convert_xor=convert_xor,
-                rational=rational, evaluate=evaluate) for x in a])
+                rational=rational) for x in a])
+        except TypeError:
+            # Not all iterables are rebuildable with their type.
+            pass
+    if isinstance(a, dict):
+        try:
+            return type(a)([sympify(x, locals=locals, convert_xor=convert_xor,
+                rational=rational) for x in a.items()])
         except TypeError:
             # Not all iterables are rebuildable with their type.
             pass
 
-    if not isinstance(a, str):
-        try:
-            a = str(a)
-        except Exception as exc:
-            raise SympifyError(a, exc)
-        SymPyDeprecationWarning(
-            feature="String fallback in sympify",
-            useinstead= \
-                'sympify(str(obj)) or ' + \
-                'sympy.core.sympify.converter or obj._sympy_',
-            issue=18066,
-            deprecated_since_version='1.6'
-        ).warn()
+    # At this point we were given an arbitrary expression
+    # which does not inherit from Basic and doesn't implement
+    # _sympy_ (which is a canonical and robust way to convert
+    # anything to SymPy expression).
+    #
+    # As a last chance, we try to take "a"'s normal form via unicode()
+    # and try to parse it. If it fails, then we have no luck and
+    # return an exception
+    try:
+        from .compatibility import unicode
+        a = unicode(a)
+    except Exception as exc:
+        raise SympifyError(a, exc)
 
     from sympy.parsing.sympy_parser import (parse_expr, TokenError,
                                             standard_transformations)
@@ -482,10 +389,10 @@ def sympify(a, locals=None, convert_xor=True, strict=False, rational=False,
 
 def _sympify(a):
     """
-    Short version of :func:`~.sympify` for internal usage for ``__add__`` and
-    ``__eq__`` methods where it is ok to allow some things (like Python
-    integers and floats) in the expression. This excludes things (like strings)
-    that are unwise to allow into such an expression.
+    Short version of sympify for internal usage for __add__ and __eq__ methods
+    where it is ok to allow some things (like Python integers and floats) in
+    the expression. This excludes things (like strings) that are unwise to
+    allow into such an expression.
 
     >>> from sympy import Integer
     >>> Integer(1) == 1
@@ -518,7 +425,7 @@ def kernS(s):
     ========
 
     >>> from sympy.core.sympify import kernS
-    >>> from sympy.abc import x, y
+    >>> from sympy.abc import x, y, z
 
     The 2-arg Mul distributes a number (or minus sign) across the terms
     of an expression, but kernS will prevent that:
@@ -535,6 +442,9 @@ def kernS(s):
 
     XXX This hack should not be necessary once issue 4596 has been resolved.
     """
+    import string
+    from random import choice
+    from sympy.core.symbol import Symbol
     hit = False
     quoted = '"' in s or "'" in s
     if '(' in s and not quoted:
@@ -580,9 +490,7 @@ def kernS(s):
             while kern in s:
                 kern += choice(string.ascii_letters + string.digits)
             s = s.replace(' ', kern)
-            hit = kern in s
-        else:
-            hit = False
+        hit = kern in s
 
     for i in range(2):
         try:
@@ -598,7 +506,6 @@ def kernS(s):
     if not hit:
         return expr
 
-    from .symbol import Symbol
     rep = {Symbol(kern): 1}
     def _clear(expr):
         if isinstance(expr, (list, tuple, set)):

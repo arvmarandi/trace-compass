@@ -49,6 +49,18 @@ class cached_property:
         return res
 
 
+class classproperty:
+    def __init__(self, method=None):
+        self.fget = method
+
+    def __get__(self, instance, cls=None):
+        return self.fget(cls)
+
+    def getter(self, method):
+        self.fget = method
+        return self
+
+
 class Promise:
     """
     Base class for the proxy class created in the closure of the lazy function.
@@ -79,7 +91,7 @@ def lazy(func, *resultclasses):
             self.__kw = kw
             if not self.__prepared:
                 self.__prepare_class__()
-            self.__prepared = True
+            self.__class__.__prepared = True
 
         def __reduce__(self):
             return (

@@ -1,0 +1,67 @@
+--- a/django/forms/widgets.py
++++ b/django/forms/widgets.py
+@@ -125,29 +125,45 @@
+         in a certain order. In JavaScript you may not be able to reference a
+         global or in CSS you might want to override a style.
+         """
+-        # Start with a copy of list_1.
+-        combined_list = list(list_1)
+-        last_insert_index = len(list_1)
+-        # Walk list_2 in reverse, inserting each element into combined_list if
+-        # it doesn't already exist.
+-        for path in reversed(list_2):
+-            try:
+-                # Does path already exist in the list?
+-                index = combined_list.index(path)
+-            except ValueError:
+-                # Add path to combined_list since it doesn't exist.
+-                combined_list.insert(last_insert_index, path)
+-            else:
+-                if index > last_insert_index:
++        # Build a directed graph of ordering constraints.
++        items = set(list_1) | set(list_2)
++        in_degree = {item: 0 for item in items}
++        graph = {item: [] for item in items}
++        for lst in (list_1, list_2):
++            for i in range(len(lst) - 1):
++                before, after = lst[i], lst[i + 1]
++                graph[before].append(after)
++                in_degree[after] += 1
++        # Detect conflicts: reversed edges.
++        for lst in (list_1, list_2):
++            for i in range(len(lst) - 1):
++                before, after = lst[i], lst[i + 1]
++                if after in graph and before in graph[after]:
+                     warnings.warn(
+                         'Detected duplicate Media files in an opposite order:\n'
+-                        '%s\n%s' % (combined_list[last_insert_index], combined_list[index]),
++                        '%s\n%s' % (after, before),
+                         MediaOrderConflictWarning,
+                     )
+-                # path already exists in the list. Update last_insert_index so
+-                # that the following elements are inserted in front of this one.
+-                last_insert_index = index
+-        return combined_list
++        # Topological sort using Kahn's algorithm.
++        from collections import deque
++        q = deque([item for item in items if in_degree[item] == 0])
++        result = []
++        while q:
++            node = q.popleft()
++            result.append(node)
++            for neighbor in graph[node]:
++                in_degree[neighbor] -= 1
++                if in_degree[neighbor] == 0:
++                    q.append(neighbor)
++        # If there's a cycle, fall back to a stable merge.
++        if len(result) != len(items):
++            seen = set()
++            result = []
++            for item in list_1 + list_2:
++                if item not in seen:
++                    seen.add(item)
++                    result.append(item)
++        return result
+ 
+     def __add__(self, other):
+         combined = Media()

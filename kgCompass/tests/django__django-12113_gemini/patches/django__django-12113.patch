@@ -1,0 +1,47 @@
+We need to ensure that when `DatabaseWrapper.close()` is called, the internal `self.connection` is always set to `None` after closing the underlying database connection, even if the wrapper was in an atomic block. This prevents any residual lock on the SQLite file when the test runner reuses the database (`--keepdb`). The original code only sets `self.connection = None` when not in an atomic block, which can leave a closed `connection` object that might still hold a lock.
+
+### django/db/backends/base/base.py
+- start_line : 284
+- end_line : 301
+
+<<<<<<< SEARCH
+    def close(self):
+        """Close the connection to the database."""
+        self.validate_thread_sharing()
+        self.run_on_commit = []
+
+        # Don't call validate_no_atomic_block() to avoid making it difficult
+        # to get rid of a connection in an invalid state. The next connect()
+        # will reset the transaction state anyway.
+        if self.closed_in_transaction or self.connection is None:
+            return
+        try:
+            self._close()
+        finally:
+            if self.in_atomic_block:
+                self.closed_in_transaction = True
+                self.needs_rollback = True
+            else:
+                self.connection = None
+=======
+    def close(self):
+        """Close the connection to the database."""
+        self.validate_thread_sharing()
+        self.run_on_commit = []
+
+        # Don't call validate_no_atomic_block() to avoid making it difficult
+        # to get rid of a connection in an invalid state. The next connect()
+        # will reset the transaction state anyway.
+        if self.closed_in_transaction or self.connection is None:
+            return
+        try:
+            self._close()
+        finally:
+            if self.in_atomic_block:
+                self.closed_in_transaction = True
+                self.needs_rollback = True
+            # Always release the connection reference to ensure that any
+            # underlying lock (e.g., SQLite file lock) is fully released
+            # and that the next connect() creates a fresh connection.
+            self.connection = None
+>>>>>>> REPLACE

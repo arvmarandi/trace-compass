@@ -1,0 +1,26 @@
+--- a/django/db/models/options.py
++++ b/django/db/models/options.py
+@@ -789,6 +789,14 @@
+         # Recursively call _get_fields() on each parent, with the same
+         # options provided in this call.
+         if include_parents is not False:
++            # Collect names of fields defined directly on this model to avoid
++            # including parent fields that have been overridden (redefined) by
++            # the child model.
++            local_field_names = {
++                f.name for f in self._get_fields(
++                    forward=forward, reverse=False, include_parents=False,
++                )
++            }
+             for parent in self.parents:
+                 # In diamond inheritance it is possible that we see the same
+                 # model from two different routes. In that case, avoid adding
+@@ -801,7 +809,7 @@
+                 for obj in parent._meta._get_fields(
+                         forward=forward, reverse=reverse, include_parents=include_parents,
+                         include_hidden=include_hidden, seen_models=seen_models):
+-                    if not getattr(obj, 'parent_link', False) or obj.model == self.concrete_model:
++                    if (not getattr(obj, 'parent_link', False) or obj.model == self.concrete_model) and obj.name not in local_field_names:
+                         fields.append(obj)
+         if reverse and not self.proxy:
+             # Tree is computed once and cached until the app cache is expired.

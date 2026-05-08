@@ -1,14 +1,13 @@
 """
 This module contains the machinery handling assumptions.
-Do also consider the guide :ref:`assumptions`.
 
 All symbolic objects have assumption attributes that can be accessed via
-``.is_<assumption name>`` attribute.
+.is_<assumption name> attribute.
 
 Assumptions determine certain properties of symbolic objects and can
-have 3 possible values: ``True``, ``False``, ``None``.  ``True`` is returned if the
-object has the property and ``False`` is returned if it does not or cannot
-(i.e. does not make sense):
+have 3 possible values: True, False, None.  True is returned if the
+object has the property and False is returned if it doesn't or can't
+(i.e. doesn't make sense):
 
     >>> from sympy import I
     >>> I.is_algebraic
@@ -19,8 +18,8 @@ object has the property and ``False`` is returned if it does not or cannot
     False
 
 When the property cannot be determined (or when a method is not
-implemented) ``None`` will be returned. For example,  a generic symbol, ``x``,
-may or may not be positive so a value of ``None`` is returned for ``x.is_positive``.
+implemented) None will be returned, e.g. a generic symbol, x, may or
+may not be positive so a value of None is returned for x.is_positive.
 
 By default, all symbolic values are in the largest set in the given context
 without specifying the property. For example, a symbol that has a property
@@ -32,26 +31,22 @@ Here follows a list of possible assumption names:
 
     commutative
         object commutes with any other object with
-        respect to multiplication operation. See [12]_.
+        respect to multiplication operation.
 
     complex
         object can have only values from the set
-        of complex numbers. See [13]_.
+        of complex numbers.
 
     imaginary
         object value is a number that can be written as a real
         number multiplied by the imaginary unit ``I``.  See
-        [3]_.  Please note that ``0`` is not considered to be an
+        [3]_.  Please note, that ``0`` is not considered to be an
         imaginary number, see
         `issue #7649 <https://github.com/sympy/sympy/issues/7649>`_.
 
     real
         object can have only values from the set
         of real numbers.
-
-    extended_real
-        object can have only values from the set
-        of real numbers, ``oo`` and ``-oo``.
 
     integer
         object can have only values from the set
@@ -63,15 +58,15 @@ Here follows a list of possible assumption names:
         odd (even) integers [2]_.
 
     prime
-        object is a natural number greater than 1 that has
-        no positive divisors other than 1 and itself.  See [6]_.
+        object is a natural number greater than ``1`` that has
+        no positive divisors other than ``1`` and itself.  See [6]_.
 
     composite
         object is a positive integer that has at least one positive
-        divisor other than 1 or the number itself.  See [4]_.
+        divisor other than ``1`` or the number itself.  See [4]_.
 
     zero
-        object has the value of 0.
+        object has the value of ``0``.
 
     nonzero
         object is a real number that is not zero.
@@ -89,7 +84,7 @@ Here follows a list of possible assumption names:
         of transcendental numbers [10]_.
 
     irrational
-        object value cannot be represented exactly by :class:`~.Rational`, see [5]_.
+        object value cannot be represented exactly by Rational, see [5]_.
 
     finite
     infinite
@@ -103,19 +98,12 @@ Here follows a list of possible assumption names:
 
     positive
     nonpositive
-        object can have only positive (nonpositive) values.
-
-    extended_negative
-    extended_nonnegative
-    extended_positive
-    extended_nonpositive
-    extended_nonzero
-        as without the extended part, but also including infinity with
-        corresponding sign, e.g., extended_positive includes ``oo``
+        object can have only positive (only
+        nonpositive) values.
 
     hermitian
     antihermitian
-        object belongs to the field of Hermitian
+        object belongs to the field of hermitian
         (antihermitian) operators.
 
 Examples
@@ -137,58 +125,13 @@ See Also
     :py:class:`sympy.core.numbers.ImaginaryUnit`
     :py:class:`sympy.core.numbers.Zero`
     :py:class:`sympy.core.numbers.One`
-    :py:class:`sympy.core.numbers.Infinity`
-    :py:class:`sympy.core.numbers.NegativeInfinity`
-    :py:class:`sympy.core.numbers.ComplexInfinity`
 
 Notes
 =====
 
-The fully-resolved assumptions for any SymPy expression
-can be obtained as follows:
-
-    >>> from sympy.core.assumptions import assumptions
-    >>> x = Symbol('x',positive=True)
-    >>> assumptions(x + I)
-    {'commutative': True, 'complex': True, 'composite': False, 'even':
-    False, 'extended_negative': False, 'extended_nonnegative': False,
-    'extended_nonpositive': False, 'extended_nonzero': False,
-    'extended_positive': False, 'extended_real': False, 'finite': True,
-    'imaginary': False, 'infinite': False, 'integer': False, 'irrational':
-    False, 'negative': False, 'noninteger': False, 'nonnegative': False,
-    'nonpositive': False, 'nonzero': False, 'odd': False, 'positive':
-    False, 'prime': False, 'rational': False, 'real': False, 'zero':
-    False}
-
-Developers Notes
-================
-
-The current (and possibly incomplete) values are stored
-in the ``obj._assumptions dictionary``; queries to getter methods
-(with property decorators) or attributes of objects/classes
-will return values and update the dictionary.
-
-    >>> eq = x**2 + I
-    >>> eq._assumptions
-    {}
-    >>> eq.is_finite
-    True
-    >>> eq._assumptions
-    {'finite': True, 'infinite': False}
-
-For a :class:`~.Symbol`, there are two locations for assumptions that may
-be of interest. The ``assumptions0`` attribute gives the full set of
-assumptions derived from a given set of initial assumptions. The
-latter assumptions are stored as ``Symbol._assumptions.generator``
-
-    >>> Symbol('x', prime=True, even=True)._assumptions.generator
-    {'even': True, 'prime': True}
-
-The ``generator`` is not necessarily canonical nor is it filtered
-in any way: it records the assumptions used to instantiate a Symbol
-and (for storage purposes) represents a more compact representation
-of the assumptions needed to recreate the full set in
-``Symbol.assumptions0``.
+Assumption values are stored in obj._assumptions dictionary or
+are returned by getter methods (with property decorators) or are
+attributes of objects/classes.
 
 
 References
@@ -205,16 +148,14 @@ References
 .. [9] http://docs.scipy.org/doc/numpy/reference/generated/numpy.isfinite.html
 .. [10] https://en.wikipedia.org/wiki/Transcendental_number
 .. [11] https://en.wikipedia.org/wiki/Algebraic_number
-.. [12] https://en.wikipedia.org/wiki/Commutative_property
-.. [13] https://en.wikipedia.org/wiki/Complex_number
 
 """
+from __future__ import print_function, division
 
-from .facts import FactRules, FactKB, InconsistentAssumptions
-from .core import BasicMeta
-from .sympify import sympify
+from sympy.core.facts import FactRules, FactKB
+from sympy.core.core import BasicMeta
 
-from sympy.core.random import shuffle
+from random import shuffle
 
 
 _assume_rules = FactRules([
@@ -271,7 +212,7 @@ _assume_rules = FactRules([
 
     'imaginary      ->  !extended_real',
 
-    'infinite       ==  !finite',
+    'infinite       ->  !finite',
     'noninteger     ==  extended_real & !integer',
     'extended_nonzero == extended_real & !zero',
 ])
@@ -281,173 +222,13 @@ _assume_defined.add('polar')
 _assume_defined = frozenset(_assume_defined)
 
 
-def assumptions(expr, _check=None):
-    """return the T/F assumptions of ``expr``"""
-    n = sympify(expr)
-    if n.is_Symbol:
-        rv = n.assumptions0  # are any important ones missing?
-        if _check is not None:
-            rv = {k: rv[k] for k in set(rv) & set(_check)}
-        return rv
-    rv = {}
-    for k in _assume_defined if _check is None else _check:
-        v = getattr(n, 'is_{}'.format(k))
-        if v is not None:
-            rv[k] = v
-    return rv
-
-
-def common_assumptions(exprs, check=None):
-    """return those assumptions which have the same True or False
-    value for all the given expressions.
-
-    Examples
-    ========
-
-    >>> from sympy.core import common_assumptions
-    >>> from sympy import oo, pi, sqrt
-    >>> common_assumptions([-4, 0, sqrt(2), 2, pi, oo])
-    {'commutative': True, 'composite': False,
-    'extended_real': True, 'imaginary': False, 'odd': False}
-
-    By default, all assumptions are tested; pass an iterable of the
-    assumptions to limit those that are reported:
-
-    >>> common_assumptions([0, 1, 2], ['positive', 'integer'])
-    {'integer': True}
-    """
-    check = _assume_defined if check is None else set(check)
-    if not check or not exprs:
-        return {}
-
-    # get all assumptions for each
-    assume = [assumptions(i, _check=check) for i in sympify(exprs)]
-    # focus on those of interest that are True
-    for i, e in enumerate(assume):
-        assume[i] = {k: e[k] for k in set(e) & check}
-    # what assumptions are in common?
-    common = set.intersection(*[set(i) for i in assume])
-    # which ones hold the same value
-    a = assume[0]
-    return {k: a[k] for k in common if all(a[k] == b[k]
-        for b in assume)}
-
-
-def failing_assumptions(expr, **assumptions):
-    """
-    Return a dictionary containing assumptions with values not
-    matching those of the passed assumptions.
-
-    Examples
-    ========
-
-    >>> from sympy import failing_assumptions, Symbol
-
-    >>> x = Symbol('x', positive=True)
-    >>> y = Symbol('y')
-    >>> failing_assumptions(6*x + y, positive=True)
-    {'positive': None}
-
-    >>> failing_assumptions(x**2 - 1, positive=True)
-    {'positive': None}
-
-    If *expr* satisfies all of the assumptions, an empty dictionary is returned.
-
-    >>> failing_assumptions(x**2, positive=True)
-    {}
-
-    """
-    expr = sympify(expr)
-    failed = {}
-    for k in assumptions:
-        test = getattr(expr, 'is_%s' % k, None)
-        if test is not assumptions[k]:
-            failed[k] = test
-    return failed  # {} or {assumption: value != desired}
-
-
-def check_assumptions(expr, against=None, **assume):
-    """
-    Checks whether assumptions of ``expr`` match the T/F assumptions
-    given (or possessed by ``against``). True is returned if all
-    assumptions match; False is returned if there is a mismatch and
-    the assumption in ``expr`` is not None; else None is returned.
-
-    Explanation
-    ===========
-
-    *assume* is a dict of assumptions with True or False values
-
-    Examples
-    ========
-
-    >>> from sympy import Symbol, pi, I, exp, check_assumptions
-    >>> check_assumptions(-5, integer=True)
-    True
-    >>> check_assumptions(pi, real=True, integer=False)
-    True
-    >>> check_assumptions(pi, negative=True)
-    False
-    >>> check_assumptions(exp(I*pi/7), real=False)
-    True
-    >>> x = Symbol('x', positive=True)
-    >>> check_assumptions(2*x + 1, positive=True)
-    True
-    >>> check_assumptions(-2*x - 5, positive=True)
-    False
-
-    To check assumptions of *expr* against another variable or expression,
-    pass the expression or variable as ``against``.
-
-    >>> check_assumptions(2*x + 1, x)
-    True
-
-    To see if a number matches the assumptions of an expression, pass
-    the number as the first argument, else its specific assumptions
-    may not have a non-None value in the expression:
-
-    >>> check_assumptions(x, 3)
-    >>> check_assumptions(3, x)
-    True
-
-    ``None`` is returned if ``check_assumptions()`` could not conclude.
-
-    >>> check_assumptions(2*x - 1, x)
-
-    >>> z = Symbol('z')
-    >>> check_assumptions(z, real=True)
-
-    See Also
-    ========
-
-    failing_assumptions
-
-    """
-    expr = sympify(expr)
-    if against is not None:
-        if assume:
-            raise ValueError(
-                'Expecting `against` or `assume`, not both.')
-        assume = assumptions(against)
-    known = True
-    for k, v in assume.items():
-        if v is None:
-            continue
-        e = getattr(expr, 'is_' + k, None)
-        if e is None:
-            known = None
-        elif v != e:
-            return False
-    return known
-
-
 class StdFactKB(FactKB):
-    """A FactKB specialized for the built-in rules
+    """A FactKB specialised for the built-in rules
 
     This is the only kind of FactKB that Basic objects should use.
     """
     def __init__(self, facts=None):
-        super().__init__(_assume_rules)
+        super(StdFactKB, self).__init__(_assume_rules)
         # save a copy of the facts dict
         if not facts:
             self._generator = {}
@@ -515,25 +296,7 @@ def _ask(fact, obj):
 
     # Store None into the assumptions so that recursive attempts at
     # evaluating the same fact don't trigger infinite recursion.
-    #
-    # Potentially in a multithreaded context it is possible that the
-    # assumptions query for fact was already resolved in another thread. If
-    # that happens and the query was resolved as True or False then
-    # assumptions._tell will raise InconsistentAssumptions because of the
-    # attempt to replace True/False with None. In that case it should be safe
-    # to catch the exception and return the result that was computed in the
-    # other thread.
-    #
-    # XXX: Ideally this call to assumptions._tell would be removed. Its purpose
-    # is to guard against infinite recursion if a query for one fact attempts
-    # to evaluate a related fact for the same object. However really this is
-    # just masking bugs because a query for a fact about obj should only query
-    # the properties of obj.args and not obj itself. This is not easy to change
-    # though because it requires fixing all of the buggy _eval_is_* handlers.
-    try:
-        assumptions._tell(fact, None)
-    except InconsistentAssumptions:
-        return assumptions[fact]
+    assumptions._tell(fact, None)
 
     # First try the assumption evaluation function if it exists
     try:

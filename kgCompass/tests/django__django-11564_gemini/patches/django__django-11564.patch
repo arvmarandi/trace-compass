@@ -1,0 +1,60 @@
+We need to modify the static and media prefix template tags to respect the `SCRIPT_NAME` from the request's META, ensuring that generated URLs include the sub-path when running under a WSGI script name. The changes are in `django/templatetags/static.py`:
+
+- In `StaticNode.render`, after computing the URL, prepend the script name if available.
+- In `PrefixNode.render`, do the same for the prefix value.
+
+These edits use `context.get('request')` to safely access the request object and `request.META.get('SCRIPT_NAME', '')` to obtain the script name.
+
+```python
+### django/templatetags/static.py
+<<<<<<< SEARCH
+    def render(self, context):
+        url = self.url(context)
+        if context.autoescape:
+            url = conditional_escape(url)
+        if self.varname is None:
+            return url
+        context[self.varname] = url
+        return ''
+=======
+    def render(self, context):
+        url = self.url(context)
+        if context.autoescape:
+            url = conditional_escape(url)
+        # Prepend SCRIPT_NAME if present in the request
+        request = context.get('request')
+        if request:
+            script_name = request.META.get('SCRIPT_NAME', '')
+            if script_name:
+                url = script_name.rstrip('/') + '/' + url.lstrip('/')
+        if self.varname is None:
+            return url
+        context[self.varname] = url
+        return ''
+>>>>>>> REPLACE
+```
+
+```python
+### django/templatetags/static.py
+<<<<<<< SEARCH
+    def render(self, context):
+        prefix = self.handle_simple(self.name)
+        if self.varname is None:
+            return prefix
+        context[self.varname] = prefix
+        return ''
+=======
+    def render(self, context):
+        prefix = self.handle_simple(self.name)
+        # Prepend SCRIPT_NAME if present in the request
+        request = context.get('request')
+        if request:
+            script_name = request.META.get('SCRIPT_NAME', '')
+            if script_name:
+                prefix = script_name.rstrip('/') + '/' + prefix.lstrip('/')
+        if self.varname is None:
+            return prefix
+        context[self.varname] = prefix
+        return ''
+>>>>>>> REPLACE
+```

@@ -1,0 +1,51 @@
+We need to fix the `inspectdb` command to automatically add `related_name` arguments to foreign key fields when multiple relations point to the same target model. This prevents the `fields.E304` error.
+
+Two changes are required:
+1. Count how many times each target model is used in the current table before looping over the fields.
+2. When generating a foreign key field, if its target model appears more than once, set `related_name` to the field's attribute name.
+
+```python
+### django/core/management/commands/inspectdb.py
+- start_line : (around line 150 – after `column_to_field_name = {}`)
+- end_line : (before `for row in table_description:`)
+<<<<<<< SEARCH
+                used_column_names = []  # Holds column names used in the table so far
+                column_to_field_name = {}  # Maps column names to names of model fields
+                for row in table_description:
+=======
+                used_column_names = []  # Holds column names used in the table so far
+                column_to_field_name = {}  # Maps column names to names of model fields
+                # Count how many relations point to each target model to detect
+                # clashes (E304) and auto-generate related_name.
+                rel_target_count = {}
+                for col_name in relations:
+                    ref_db_column, ref_db_table = relations[col_name]
+                    if ref_db_table == table_name:
+                        target = 'self'
+                    else:
+                        target = table2model(ref_db_table)
+                    rel_target_count[target] = rel_target_count.get(target, 0) + 1
+                for row in table_description:
+>>>>>>> REPLACE
+```
+
+```python
+### django/core/management/commands/inspectdb.py
+- start_line : (around line 195 – the `if rel_to in known_models:` block)
+- end_line : (the line before `else:` that starts the non‑relation branch)
+<<<<<<< SEARCH
+                        if rel_to in known_models:
+                            field_type = "%s(%s" % (rel_type, rel_to)
+                        else:
+                            field_type = "%s('%s'" % (rel_type, rel_to)
+                    else:
+=======
+                        if rel_to in known_models:
+                            field_type = "%s(%s" % (rel_type, rel_to)
+                        else:
+                            field_type = "%s('%s'" % (rel_type, rel_to)
+                        if rel_target_count.get(rel_to, 0) > 1:
+                            extra_params['related_name'] = att_name
+                    else:
+>>>>>>> REPLACE
+```

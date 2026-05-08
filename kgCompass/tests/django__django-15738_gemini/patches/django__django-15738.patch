@@ -1,0 +1,131 @@
+The bug arises when a migration simultaneously removes a `unique_together` constraint and changes a ForeignKey field to ManyToManyField. The `_delete_composed_index` method queries database constraints using column names from the **new** model state (which has no real column for the M2M field), so it fails to find the constraint and raises `ValueError`.
+
+The fix ensures that when deleting constraints, the column names are derived from the **old** model state (before the field alteration) by passing `from_model` to the `alter_unique_together` and `alter_index_together` methods.
+
+```python
+### django/db/backends/base/schema.py
+- start_line : 520
+- end_line : 539
+<<<<<<< SEARCH
+    def alter_unique_together(self, model, old_unique_together, new_unique_together):
+        """
+        Deal with a model changing its unique_together. The input
+        unique_togethers must be doubly-nested, not the single-nested
+        ["foo", "bar"] format.
+        """
+        olds = {tuple(fields) for fields in old_unique_together}
+        news = {tuple(fields) for fields in new_unique_together}
+        # Deleted uniques
+        for fields in olds.difference(news):
+            self._delete_composed_index(
+                model,
+                fields,
+                {"unique": True, "primary_key": False},
+                self.sql_delete_unique,
+            )
+        # Created uniques
+        for field_names in news.difference(olds):
+            fields = [model._meta.get_field(field) for field in field_names]
+            self.execute(self._create_unique_sql(model, fields))
+=======
+    def alter_unique_together(self, model, old_unique_together, new_unique_together, *, from_model=None):
+        """
+        Deal with a model changing its unique_together. The input
+        unique_togethers must be doubly-nested, not the single-nested
+        ["foo", "bar"] format.
+        """
+        olds = {tuple(fields) for fields in old_unique_together}
+        news = {tuple(fields) for fields in new_unique_together}
+        # Deleted uniques
+        for fields in olds.difference(news):
+            self._delete_composed_index(
+                from_model or model,
+                fields,
+                {"unique": True, "primary_key": False},
+                self.sql_delete_unique,
+            )
+        # Created uniques
+        for field_names in news.difference(olds):
+            fields = [model._meta.get_field(field) for field in field_names]
+            self.execute(self._create_unique_sql(model, fields))
+>>>>>>> REPLACE
+```
+
+```python
+### django/db/backends/base/schema.py
+- start_line : 541
+- end_line : 560
+<<<<<<< SEARCH
+    def alter_index_together(self, model, old_index_together, new_index_together):
+        """
+        Deal with a model changing its index_together. The input
+        index_togethers must be doubly-nested, not the single-nested
+        ["foo", "bar"] format.
+        """
+        olds = {tuple(fields) for fields in old_index_together}
+        news = {tuple(fields) for fields in new_index_together}
+        # Deleted indexes
+        for fields in olds.difference(news):
+            self._delete_composed_index(
+                model,
+                fields,
+                {"index": True, "unique": False},
+                self.sql_delete_index,
+            )
+        # Created indexes
+        for field_names in news.difference(olds):
+            fields = [model._meta.get_field(field) for field in field_names]
+            self.execute(self._create_index_sql(model, fields=fields, suffix="_idx"))
+=======
+    def alter_index_together(self, model, old_index_together, new_index_together, *, from_model=None):
+        """
+        Deal with a model changing its index_together. The input
+        index_togethers must be doubly-nested, not the single-nested
+        ["foo", "bar"] format.
+        """
+        olds = {tuple(fields) for fields in old_index_together}
+        news = {tuple(fields) for fields in new_index_together}
+        # Deleted indexes
+        for fields in olds.difference(news):
+            self._delete_composed_index(
+                from_model or model,
+                fields,
+                {"index": True, "unique": False},
+                self.sql_delete_index,
+            )
+        # Created indexes
+        for field_names in news.difference(olds):
+            fields = [model._meta.get_field(field) for field in field_names]
+            self.execute(self._create_index_sql(model, fields=fields, suffix="_idx"))
+>>>>>>> REPLACE
+```
+
+```python
+### django/db/migrations/operations/models.py
+- start_line : 560
+- end_line : 569
+<<<<<<< SEARCH
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        new_model = to_state.apps.get_model(app_label, self.name)
+        if self.allow_migrate_model(schema_editor.connection.alias, new_model):
+            old_model = from_state.apps.get_model(app_label, self.name)
+            alter_together = getattr(schema_editor, "alter_%s" % self.option_name)
+            alter_together(
+                new_model,
+                getattr(old_model._meta, self.option_name, set()),
+                getattr(new_model._meta, self.option_name, set()),
+            )
+=======
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        new_model = to_state.apps.get_model(app_label, self.name)
+        if self.allow_migrate_model(schema_editor.connection.alias, new_model):
+            old_model = from_state.apps.get_model(app_label, self.name)
+            alter_together = getattr(schema_editor, "alter_%s" % self.option_name)
+            alter_together(
+                new_model,
+                getattr(old_model._meta, self.option_name, set()),
+                getattr(new_model._meta, self.option_name, set()),
+                from_model=old_model,
+            )
+>>>>>>> REPLACE
+```

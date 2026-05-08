@@ -1,10 +1,9 @@
-from sympy.core.basic import Basic
-from sympy.core.containers import (Dict, Tuple)
-from sympy.core.singleton import S
+from __future__ import print_function, division
+
+from sympy import S, Dict, Basic, Tuple
 from sympy.core.sympify import _sympify
 from sympy.tensor.array.mutable_ndim_array import MutableNDimArray
 from sympy.tensor.array.ndim_array import NDimArray, ImmutableNDimArray
-from sympy.utilities.iterables import flatten
 
 import functools
 
@@ -29,9 +28,9 @@ class SparseNDimArray(NDimArray):
         >>> a[1, 1]
         3
         >>> a[0]
-        [0, 1]
-        >>> a[1]
-        [2, 3]
+        0
+        >>> a[2]
+        2
 
         Symbolic indexing:
 
@@ -49,17 +48,22 @@ class SparseNDimArray(NDimArray):
         if syindex is not None:
             return syindex
 
-        index = self._check_index_for_getitem(index)
-
         # `index` is a tuple with one or more slices:
-        if isinstance(index, tuple) and any(isinstance(i, slice) for i in index):
+        if isinstance(index, tuple) and any([isinstance(i, slice) for i in index]):
             sl_factors, eindices = self._get_slice_data_for_array_access(index)
             array = [self._sparse_array.get(self._parse_index(i), S.Zero) for i in eindices]
             nshape = [len(el) for i, el in enumerate(sl_factors) if isinstance(index[i], slice)]
             return type(self)(array, nshape)
         else:
-            index = self._parse_index(index)
-            return self._sparse_array.get(index, S.Zero)
+            # `index` is a single slice:
+            if isinstance(index, slice):
+                start, stop, step = index.indices(self._loop_size)
+                retvec = [self._sparse_array.get(ind, S.Zero) for ind in range(start, stop, step)]
+                return retvec
+            # `index` is a number or a tuple without any slice:
+            else:
+                index = self._parse_index(index)
+                return self._sparse_array.get(index, S.Zero)
 
     @classmethod
     def zeros(cls, *shape):
@@ -94,20 +98,28 @@ class SparseNDimArray(NDimArray):
 
         return SparseMatrix(self.shape[0], self.shape[1], mat_sparse)
 
+    def __iter__(self):
+        def iterator():
+            for i in range(self._loop_size):
+                yield self[i]
+        return iterator()
+
     def reshape(self, *newshape):
         new_total_size = functools.reduce(lambda x,y: x*y, newshape)
         if new_total_size != self._loop_size:
             raise ValueError("Invalid reshape parameters " + newshape)
 
-        return type(self)(self._sparse_array, newshape)
+        return type(self)(*(newshape + (self._array,)))
 
-class ImmutableSparseNDimArray(SparseNDimArray, ImmutableNDimArray): # type: ignore
+class ImmutableSparseNDimArray(SparseNDimArray, ImmutableNDimArray):
 
     def __new__(cls, iterable=None, shape=None, **kwargs):
+        from sympy.utilities.iterables import flatten
+
         shape, flat_list = cls._handle_ndarray_creation_inputs(iterable, shape, **kwargs)
         shape = Tuple(*map(_sympify, shape))
         cls._check_special_bounds(flat_list, shape)
-        loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else len(flat_list)
+        loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
 
         # Sparse array:
         if isinstance(flat_list, (dict, Dict)):
@@ -138,11 +150,13 @@ class ImmutableSparseNDimArray(SparseNDimArray, ImmutableNDimArray): # type: ign
 class MutableSparseNDimArray(MutableNDimArray, SparseNDimArray):
 
     def __new__(cls, iterable=None, shape=None, **kwargs):
+        from sympy.utilities.iterables import flatten
+
         shape, flat_list = cls._handle_ndarray_creation_inputs(iterable, shape, **kwargs)
         self = object.__new__(cls)
         self._shape = shape
         self._rank = len(shape)
-        self._loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else len(flat_list)
+        self._loop_size = functools.reduce(lambda x,y: x*y, shape) if shape else 0
 
         # Sparse array:
         if isinstance(flat_list, (dict, Dict)):
@@ -170,7 +184,7 @@ class MutableSparseNDimArray(MutableNDimArray, SparseNDimArray):
         >>> a
         [[1, 0], [0, 1]]
         """
-        if isinstance(index, tuple) and any(isinstance(i, slice) for i in index):
+        if isinstance(index, tuple) and any([isinstance(i, slice) for i in index]):
             value, eindices, slice_offsets = self._get_slice_data_for_array_assignment(index, value)
             for i in eindices:
                 other_i = [ind - j for ind, j in zip(i, slice_offsets) if j is not None]

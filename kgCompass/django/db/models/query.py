@@ -28,11 +28,11 @@ from django.utils import timezone
 from django.utils.functional import cached_property, partition
 from django.utils.version import get_version
 
+# The maximum number of results to fetch in a get() query.
+MAX_GET_RESULTS = 21
+
 # The maximum number of items to display in a QuerySet.__repr__
 REPR_OUTPUT_SIZE = 20
-
-# Pull into this namespace for backwards compatibility.
-EmptyResultSet = sql.EmptyResultSet
 
 
 class BaseIterable:
@@ -280,7 +280,10 @@ class QuerySet:
     def __getitem__(self, k):
         """Retrieve an item or slice from the set of results."""
         if not isinstance(k, (int, slice)):
-            raise TypeError
+            raise TypeError(
+                'QuerySet indices must be integers or slices, not %s.'
+                % type(k).__name__
+            )
         assert ((not isinstance(k, slice) and (k >= 0)) or
                 (isinstance(k, slice) and (k.start is None or k.start >= 0) and
                  (k.stop is None or k.stop >= 0))), \
@@ -395,9 +398,13 @@ class QuerySet:
         Perform the query and return a single object matching the given
         keyword arguments.
         """
-        clone = self.filter(*args, **kwargs)
+        clone = self._chain() if self.query.combinator else self.filter(*args, **kwargs)
         if self.query.can_filter() and not self.query.distinct_fields:
             clone = clone.order_by()
+        limit = None
+        if not clone.query.select_for_update or connections[clone.db].features.supports_select_for_update_with_limit:
+            limit = MAX_GET_RESULTS
+            clone.query.set_limits(high=limit)
         num = len(clone)
         if num == 1:
             return clone._result_cache[0]
@@ -407,8 +414,10 @@ class QuerySet:
                 self.model._meta.object_name
             )
         raise self.model.MultipleObjectsReturned(
-            "get() returned more than one %s -- it returned %s!" %
-            (self.model._meta.object_name, num)
+            'get() returned more than one %s -- it returned %s!' % (
+                self.model._meta.object_name,
+                num if not limit or num < limit else 'more than %s' % (limit - 1),
+            )
         )
 
     def create(self, **kwargs):
@@ -458,23 +467,33 @@ class QuerySet:
             return objs
         self._for_write = True
         connection = connections[self.db]
-        fields = self.model._meta.concrete_fields
+        opts = self.model._meta
+        fields = opts.concrete_fields
         objs = list(objs)
         self._populate_pk_values(objs)
         with transaction.atomic(using=self.db, savepoint=False):
             objs_with_pk, objs_without_pk = partition(lambda o: o.pk is None, objs)
             if objs_with_pk:
-                self._batched_insert(objs_with_pk, fields, batch_size, ignore_conflicts=ignore_conflicts)
+                returned_columns = self._batched_insert(
+                    objs_with_pk, fields, batch_size, ignore_conflicts=ignore_conflicts,
+                )
+                for obj_with_pk, results in zip(objs_with_pk, returned_columns):
+                    for result, field in zip(results, opts.db_returning_fields):
+                        if field != opts.pk:
+                            setattr(obj_with_pk, field.attname, result)
                 for obj_with_pk in objs_with_pk:
                     obj_with_pk._state.adding = False
                     obj_with_pk._state.db = self.db
             if objs_without_pk:
                 fields = [f for f in fields if not isinstance(f, AutoField)]
-                ids = self._batched_insert(objs_without_pk, fields, batch_size, ignore_conflicts=ignore_conflicts)
+                returned_columns = self._batched_insert(
+                    objs_without_pk, fields, batch_size, ignore_conflicts=ignore_conflicts,
+                )
                 if connection.features.can_return_rows_from_bulk_insert and not ignore_conflicts:
-                    assert len(ids) == len(objs_without_pk)
-                for obj_without_pk, pk in zip(objs_without_pk, ids):
-                    obj_without_pk.pk = pk
+                    assert len(returned_columns) == len(objs_without_pk)
+                for obj_without_pk, results in zip(objs_without_pk, returned_columns):
+                    for result, field in zip(results, opts.db_returning_fields):
+                        setattr(obj_without_pk, field.attname, result)
                     obj_without_pk._state.adding = False
                     obj_without_pk._state.db = self.db
 
@@ -623,7 +642,7 @@ class QuerySet:
                 "arguments or 'get_latest_by' in the model's Meta."
             )
 
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot change a query once a slice has been taken."
         obj = self._chain()
         obj.query.set_limits(high=1)
@@ -652,7 +671,7 @@ class QuerySet:
         Return a dictionary mapping each of the given IDs to the object with
         that ID. If `id_list` isn't provided, evaluate the entire QuerySet.
         """
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot use 'limit' or 'offset' with in_bulk"
         if field_name != 'pk' and not self.model._meta.get_field(field_name).unique:
             raise ValueError("in_bulk()'s field_name must be a unique field but %r isn't." % field_name)
@@ -677,7 +696,7 @@ class QuerySet:
 
     def delete(self):
         """Delete the records in the current QuerySet."""
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot use 'limit' or 'offset' with delete."
 
         if self._fields is not None:
@@ -719,7 +738,7 @@ class QuerySet:
         Update all elements in the current QuerySet, setting all the given
         fields to the appropriate values.
         """
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot update a query once a slice has been taken."
         self._for_write = True
         query = self.query.chain(sql.UpdateQuery)
@@ -739,7 +758,7 @@ class QuerySet:
         code (it requires too much poking around at model internals to be
         useful at that level).
         """
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot update a query once a slice has been taken."
         query = self.query.chain(sql.UpdateQuery)
         query.add_update_fields(values)
@@ -878,6 +897,7 @@ class QuerySet:
         Return a new QuerySet instance with the args ANDed to the existing
         set.
         """
+        self._not_support_combined_queries('filter')
         return self._filter_or_exclude(False, *args, **kwargs)
 
     def exclude(self, *args, **kwargs):
@@ -885,11 +905,12 @@ class QuerySet:
         Return a new QuerySet instance with NOT (args) ANDed to the existing
         set.
         """
+        self._not_support_combined_queries('exclude')
         return self._filter_or_exclude(True, *args, **kwargs)
 
     def _filter_or_exclude(self, negate, *args, **kwargs):
         if args or kwargs:
-            assert self.query.can_filter(), \
+            assert not self.query.is_sliced, \
                 "Cannot filter a query once a slice has been taken."
 
         clone = self._chain()
@@ -973,7 +994,7 @@ class QuerySet:
 
         If select_related(None) is called, clear the list.
         """
-
+        self._not_support_combined_queries('select_related')
         if self._fields is not None:
             raise TypeError("Cannot call select_related() after .values() or .values_list()")
 
@@ -995,6 +1016,7 @@ class QuerySet:
         When prefetch_related() is called more than once, append to the list of
         prefetch lookups. If prefetch_related(None) is called, clear the list.
         """
+        self._not_support_combined_queries('prefetch_related')
         clone = self._chain()
         if lookups == (None,):
             clone._prefetch_related_lookups = ()
@@ -1013,6 +1035,7 @@ class QuerySet:
         Return a query set in which the returned objects have been annotated
         with extra data or aggregations.
         """
+        self._not_support_combined_queries('annotate')
         self._validate_values_are_expressions(args + tuple(kwargs.values()), method_name='annotate')
         annotations = {}
         for arg in args:
@@ -1056,7 +1079,7 @@ class QuerySet:
 
     def order_by(self, *field_names):
         """Return a new QuerySet instance with the ordering changed."""
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot reorder a query once a slice has been taken."
         obj = self._chain()
         obj.query.clear_ordering(force_empty=False)
@@ -1067,7 +1090,7 @@ class QuerySet:
         """
         Return a new QuerySet instance that will select only distinct results.
         """
-        assert self.query.can_filter(), \
+        assert not self.query.is_sliced, \
             "Cannot create distinct fields once a slice has been taken."
         obj = self._chain()
         obj.query.add_distinct_fields(*field_names)
@@ -1076,7 +1099,8 @@ class QuerySet:
     def extra(self, select=None, where=None, params=None, tables=None,
               order_by=None, select_params=None):
         """Add extra SQL fragments to the query."""
-        assert self.query.can_filter(), \
+        self._not_support_combined_queries('extra')
+        assert not self.query.is_sliced, \
             "Cannot change a query once a slice has been taken"
         clone = self._chain()
         clone.query.add_extra(select, select_params, where, params, tables, order_by)
@@ -1084,7 +1108,7 @@ class QuerySet:
 
     def reverse(self):
         """Reverse the ordering of the QuerySet."""
-        if not self.query.can_filter():
+        if self.query.is_sliced:
             raise TypeError('Cannot reverse a query once a slice has been taken.')
         clone = self._chain()
         clone.query.standard_ordering = not clone.query.standard_ordering
@@ -1097,6 +1121,7 @@ class QuerySet:
         The only exception to this is if None is passed in as the only
         parameter, in which case removal all deferrals.
         """
+        self._not_support_combined_queries('defer')
         if self._fields is not None:
             raise TypeError("Cannot call defer() after .values() or .values_list()")
         clone = self._chain()
@@ -1112,6 +1137,7 @@ class QuerySet:
         method and that are not already specified as deferred are loaded
         immediately when the queryset is evaluated.
         """
+        self._not_support_combined_queries('only')
         if self._fields is not None:
             raise TypeError("Cannot call only() after .values() or .values_list()")
         if fields == (None,):
@@ -1162,7 +1188,7 @@ class QuerySet:
     # PRIVATE METHODS #
     ###################
 
-    def _insert(self, objs, fields, return_id=False, raw=False, using=None, ignore_conflicts=False):
+    def _insert(self, objs, fields, returning_fields=None, raw=False, using=None, ignore_conflicts=False):
         """
         Insert a new record for the given model. This provides an interface to
         the InsertQuery class and is how Model.save() is implemented.
@@ -1172,7 +1198,7 @@ class QuerySet:
             using = self.db
         query = sql.InsertQuery(self.model, ignore_conflicts=ignore_conflicts)
         query.insert_values(fields, objs, raw=raw)
-        return query.get_compiler(using=using).execute_sql(return_id)
+        return query.get_compiler(using=using).execute_sql(returning_fields)
     _insert.alters_data = True
     _insert.queryset_only = False
 
@@ -1184,21 +1210,22 @@ class QuerySet:
             raise NotSupportedError('This database backend does not support ignoring conflicts.')
         ops = connections[self.db].ops
         batch_size = (batch_size or max(ops.bulk_batch_size(fields, objs), 1))
-        inserted_ids = []
+        inserted_rows = []
         bulk_return = connections[self.db].features.can_return_rows_from_bulk_insert
         for item in [objs[i:i + batch_size] for i in range(0, len(objs), batch_size)]:
             if bulk_return and not ignore_conflicts:
-                inserted_id = self._insert(
-                    item, fields=fields, using=self.db, return_id=True,
+                inserted_columns = self._insert(
+                    item, fields=fields, using=self.db,
+                    returning_fields=self.model._meta.db_returning_fields,
                     ignore_conflicts=ignore_conflicts,
                 )
-                if isinstance(inserted_id, list):
-                    inserted_ids.extend(inserted_id)
+                if isinstance(inserted_columns, list):
+                    inserted_rows.extend(inserted_columns)
                 else:
-                    inserted_ids.append(inserted_id)
+                    inserted_rows.append(inserted_columns)
             else:
                 self._insert(item, fields=fields, using=self.db, ignore_conflicts=ignore_conflicts)
-        return inserted_ids
+        return inserted_rows
 
     def _chain(self, **kwargs):
         """
@@ -1298,6 +1325,13 @@ class QuerySet:
                     method_name,
                     ', '.join(invalid_args),
                 )
+            )
+
+    def _not_support_combined_queries(self, operation_name):
+        if self.query.combinator:
+            raise NotSupportedError(
+                'Calling QuerySet.%s() after %s() is not supported.'
+                % (operation_name, self.query.combinator)
             )
 
 
@@ -1509,7 +1543,9 @@ class Prefetch:
         return None
 
     def __eq__(self, other):
-        return isinstance(other, Prefetch) and self.prefetch_to == other.prefetch_to
+        if not isinstance(other, Prefetch):
+            return NotImplemented
+        return self.prefetch_to == other.prefetch_to
 
     def __hash__(self):
         return hash((self.__class__, self.prefetch_to))
@@ -1547,7 +1583,7 @@ def prefetch_related_objects(model_instances, *related_lookups):
     while all_lookups:
         lookup = all_lookups.pop()
         if lookup.prefetch_to in done_queries:
-            if lookup.queryset:
+            if lookup.queryset is not None:
                 raise ValueError("'%s' lookup was already seen with a different queryset. "
                                  "You may need to adjust the ordering of your lookups." % lookup.prefetch_to)
 

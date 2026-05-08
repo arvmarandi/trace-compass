@@ -1,0 +1,46 @@
+Based on the issue, the crash occurs because `_legacy_decode()` does not catch exceptions from `base64.b64decode()`. When invalid session data (like a corrupted legacy session) is passed, it raises `binascii.Error: Incorrect padding`, which propagates up and causes a 500 error. The fix is to move the base64 decode inside the existing `try` block so that all exceptions are caught and handled gracefully, returning an empty session dictionary.
+
+```python
+### django/contrib/sessions/backends/base.py
+- start_line : 133
+- end_line : 150
+<<<<<<< SEARCH
+    def _legacy_decode(self, session_data):
+        # RemovedInDjango40Warning: pre-Django 3.1 format will be invalid.
+        encoded_data = base64.b64decode(session_data.encode('ascii'))
+        try:
+            # could produce ValueError if there is no ':'
+            hash, serialized = encoded_data.split(b':', 1)
+            expected_hash = self._hash(serialized)
+            if not constant_time_compare(hash.decode(), expected_hash):
+                raise SuspiciousSession("Session data corrupted")
+            else:
+                return self.serializer().loads(serialized)
+        except Exception as e:
+            # ValueError, SuspiciousOperation, unpickling exceptions. If any of
+            # these, happen, just return an empty dictionary (an empty session).
+            if isinstance(e, SuspiciousOperation):
+                logger = logging.getLogger('django.security.%s' % e.__class__.__name__)
+                logger.warning(str(e))
+            return {}
+=======
+    def _legacy_decode(self, session_data):
+        # RemovedInDjango40Warning: pre-Django 3.1 format will be invalid.
+        try:
+            encoded_data = base64.b64decode(session_data.encode('ascii'))
+            # could produce ValueError if there is no ':'
+            hash, serialized = encoded_data.split(b':', 1)
+            expected_hash = self._hash(serialized)
+            if not constant_time_compare(hash.decode(), expected_hash):
+                raise SuspiciousSession("Session data corrupted")
+            else:
+                return self.serializer().loads(serialized)
+        except Exception as e:
+            # ValueError, SuspiciousOperation, unpickling exceptions. If any of
+            # these, happen, just return an empty dictionary (an empty session).
+            if isinstance(e, SuspiciousOperation):
+                logger = logging.getLogger('django.security.%s' % e.__class__.__name__)
+                logger.warning(str(e))
+            return {}
+>>>>>>> REPLACE
+```

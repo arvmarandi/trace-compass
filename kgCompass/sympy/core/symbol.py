@@ -1,49 +1,21 @@
-from .assumptions import StdFactKB, _assume_defined
-from .basic import Basic, Atom
-from .cache import cacheit
-from .containers import Tuple
-from .expr import Expr, AtomicExpr
-from .function import AppliedUndef, FunctionClass
-from .kind import NumberKind, UndefinedKind
-from .logic import fuzzy_bool
-from .singleton import S
-from .sorting import ordered
+from __future__ import print_function, division
+
+from sympy.core.assumptions import StdFactKB, _assume_defined
+from sympy.core.compatibility import is_sequence, ordered
+from .basic import Basic
 from .sympify import sympify
+from .singleton import S
+from .expr import Expr, AtomicExpr
+from .cache import cacheit
+from .function import FunctionClass
+from sympy.core.logic import fuzzy_bool
 from sympy.logic.boolalg import Boolean
-from sympy.utilities.iterables import sift, is_sequence
-from sympy.utilities.misc import filldedent
+from sympy.utilities.iterables import cartes, sift
+from sympy.core.containers import Tuple
 
 import string
 import re as _re
 import random
-from itertools import product
-
-class Str(Atom):
-    """
-    Represents string in SymPy.
-
-    Explanation
-    ===========
-
-    Previously, ``Symbol`` was used where string is needed in ``args`` of SymPy
-    objects, e.g. denoting the name of the instance. However, since ``Symbol``
-    represents mathematical scalar, this class should be used instead.
-
-    """
-    __slots__ = ('name',)
-
-    def __new__(cls, name, **kwargs):
-        if not isinstance(name, str):
-            raise TypeError("name should be a string, not %s" % repr(type(name)))
-        obj = Expr.__new__(cls, **kwargs)
-        obj.name = name
-        return obj
-
-    def __getnewargs__(self):
-        return (self.name,)
-
-    def _hashable_content(self):
-        return (self.name,)
 
 
 def _filter_assumptions(kwargs):
@@ -66,7 +38,7 @@ def _symbol(s, matching_symbol=None, **assumptions):
     Examples
     ========
 
-    >>> from sympy import Symbol
+    >>> from sympy import Symbol, Dummy
     >>> from sympy.core.symbol import _symbol
     >>> _symbol('y')
     y
@@ -123,73 +95,55 @@ def _symbol(s, matching_symbol=None, **assumptions):
     else:
         raise ValueError('symbol must be string for symbol name or Symbol')
 
-def uniquely_named_symbol(xname, exprs=(), compare=str, modify=None, **assumptions):
+
+def _uniquely_named_symbol(xname, exprs=(), compare=str, modify=None, **assumptions):
     """Return a symbol which, when printed, will have a name unique
     from any other already in the expressions given. The name is made
-    unique by appending numbers (default) but this can be
+    unique by prepending underscores (default) but this can be
     customized with the keyword 'modify'.
 
     Parameters
     ==========
 
-        xname : a string or a Symbol
-
+        xname : a string or a Symbol (when symbol xname <- str(xname))
         compare : a single arg function that takes a symbol and returns
             a string to be compared with xname (the default is the str
             function which indicates how the name will look when it
             is printed, e.g. this includes underscores that appear on
-            Dummy symbols). When ``xname`` is a Symbol, ``compare`` will
-            be used to supply the value for ``xname``.
-
+            Dummy symbols)
         modify : a single arg function that changes its string argument
-            in some way (the default is to append numbers)
+            in some way (the default is to prepend underscores)
 
     Examples
     ========
 
-    >>> from sympy.core.symbol import uniquely_named_symbol
+    >>> from sympy.core.symbol import _uniquely_named_symbol as usym, Dummy
     >>> from sympy.abc import x
-    >>> uniquely_named_symbol('x', x)
-    x0
+    >>> usym('x', x)
+    _x
     """
-    def numbered_string_incr(s, start=0):
-        if not s:
-            return str(start)
-        i = len(s) - 1
-        while i != -1:
-            if not s[i].isdigit():
-                break
-            i -= 1
-        n = str(int(s[i + 1:] or start - 1) + 1)
-        return s[:i + 1] + n
-
     default = None
     if is_sequence(xname):
         xname, default = xname
-    x = compare(xname)
+    x = str(xname)
     if not exprs:
         return _symbol(x, default, **assumptions)
     if not is_sequence(exprs):
         exprs = [exprs]
-    names = set().union(
-        [i.name for e in exprs for i in e.atoms(Symbol)] +
-        [i.func.name for e in exprs for i in e.atoms(AppliedUndef)])
+    syms = set().union(*[e.free_symbols for e in exprs])
     if modify is None:
-        modify = numbered_string_incr
-    while any(x == compare(s) for s in names):
+        modify = lambda s: '_' + s
+    while any(x == compare(s) for s in syms):
         x = modify(x)
     return _symbol(x, default, **assumptions)
-_uniquely_named_symbol = uniquely_named_symbol
+
 
 class Symbol(AtomicExpr, Boolean):
     """
     Assumptions:
        commutative = True
 
-    You can override the default assumptions in the constructor.
-
-    Examples
-    ========
+    You can override the default assumptions in the constructor:
 
     >>> from sympy import symbols
     >>> A,B = symbols('A,B', commutative = False)
@@ -204,16 +158,8 @@ class Symbol(AtomicExpr, Boolean):
 
     __slots__ = ('name',)
 
-    name: str
-
     is_Symbol = True
     is_symbol = True
-
-    @property
-    def kind(self):
-        if self.is_commutative:
-            return NumberKind
-        return UndefinedKind
 
     @property
     def _diff_wrt(self):
@@ -253,6 +199,7 @@ class Symbol(AtomicExpr, Boolean):
         base = self.assumptions0
         for k in set(assumptions) & set(base):
             if assumptions[k] != base[k]:
+                from sympy.utilities.misc import filldedent
                 raise ValueError(filldedent('''
                     non-matching assumptions for %s: existing value
                     is %s and new value is %s''' % (
@@ -302,55 +249,48 @@ class Symbol(AtomicExpr, Boolean):
     __xnew_cached_ = staticmethod(
         cacheit(__new_stage2__))   # symbols are always cached
 
-    def __getnewargs_ex__(self):
-        return ((self.name,), self.assumptions0)
+    def __getnewargs__(self):
+        return (self.name,)
 
-    # NOTE: __setstate__ is not needed for pickles created by __getnewargs_ex__
-    # but was used before Symbol was changed to use __getnewargs_ex__ in v1.9.
-    # Pickles created in previous SymPy versions will still need __setstate__
-    # so that they can be unpickled in SymPy > v1.9.
-
-    def __setstate__(self, state):
-        for name, value in state.items():
-            setattr(self, name, value)
+    def __getstate__(self):
+        return {'_assumptions': self._assumptions}
 
     def _hashable_content(self):
         # Note: user-specified assumptions not hashed, just derived ones
         return (self.name,) + tuple(sorted(self.assumptions0.items()))
 
     def _eval_subs(self, old, new):
+        from sympy.core.power import Pow
         if old.is_Pow:
-            from sympy.core.power import Pow
             return Pow(self, S.One, evaluate=False)._eval_subs(old, new)
-
-    def _eval_refine(self, assumptions):
-        return self
 
     @property
     def assumptions0(self):
-        return {key: value for key, value
-                in self._assumptions.items() if value is not None}
+        return dict((key, value) for key, value
+                in self._assumptions.items() if value is not None)
 
     @cacheit
     def sort_key(self, order=None):
-        return self.class_key(), (1, (self.name,)), S.One.sort_key(), S.One
+        return self.class_key(), (1, (str(self),)), S.One.sort_key(), S.One
 
     def as_dummy(self):
-        # only put commutativity in explicitly if it is False
-        return Dummy(self.name) if self.is_commutative is not False \
-            else Dummy(self.name, commutative=self.is_commutative)
+        return Dummy(self.name)
 
     def as_real_imag(self, deep=True, **hints):
+        from sympy import im, re
         if hints.get('ignore') == self:
             return None
         else:
-            from sympy.functions.elementary.complexes import im, re
             return (re(self), im(self))
+
+    def _sage_(self):
+        import sage.all as sage
+        return sage.var(self.name)
 
     def is_constant(self, *wrt, **flags):
         if not wrt:
             return False
-        return self not in wrt
+        return not self in wrt
 
     @property
     def free_symbols(self):
@@ -364,9 +304,6 @@ class Symbol(AtomicExpr, Boolean):
 
 class Dummy(Symbol):
     """Dummy symbols are each unique, even if they have the same name:
-
-    Examples
-    ========
 
     >>> from sympy import Dummy
     >>> Dummy("x") == Dummy("x")
@@ -418,13 +355,13 @@ class Dummy(Symbol):
 
         return obj
 
-    def __getnewargs_ex__(self):
-        return ((self.name, self.dummy_index), self.assumptions0)
+    def __getstate__(self):
+        return {'_assumptions': self._assumptions, 'dummy_index': self.dummy_index}
 
     @cacheit
     def sort_key(self, order=None):
         return self.class_key(), (
-            2, (self.name, self.dummy_index)), S.One.sort_key(), S.One
+            2, (str(self), self.dummy_index)), S.One.sort_key(), S.One
 
     def _hashable_content(self):
         return Symbol._hashable_content(self) + (self.dummy_index,)
@@ -440,10 +377,8 @@ class Wild(Symbol):
 
     name : str
         Name of the Wild instance.
-
     exclude : iterable, optional
         Instances in ``exclude`` will not be matched.
-
     properties : iterable of functions, optional
         Functions, each taking an expressions as input
         and returns a ``bool``. All functions in ``properties``
@@ -541,25 +476,22 @@ class Wild(Symbol):
         return obj
 
     def _hashable_content(self):
-        return super()._hashable_content() + (self.exclude, self.properties)
+        return super(Wild, self)._hashable_content() + (self.exclude, self.properties)
 
     # TODO add check against another Wild
-    def matches(self, expr, repl_dict=None, old=False):
+    def matches(self, expr, repl_dict={}, old=False):
         if any(expr.has(x) for x in self.exclude):
             return None
-        if not all(f(expr) for f in self.properties):
+        if any(not f(expr) for f in self.properties):
             return None
-        if repl_dict is None:
-            repl_dict = dict()
-        else:
-            repl_dict = repl_dict.copy()
+        repl_dict = repl_dict.copy()
         repl_dict[self] = expr
         return repl_dict
 
 
 _range = _re.compile('([0-9]*:[0-9]+|[a-zA-Z]?:[a-zA-Z])')
 
-def symbols(names, *, cls=Symbol, **args):
+def symbols(names, **args):
     r"""
     Transform strings into instances of :class:`Symbol` class.
 
@@ -710,6 +642,7 @@ def symbols(names, *, cls=Symbol, **args):
         for i in range(len(names) - 1, -1, -1):
             names[i: i + 1] = names[i].split()
 
+        cls = args.pop('cls', Symbol)
         seq = args.pop('seq', as_seq)
 
         for name in names:
@@ -752,7 +685,7 @@ def symbols(names, *, cls=Symbol, **args):
                 if len(split) == 1:
                     names = split[0]
                 else:
-                    names = [''.join(s) for s in product(*split)]
+                    names = [''.join(s) for s in cartes(*split)]
                 if literals:
                     result.extend([cls(literal(s), **args) for s in names])
                 else:
@@ -775,9 +708,6 @@ def var(names, **args):
     """
     Create symbols and inject them into the global namespace.
 
-    Explanation
-    ===========
-
     This calls :func:`symbols` with the same arguments and puts the results
     into the *global* namespace. It's recommended not to use :func:`var` in
     library code, where :func:`symbols` has to be used::
@@ -789,17 +719,17 @@ def var(names, **args):
 
     >>> var('x')
     x
-    >>> x # noqa: F821
+    >>> x
     x
 
     >>> var('a,ab,abc')
     (a, ab, abc)
-    >>> abc # noqa: F821
+    >>> abc
     abc
 
     >>> var('x,y', real=True)
     (x, y)
-    >>> x.is_real and y.is_real # noqa: F821
+    >>> x.is_real and y.is_real
     True
 
     See :func:`symbols` documentation for more details on what kinds of

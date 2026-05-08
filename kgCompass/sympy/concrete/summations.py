@@ -1,56 +1,33 @@
-from typing import Tuple as tTuple
+from __future__ import print_function, division
 
 from sympy.calculus.singularities import is_decreasing
-from sympy.calculus.accumulationbounds import AccumulationBounds
-from .expr_with_intlimits import ExprWithIntLimits
-from .expr_with_limits import AddWithLimits
-from .gosper import gosper_sum
-from sympy.core.expr import Expr
+from sympy.calculus.util import AccumulationBounds
+from sympy.concrete.expr_with_limits import AddWithLimits
+from sympy.concrete.expr_with_intlimits import ExprWithIntLimits
+from sympy.concrete.gosper import gosper_sum
 from sympy.core.add import Add
-from sympy.core.containers import Tuple
-from sympy.core.function import Derivative, expand
+from sympy.core.compatibility import range
+from sympy.core.function import Derivative
 from sympy.core.mul import Mul
-from sympy.core.numbers import Float
 from sympy.core.relational import Eq
 from sympy.core.singleton import S
-from sympy.core.sorting import ordered
-from sympy.core.symbol import Dummy, Wild, Symbol, symbols
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.functions.combinatorial.numbers import bernoulli, harmonic
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.trigonometric import cot, csc
-from sympy.functions.special.hyper import hyper
-from sympy.functions.special.tensor_functions import KroneckerDelta
+from sympy.core.symbol import Dummy, Wild, Symbol
 from sympy.functions.special.zeta_functions import zeta
-from sympy.integrals.integrals import Integral
+from sympy.functions.elementary.piecewise import Piecewise
 from sympy.logic.boolalg import And
-from sympy.polys.partfrac import apart
-from sympy.polys.polyerrors import PolynomialError, PolificationFailed
-from sympy.polys.polytools import parallel_poly_from_expr, Poly, factor
-from sympy.polys.rationaltools import together
+from sympy.polys import apart, PolynomialError, together
 from sympy.series.limitseq import limit_seq
 from sympy.series.order import O
-from sympy.series.residues import residue
-from sympy.sets.sets import FiniteSet, Interval
+from sympy.sets.sets import FiniteSet
+from sympy.simplify import denom
 from sympy.simplify.combsimp import combsimp
-from sympy.simplify.hyperexpand import hyperexpand
 from sympy.simplify.powsimp import powsimp
-from sympy.simplify.radsimp import denom, fraction
-from sympy.simplify.simplify import (factor_sum, sum_combine, simplify,
-                                     nsimplify, hypersimp)
-from sympy.solvers.solvers import solve
+from sympy.solvers import solve
 from sympy.solvers.solveset import solveset
-from sympy.utilities.iterables import sift
 import itertools
 
-
 class Sum(AddWithLimits, ExprWithIntLimits):
-    r"""
-    Represents unevaluated summation.
-
-    Explanation
-    ===========
+    r"""Represents unevaluated summation.
 
     ``Sum`` represents a finite or infinite series, with the first argument
     being the general form of terms in the series, and the second argument
@@ -166,7 +143,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
     ========
 
     summation
-    Product, sympy.concrete.products.product
+    Product, product
 
     References
     ==========
@@ -178,9 +155,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
     .. [3] https://en.wikipedia.org/wiki/Empty_sum
     """
 
-    __slots__ = ('is_commutative',)
-
-    limits: tTuple[tTuple[Symbol, Expr, Expr]]
+    __slots__ = ['is_commutative']
 
     def __new__(cls, function, *symbols, **assumptions):
         obj = AddWithLimits.__new__(cls, function, *symbols, **assumptions)
@@ -196,24 +171,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         # cancel out. This only answers whether the summand is zero; if
         # not then None is returned since we don't analyze whether all
         # terms cancel out.
-        if self.function.is_zero or self.has_empty_sequence:
-            return True
-
-    def _eval_is_extended_real(self):
-        if self.has_empty_sequence:
-            return True
-        return self.function.is_extended_real
-
-    def _eval_is_positive(self):
-        if self.has_finite_limits and self.has_reversed_limits is False:
-            return self.function.is_positive
-
-    def _eval_is_negative(self):
-        if self.has_finite_limits and self.has_reversed_limits is False:
-            return self.function.is_negative
-
-    def _eval_is_finite(self):
-        if self.has_finite_limits and self.function.is_finite:
+        if self.function.is_zero:
             return True
 
     def doit(self, **hints):
@@ -222,38 +180,13 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         else:
             f = self.function
 
-        # first make sure any definite limits have summation
-        # variables with matching assumptions
-        reps = {}
-        for xab in self.limits:
-            d = _dummy_with_inherited_properties_concrete(xab)
-            if d:
-                reps[xab[0]] = d
-        if reps:
-            undo = {v: k for k, v in reps.items()}
-            did = self.xreplace(reps).doit(**hints)
-            if isinstance(did, tuple):  # when separate=True
-                did = tuple([i.xreplace(undo) for i in did])
-            elif did is not None:
-                did = did.xreplace(undo)
-            else:
-                did = self
-            return did
-
-
         if self.function.is_Matrix:
-            expanded = self.expand()
-            if self != expanded:
-                return expanded.doit()
-            return _eval_matrix_sum(self)
+            return self.expand().doit()
 
         for n, limit in enumerate(self.limits):
             i, a, b = limit
             dif = b - a
-            if dif == -1:
-                # Any summation over an empty set is zero
-                return S.Zero
-            if dif.is_integer and dif.is_negative:
+            if dif.is_integer and (dif < 0) == True:
                 a, b = b + 1, a - 1
                 f = -f
 
@@ -286,7 +219,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         i, a, b = limits
         w, y, z = Wild('w', exclude=[i]), Wild('y', exclude=[i]), Wild('z', exclude=[i])
         result = f.match((w * i + y) ** (-z))
-        if result is not None and b is S.Infinity:
+        if result is not None and b == S.Infinity:
             coeff = 1 / result[w] ** result[z]
             s = result[z]
             q = result[y] / result[w] + a
@@ -296,9 +229,6 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         """
         Differentiate wrt x as long as x is not in the free symbols of any of
         the upper or lower limits.
-
-        Explanation
-        ===========
 
         Sum(a*b*x, (x, 1, a)) can be differentiated wrt x or b but not `a`
         since the value of the sum is discontinuous in `a`. In a case
@@ -320,12 +250,15 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         if limits:  # f is the argument to a Sum
             f = self.func(f, *limits)
 
-        _, a, b = limit
-        if x in a.free_symbols or x in b.free_symbols:
-            return None
-        df = Derivative(f, x, evaluate=True)
-        rv = self.func(df, limit)
-        return rv
+        if len(limit) == 3:
+            _, a, b = limit
+            if x in a.free_symbols or x in b.free_symbols:
+                return None
+            df = Derivative(f, x, evaluate=True)
+            rv = self.func(df, limit)
+            return rv
+        else:
+            return NotImplementedError('Lower and upper bound expected.')
 
     def _eval_difference_delta(self, n, step):
         k, _, upper = self.args[-1]
@@ -338,7 +271,10 @@ class Sum(AddWithLimits, ExprWithIntLimits):
 
         return Sum(f, (k, upper + 1, new_upper)).doit()
 
-    def _eval_simplify(self, **kwargs):
+    def _eval_simplify(self, ratio=1.7, measure=None, rational=False, inverse=False):
+        from sympy.simplify.simplify import factor_sum, sum_combine
+        from sympy.core.function import expand
+        from sympy.core.mul import Mul
 
         # split the function into adds
         terms = Add.make_args(expand(self.function))
@@ -371,12 +307,11 @@ class Sum(AddWithLimits, ExprWithIntLimits):
 
         return factor_sum(result, limits=self.limits)
 
-    def is_convergent(self):
-        r"""
-        Checks for the convergence of a Sum.
+    def _eval_summation(self, f, x):
+        return None
 
-        Explanation
-        ===========
+    def is_convergent(self):
+        r"""Checks for the convergence of a Sum.
 
         We divide the study of convergence of infinite sums and products in
         two parts.
@@ -418,7 +353,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         There are various tests employed to check the convergence like
         divergence test, root test, integral test, alternating series test,
         comparison tests, Dirichlet tests. It returns true if Sum is convergent
-        and false if divergent and NotImplementedError if it cannot be checked.
+        and false if divergent and NotImplementedError if it can not be checked.
 
         References
         ==========
@@ -443,14 +378,15 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         ========
 
         Sum.is_absolutely_convergent()
-        sympy.concrete.products.Product.is_convergent()
+        Product.is_convergent()
         """
+        from sympy import Interval, Integral, log, symbols, simplify
         p, q, r = symbols('p q r', cls=Wild)
 
         sym = self.limits[0][0]
         lower_limit = self.limits[0][1]
         upper_limit = self.limits[0][2]
-        sequence_term = self.function.simplify()
+        sequence_term = self.function
 
         if len(sequence_term.free_symbols) > 1:
             raise NotImplementedError("convergence checking for more than one symbol "
@@ -486,9 +422,9 @@ class Sum(AddWithLimits, ExprWithIntLimits):
 
         ###  -------- Divergence test ----------- ###
         try:
-           lim_val = limit_seq(sequence_term, sym)
-           if lim_val is not None and lim_val.is_zero is False:
-               return S.false
+            lim_val = limit_seq(sequence_term, sym)
+            if lim_val is not None and lim_val.is_zero is False:
+                return S.false
         except NotImplementedError:
             pass
 
@@ -502,11 +438,18 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         order = O(sequence_term, (sym, S.Infinity))
 
         ### --------- p-series test (1/n**p) ---------- ###
-        p_series_test = order.expr.match(sym**p)
-        if p_series_test is not None:
-            if p_series_test[p] < -1:
+        p1_series_test = order.expr.match(sym**p)
+        if p1_series_test is not None:
+            if p1_series_test[p] < -1:
                 return S.true
-            if p_series_test[p] >= -1:
+            if p1_series_test[p] >= -1:
+                return S.false
+
+        p2_series_test = order.expr.match((1/sym)**p)
+        if p2_series_test is not None:
+            if p2_series_test[p] > 1:
+                return S.true
+            if p2_series_test[p] <= 1:
                 return S.false
 
         ### ------------- comparison test ------------- ###
@@ -539,22 +482,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
                 if abs(lim_ratio) < 1:
                     return S.true
         except NotImplementedError:
-            lim_ratio = None
-
-        ### ---------- Raabe's test -------------- ###
-        if lim_ratio == 1:  # ratio test inconclusive
-            test_val = sym*(sequence_term/
-                         sequence_term.subs(sym, sym + 1) - 1)
-            test_val = test_val.gammasimp()
-            try:
-                lim_val = limit_seq(test_val, sym)
-                if lim_val is not None and lim_val.is_number:
-                    if lim_val > 1:
-                        return S.true
-                    if lim_val < 1:
-                        return S.false
-            except NotImplementedError:
-                pass
+            pass
 
         ### ----------- root test ---------------- ###
         # lim = Limit(abs(sequence_term)**(1/sym), sym, S.Infinity)
@@ -569,9 +497,10 @@ class Sum(AddWithLimits, ExprWithIntLimits):
             pass
 
         ### ------------- alternating series test ----------- ###
-        dict_val = sequence_term.match(S.NegativeOne**(sym + p)*q)
+        dict_val = sequence_term.match((-1)**(sym + p)*q)
         if not dict_val[p].has(sym) and is_decreasing(dict_val[q], interval):
             return S.true
+
 
         ### ------------- integral test -------------- ###
         check_interval = None
@@ -673,7 +602,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         Examples
         ========
 
-        >>> from sympy import Sum, Symbol, oo
+        >>> from sympy import Sum, Symbol, sin, oo
         >>> n = Symbol('n', integer=True)
         >>> Sum((-1)**n, (n, 1, oo)).is_absolutely_convergent()
         False
@@ -730,6 +659,9 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         With a nonzero eps specified, the summation is ended
         as soon as the remainder term is less than the epsilon.
         """
+        from sympy.functions import bernoulli, factorial
+        from sympy.integrals import Integral
+
         m = int(m)
         n = int(n)
         f = self.function
@@ -782,14 +714,8 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         for k in range(1, n + 2):
             ga, gb = fpoint(g)
             term = bernoulli(2*k)/factorial(2*k)*(gb - ga)
-            if k > n:
+            if (eps and term and abs(term.evalf(3)) < eps) or (k > n):
                 break
-            if eps and term:
-                term_evalf = term.evalf(3)
-                if term_evalf is S.NaN:
-                    return S.NaN, S.NaN
-                if abs(term_evalf) < eps:
-                    break
             s += term
             g = g.diff(i, 2, simplify=False)
         return s + iterm, abs(term)
@@ -799,8 +725,8 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         """
         Reverse the order of a limit in a Sum.
 
-        Explanation
-        ===========
+        Usage
+        =====
 
         ``reverse_order(self, *indices)`` reverses some limits in the expression
         ``self`` which can be either a ``Sum`` or a ``Product``. The selectors in
@@ -847,8 +773,7 @@ class Sum(AddWithLimits, ExprWithIntLimits):
         See Also
         ========
 
-        sympy.concrete.expr_with_intlimits.ExprWithIntLimits.index, reorder_limit,
-        sympy.concrete.expr_with_intlimits.ExprWithIntLimits.reorder
+        index, reorder_limit, reorder
 
         References
         ==========
@@ -879,9 +804,6 @@ def summation(f, *symbols, **kwargs):
     r"""
     Compute the summation of f with respect to symbols.
 
-    Explanation
-    ===========
-
     The notation for symbols is similar to the notation used in Integral.
     summation(f, (i, a, b)) computes the sum of f with respect to i from a to b,
     i.e.,
@@ -897,9 +819,6 @@ def summation(f, *symbols, **kwargs):
 
     If it cannot compute the sum, it returns an unevaluated Sum object.
     Repeated sums can be computed by introducing additional symbols tuples::
-
-    Examples
-    ========
 
     >>> from sympy import summation, oo, symbols, log
     >>> i, n, m = symbols('i n m', integer=True)
@@ -922,25 +841,20 @@ def summation(f, *symbols, **kwargs):
     ========
 
     Sum
-    Product, sympy.concrete.products.product
+    Product, product
 
     """
     return Sum(f, *symbols, **kwargs).doit(deep=False)
 
 
 def telescopic_direct(L, R, n, limits):
-    """
-    Returns the direct summation of the terms of a telescopic sum
-
-    Explanation
-    ===========
+    """Returns the direct summation of the terms of a telescopic sum
 
     L is the term with lower index
     R is the term with higher index
     n difference between the indexes of L and R
 
-    Examples
-    ========
+    For example:
 
     >>> from sympy.concrete.summations import telescopic_direct
     >>> from sympy.abc import k, a, b
@@ -956,10 +870,9 @@ def telescopic_direct(L, R, n, limits):
 
 
 def telescopic(L, R, limits):
-    '''
-    Tries to perform the summation using the telescopic property.
+    '''Tries to perform the summation using the telescopic property
 
-    Return None if not possible.
+    return None if not possible
     '''
     (i, a, b) = limits
     if L.is_Add or R.is_Add:
@@ -1000,8 +913,11 @@ def telescopic(L, R, limits):
 
 
 def eval_sum(f, limits):
+    from sympy.concrete.delta import deltasummation, _has_simple_delta
+    from sympy.functions import KroneckerDelta
+
     (i, a, b) = limits
-    if f.is_zero:
+    if f is S.Zero:
         return S.Zero
     if i not in f.free_symbols:
         return f*(b - a + 1)
@@ -1020,14 +936,8 @@ def eval_sum(f, limits):
                 newargs.append((newexpr, arg.cond))
             return f.func(*newargs)
 
-    if f.has(KroneckerDelta):
-        from .delta import deltasummation, _has_simple_delta
-        f = f.replace(
-            lambda x: isinstance(x, Sum),
-            lambda x: x.factor()
-        )
-        if _has_simple_delta(f, limits[0]):
-            return deltasummation(f, limits)
+    if f.has(KroneckerDelta) and _has_simple_delta(f, limits[0]):
+        return deltasummation(f, limits)
 
     dif = b - a
     definite = dif.is_Integer
@@ -1048,65 +958,16 @@ def eval_sum(f, limits):
 
 
 def eval_sum_direct(expr, limits):
-    """
-    Evaluate expression directly, but perform some simple checks first
-    to possibly result in a smaller expression and faster execution.
-    """
+    from sympy.core import Add
     (i, a, b) = limits
 
     dif = b - a
-    # Linearity
-    if expr.is_Mul:
-        # Try factor out everything not including i
-        without_i, with_i = expr.as_independent(i)
-        if without_i != 1:
-            s = eval_sum_direct(with_i, (i, a, b))
-            if s:
-                r = without_i*s
-                if r is not S.NaN:
-                    return r
-        else:
-            # Try term by term
-            L, R = expr.as_two_terms()
-
-            if not L.has(i):
-                sR = eval_sum_direct(R, (i, a, b))
-                if sR:
-                    return L*sR
-
-            if not R.has(i):
-                sL = eval_sum_direct(L, (i, a, b))
-                if sL:
-                    return sL*R
-        try:
-            expr = apart(expr, i)  # see if it becomes an Add
-        except PolynomialError:
-            pass
-
-    if expr.is_Add:
-        # Try factor out everything not including i
-        without_i, with_i = expr.as_independent(i)
-        if without_i != 0:
-            s = eval_sum_direct(with_i, (i, a, b))
-            if s:
-                r = without_i*(dif + 1) + s
-                if r is not S.NaN:
-                    return r
-        else:
-            # Try term by term
-            L, R = expr.as_two_terms()
-            lsum = eval_sum_direct(L, (i, a, b))
-            rsum = eval_sum_direct(R, (i, a, b))
-
-            if None not in (lsum, rsum):
-                r = lsum + rsum
-                if r is not S.NaN:
-                    return r
-
     return Add(*[expr.subs(i, a + j) for j in range(dif + 1)])
 
 
 def eval_sum_symbolic(f, limits):
+    from sympy.functions import harmonic, bernoulli
+
     f_orig = f
     (i, a, b) = limits
     if not f.has(i):
@@ -1114,27 +975,18 @@ def eval_sum_symbolic(f, limits):
 
     # Linearity
     if f.is_Mul:
-        # Try factor out everything not including i
-        without_i, with_i = f.as_independent(i)
-        if without_i != 1:
-            s = eval_sum_symbolic(with_i, (i, a, b))
-            if s:
-                r = without_i*s
-                if r is not S.NaN:
-                    return r
-        else:
-            # Try term by term
-            L, R = f.as_two_terms()
+        L, R = f.as_two_terms()
 
-            if not L.has(i):
-                sR = eval_sum_symbolic(R, (i, a, b))
-                if sR:
-                    return L*sR
+        if not L.has(i):
+            sR = eval_sum_symbolic(R, (i, a, b))
+            if sR:
+                return L*sR
 
-            if not R.has(i):
-                sL = eval_sum_symbolic(L, (i, a, b))
-                if sL:
-                    return sL*R
+        if not R.has(i):
+            sL = eval_sum_symbolic(L, (i, a, b))
+            if sL:
+                return R*sL
+
         try:
             f = apart(f, i)  # see if it becomes an Add
         except PolynomialError:
@@ -1147,24 +999,13 @@ def eval_sum_symbolic(f, limits):
         if lrsum:
             return lrsum
 
-        # Try factor out everything not including i
-        without_i, with_i = f.as_independent(i)
-        if without_i != 0:
-            s = eval_sum_symbolic(with_i, (i, a, b))
-            if s:
-                r = without_i*(b - a + 1) + s
-                if r is not S.NaN:
-                    return r
-        else:
-            # Try term by term
-            lsum = eval_sum_symbolic(L, (i, a, b))
-            rsum = eval_sum_symbolic(R, (i, a, b))
+        lsum = eval_sum_symbolic(L, (i, a, b))
+        rsum = eval_sum_symbolic(R, (i, a, b))
 
-            if None not in (lsum, rsum):
-                r = lsum + rsum
-                if r is not S.NaN:
-                    return r
-
+        if None not in (lsum, rsum):
+            r = lsum + rsum
+            if not r is S.NaN:
+                return r
 
     # Polynomial terms with Faulhaber's formula
     n = Wild('n')
@@ -1175,8 +1016,8 @@ def eval_sum_symbolic(f, limits):
 
         if n.is_Integer:
             if n >= 0:
-                if (b is S.Infinity and a is not S.NegativeInfinity) or \
-                   (a is S.NegativeInfinity and b is not S.Infinity):
+                if (b is S.Infinity and not a is S.NegativeInfinity) or \
+                   (a is S.NegativeInfinity and not b is S.Infinity):
                     return S.Infinity
                 return ((bernoulli(n + 1, b + 1) - bernoulli(n + 1, a))/(n + 1)).expand()
             elif a.is_Integer and a >= 1:
@@ -1202,15 +1043,19 @@ def eval_sum_symbolic(f, limits):
             if e_exp is not None:
                 e.update(e_exp)
 
-                p = (c1**c3).subs(e)
-                q = (c1**c2).subs(e)
-                r = p*(q**a - q**(b + 1))/(1 - q)
-                l = p*(b - a + 1)
-                return Piecewise((l, Eq(q, S.One)), (r, True))
+        if e is not None:
+            p = (c1**c3).subs(e)
+            q = (c1**c2).subs(e)
+
+            r = p*(q**a - q**(b + 1))/(1 - q)
+            l = p*(b - a + 1)
+
+            return Piecewise((l, Eq(q, S.One)), (r, True))
 
         r = gosper_sum(f, (i, a, b))
 
         if isinstance(r, (Mul,Add)):
+            from sympy import ordered, Tuple
             non_limit = r.free_symbols - Tuple(*limits[1:]).free_symbols
             den = denom(together(r))
             den_sym = non_limit & den.free_symbols
@@ -1228,16 +1073,12 @@ def eval_sum_symbolic(f, limits):
             args.append((r, True))
             return Piecewise(*args)
 
-        if r not in (None, S.NaN):
+        if not r in (None, S.NaN):
             return r
 
     h = eval_sum_hyper(f_orig, (i, a, b))
     if h is not None:
         return h
-
-    r = eval_sum_residue(f_orig, (i, a, b))
-    if r is not None:
-        return r
 
     factored = f_orig.factor()
     if factored != f_orig:
@@ -1246,12 +1087,17 @@ def eval_sum_symbolic(f, limits):
 
 def _eval_sum_hyper(f, i, a):
     """ Returns (res, cond). Sums from a to oo. """
+    from sympy.functions import hyper
+    from sympy.simplify import hyperexpand, hypersimp, fraction, simplify
+    from sympy.polys.polytools import Poly, factor
+    from sympy.core.numbers import Float
+
     if a != 0:
         return _eval_sum_hyper(f.subs(i, i + a), i, 0)
 
     if f.subs(i, 0) == 0:
         if simplify(f.subs(i, Dummy('i', integer=True, positive=True))) == 0:
-            return S.Zero, True
+            return S(0), True
         return _eval_sum_hyper(f.subs(i, i + 1), i, 0)
 
     hs = hypersimp(f, i)
@@ -1259,6 +1105,7 @@ def _eval_sum_hyper(f, i, a):
         return None
 
     if isinstance(hs, Float):
+        from sympy.simplify.simplify import nsimplify
         hs = nsimplify(hs)
 
     numer, denom = fraction(factor(hs))
@@ -1293,6 +1140,8 @@ def _eval_sum_hyper(f, i, a):
 
 
 def eval_sum_hyper(f, i_a_b):
+    from sympy.logic.boolalg import And
+
     i, a, b = i_a_b
 
     if (b - a).is_Integer:
@@ -1302,7 +1151,7 @@ def eval_sum_hyper(f, i_a_b):
     old_sum = Sum(f, (i, a, b))
 
     if b != S.Infinity:
-        if a is S.NegativeInfinity:
+        if a == S.NegativeInfinity:
             res = _eval_sum_hyper(f.subs(i, -i), i, -b)
             if res is not None:
                 return Piecewise(res, (old_sum, True))
@@ -1317,7 +1166,7 @@ def eval_sum_hyper(f, i_a_b):
                 return None
             return Piecewise((res1 - res2, cond), (old_sum, True))
 
-    if a is S.NegativeInfinity:
+    if a == S.NegativeInfinity:
         res1 = _eval_sum_hyper(f.subs(i, -i), i, 1)
         res2 = _eval_sum_hyper(f, i, 0)
         if res1 is None or res2 is None:
@@ -1342,269 +1191,3 @@ def eval_sum_hyper(f, i_a_b):
                     return S.NegativeInfinity
             return None
         return Piecewise(res, (old_sum, True))
-
-
-def eval_sum_residue(f, i_a_b):
-    r"""Compute the infinite summation with residues
-
-    Notes
-    =====
-
-    If $f(n), g(n)$ are polynomials with $\deg(g(n)) - \deg(f(n)) \ge 2$,
-    some infinite summations can be computed by the following residue
-    evaluations.
-
-    .. math::
-        \sum_{n=-\infty, g(n) \ne 0}^{\infty} \frac{f(n)}{g(n)} =
-        -\pi \sum_{\alpha|g(\alpha)=0}
-        \text{Res}(\cot(\pi x) \frac{f(x)}{g(x)}, \alpha)
-
-    .. math::
-        \sum_{n=-\infty, g(n) \ne 0}^{\infty} (-1)^n \frac{f(n)}{g(n)} =
-        -\pi \sum_{\alpha|g(\alpha)=0}
-        \text{Res}(\csc(\pi x) \frac{f(x)}{g(x)}, \alpha)
-
-    Examples
-    ========
-
-    >>> from sympy import Sum, oo, Symbol
-    >>> x = Symbol('x')
-
-    Doubly infinite series of rational functions.
-
-    >>> Sum(1 / (x**2 + 1), (x, -oo, oo)).doit()
-    pi/tanh(pi)
-
-    Doubly infinite alternating series of rational functions.
-
-    >>> Sum((-1)**x / (x**2 + 1), (x, -oo, oo)).doit()
-    pi/sinh(pi)
-
-    Infinite series of even rational functions.
-
-    >>> Sum(1 / (x**2 + 1), (x, 0, oo)).doit()
-    1/2 + pi/(2*tanh(pi))
-
-    Infinite series of alternating even rational functions.
-
-    >>> Sum((-1)**x / (x**2 + 1), (x, 0, oo)).doit()
-    pi/(2*sinh(pi)) + 1/2
-
-    This also have heuristics to transform arbitrarily shifted summand or
-    arbitrarily shifted summation range to the canonical problem the
-    formula can handle.
-
-    >>> Sum(1 / (x**2 + 2*x + 2), (x, -1, oo)).doit()
-    1/2 + pi/(2*tanh(pi))
-    >>> Sum(1 / (x**2 + 4*x + 5), (x, -2, oo)).doit()
-    1/2 + pi/(2*tanh(pi))
-    >>> Sum(1 / (x**2 + 1), (x, 1, oo)).doit()
-    -1/2 + pi/(2*tanh(pi))
-    >>> Sum(1 / (x**2 + 1), (x, 2, oo)).doit()
-    -1 + pi/(2*tanh(pi))
-
-    References
-    ==========
-
-    .. [#] http://www.supermath.info/InfiniteSeriesandtheResidueTheorem.pdf
-
-    .. [#] Asmar N.H., Grafakos L. (2018) Residue Theory.
-           In: Complex Analysis with Applications.
-           Undergraduate Texts in Mathematics. Springer, Cham.
-           https://doi.org/10.1007/978-3-319-94063-2_5
-    """
-    i, a, b = i_a_b
-
-    def is_even_function(numer, denom):
-        """Test if the rational function is an even function"""
-        numer_even = all(i % 2 == 0 for (i,) in numer.monoms())
-        denom_even = all(i % 2 == 0 for (i,) in denom.monoms())
-        numer_odd = all(i % 2 == 1 for (i,) in numer.monoms())
-        denom_odd = all(i % 2 == 1 for (i,) in denom.monoms())
-        return (numer_even and denom_even) or (numer_odd and denom_odd)
-
-    def match_rational(f, i):
-        numer, denom = f.as_numer_denom()
-        try:
-            (numer, denom), opt = parallel_poly_from_expr((numer, denom), i)
-        except (PolificationFailed, PolynomialError):
-            return None
-        return numer, denom
-
-    def get_poles(denom):
-        roots = denom.sqf_part().all_roots()
-        roots = sift(roots, lambda x: x.is_integer)
-        if None in roots:
-            return None
-        int_roots, nonint_roots = roots[True], roots[False]
-        return int_roots, nonint_roots
-
-    def get_shift(denom):
-        n = denom.degree(i)
-        a = denom.coeff_monomial(i**n)
-        b = denom.coeff_monomial(i**(n-1))
-        shift = - b / a / n
-        return shift
-
-    def get_residue_factor(numer, denom, alternating):
-        if not alternating:
-            residue_factor = (numer.as_expr() / denom.as_expr()) * cot(S.Pi * i)
-        else:
-            residue_factor = (numer.as_expr() / denom.as_expr()) * csc(S.Pi * i)
-        return residue_factor
-
-    # We don't know how to deal with symbolic constants in summand
-    if f.free_symbols - set([i]):
-        return None
-
-    if not (a.is_Integer or a in (S.Infinity, S.NegativeInfinity)):
-        return None
-    if not (b.is_Integer or b in (S.Infinity, S.NegativeInfinity)):
-        return None
-
-    # Quick exit heuristic for the sums which doesn't have infinite range
-    if a != S.NegativeInfinity and b != S.Infinity:
-        return None
-
-    match = match_rational(f, i)
-    if match:
-        alternating = False
-        numer, denom = match
-    else:
-        match = match_rational(f / S.NegativeOne**i, i)
-        if match:
-            alternating = True
-            numer, denom = match
-        else:
-            return None
-
-    if denom.degree(i) - numer.degree(i) < 2:
-        return None
-
-    if (a, b) == (S.NegativeInfinity, S.Infinity):
-        poles = get_poles(denom)
-        if poles is None:
-            return None
-        int_roots, nonint_roots = poles
-
-        if int_roots:
-            return None
-
-        residue_factor = get_residue_factor(numer, denom, alternating)
-        residues = [residue(residue_factor, i, root) for root in nonint_roots]
-        return -S.Pi * sum(residues)
-
-    if not (a.is_finite and b is S.Infinity):
-        return None
-
-    if not is_even_function(numer, denom):
-        # Try shifting summation and check if the summand can be made
-        # and even function from the origin.
-        # Sum(f(n), (n, a, b)) => Sum(f(n + s), (n, a - s, b - s))
-        shift = get_shift(denom)
-
-        if not shift.is_Integer:
-            return None
-        if shift == 0:
-            return None
-
-        numer = numer.shift(shift)
-        denom = denom.shift(shift)
-
-        if not is_even_function(numer, denom):
-            return None
-
-        if alternating:
-            f = S.NegativeOne**i * (S.NegativeOne**shift * numer.as_expr() / denom.as_expr())
-        else:
-            f = numer.as_expr() / denom.as_expr()
-        return eval_sum_residue(f, (i, a-shift, b-shift))
-
-    poles = get_poles(denom)
-    if poles is None:
-        return None
-    int_roots, nonint_roots = poles
-
-    if int_roots:
-        int_roots = [int(root) for root in int_roots]
-        int_roots_max = max(int_roots)
-        int_roots_min = min(int_roots)
-        # Integer valued poles must be next to each other
-        # and also symmetric from origin (Because the function is even)
-        if not len(int_roots) == int_roots_max - int_roots_min + 1:
-            return None
-
-        # Check whether the summation indices contain poles
-        if a <= max(int_roots):
-            return None
-
-    residue_factor = get_residue_factor(numer, denom, alternating)
-    residues = [residue(residue_factor, i, root) for root in int_roots + nonint_roots]
-    full_sum = -S.Pi * sum(residues)
-
-    if not int_roots:
-        # Compute Sum(f, (i, 0, oo)) by adding a extraneous evaluation
-        # at the origin.
-        half_sum = (full_sum + f.xreplace({i: 0})) / 2
-
-        # Add and subtract extraneous evaluations
-        extraneous_neg = [f.xreplace({i: i0}) for i0 in range(int(a), 0)]
-        extraneous_pos = [f.xreplace({i: i0}) for i0 in range(0, int(a))]
-        result = half_sum + sum(extraneous_neg) - sum(extraneous_pos)
-
-        return result
-
-    # Compute Sum(f, (i, min(poles) + 1, oo))
-    half_sum = full_sum / 2
-
-    # Subtract extraneous evaluations
-    extraneous = [f.xreplace({i: i0}) for i0 in range(max(int_roots) + 1, int(a))]
-    result = half_sum - sum(extraneous)
-
-    return result
-
-
-def _eval_matrix_sum(expression):
-    f = expression.function
-    for n, limit in enumerate(expression.limits):
-        i, a, b = limit
-        dif = b - a
-        if dif.is_Integer:
-            if (dif < 0) == True:
-                a, b = b + 1, a - 1
-                f = -f
-
-            newf = eval_sum_direct(f, (i, a, b))
-            if newf is not None:
-                return newf.doit()
-
-
-def _dummy_with_inherited_properties_concrete(limits):
-    """
-    Return a Dummy symbol that inherits as many assumptions as possible
-    from the provided symbol and limits.
-
-    If the symbol already has all True assumption shared by the limits
-    then return None.
-    """
-    x, a, b = limits
-    l = [a, b]
-
-    assumptions_to_consider = ['extended_nonnegative', 'nonnegative',
-                               'extended_nonpositive', 'nonpositive',
-                               'extended_positive', 'positive',
-                               'extended_negative', 'negative',
-                               'integer', 'rational', 'finite',
-                               'zero', 'real', 'extended_real']
-
-    assumptions_to_keep = {}
-    assumptions_to_add = {}
-    for assum in assumptions_to_consider:
-        assum_true = x._assumptions.get(assum, None)
-        if assum_true:
-            assumptions_to_keep[assum] = True
-        elif all(getattr(i, 'is_' + assum) for i in l):
-            assumptions_to_add[assum] = True
-    if assumptions_to_add:
-        assumptions_to_keep.update(assumptions_to_add)
-        return Dummy('d', **assumptions_to_keep)

@@ -1,0 +1,29 @@
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -1446,6 +1446,26 @@
+             else:
+                 used_column_names.append(column_name)
+ 
++        # Check for duplicate db_table across models in the same database
++        from django.apps import apps
++        from django.db import router, settings
++        for model in apps.get_models():
++            if model is cls:
++                continue
++            if model._meta.db_table == cls._meta.db_table:
++                # Check if they share any database where both can be migrated.
++                for db in settings.DATABASES:
++                    if router.allow_migrate_model(db, model) and router.allow_migrate_model(db, cls):
++                        errors.append(
++                            checks.Error(
++                                "db_table '%s' is used by multiple models: %s, %s." % (
++                                    cls._meta.db_table, model._meta.label, cls._meta.label
++                                ),
++                                obj=cls,
++                                id='models.E028',
++                            )
++                        )
++                        break
+         return errors
+ 
+     @classmethod
