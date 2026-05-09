@@ -4,60 +4,120 @@ set -e
 # Full pipeline: mini-swe-agent (trace generation) → KGCompass (patch generation)
 #
 # Usage:
-#   ./pipeline.sh <instance_id> [subset]
+#   ./pipeline.sh <instance_id|all> [subset]
 #
 # Arguments:
-#   instance_id   SWE-bench instance ID, e.g. django__django-12345
-#   subset        SWE-bench subset: "verified" (default) or "lite"
+#   instance_id   SWE-bench instance ID, e.g. django__django-10914
+#                 Pass "all" to run every instance in the configured subset
+#   subset        "verified" (default) or "lite" — overrides SUBSET in config.env
 #
-# Environment variables:
-#   MODEL         Model for mini-swe-agent (default: claude-sonnet-4-5)
-#   SKIP_TRACES   Set to 1 to skip trace generation if traj already exists
+# Environment variables (can also be set in config.env):
+#   MODEL         LLM in litellm format, e.g. deepseek/deepseek-v4-flash
+#   SUBSET        SWE-bench subset: "verified" (default) or "lite"
+#   PARALLEL      Number of instances to run concurrently in batch mode (default: 1)
+#   SKIP_TRACES   Set to 1 to skip trace generation when trajectory already exists
 
-INSTANCE_ID=$1
-SUBSET=${2:-"verified"}
-MODEL=${MODEL:-"claude-sonnet-4-5"}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source shared config
+if [ -f "$SCRIPT_DIR/config.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/config.env"
+    set +a
+fi
+
+INSTANCE_ID=${1:-}
+# Positional arg overrides config.env SUBSET
+if [ -n "${2:-}" ]; then
+    SUBSET="$2"
+fi
+SUBSET=${SUBSET:-"verified"}
+MODEL=${MODEL:-"deepseek/deepseek-chat"}
+PARALLEL=${PARALLEL:-1}
 
 if [ -z "$INSTANCE_ID" ]; then
-    echo "Usage: $0 <instance_id> [subset]"
-    echo "Example: $0 django__django-12345 verified"
+    echo "Usage: $0 <instance_id|all> [subset]"
+    echo "Example: $0 django__django-10914"
+    echo "         $0 all verified"
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MINI_DIR="$SCRIPT_DIR/mini-swe-agent"
 KGCOMPASS_DIR="$SCRIPT_DIR/kgCompass"
 TRACES_DIR="$MINI_DIR/outputs/stack-traces"
-TRAJ_FILE="$TRACES_DIR/$INSTANCE_ID/$INSTANCE_ID.traj.json"
 
-echo "================================================="
-echo "Pipeline: $INSTANCE_ID  (subset: $SUBSET)"
-echo "================================================="
+case "$SUBSET" in
+    "verified") DATASET="princeton-nlp/SWE-Bench_Verified" ;;
+    "lite")     DATASET="princeton-nlp/SWE-Bench_Lite" ;;
+    *)          DATASET="$SUBSET" ;;
+esac
 
-# --- Step 1: Generate stack trace via mini-swe-agent ---
-echo -e "\n--- Step 1: Trace Generation (mini-swe-agent) ---"
+# ----------------------------------------------------------------
+# run_one: run the full pipeline for a single instance
+# ----------------------------------------------------------------
+run_one() {
+    local instance_id="$1"
+    local traj_file="$TRACES_DIR/$instance_id/$instance_id.traj.json"
 
-if [ "${SKIP_TRACES:-0}" = "1" ] && [ -f "$TRAJ_FILE" ]; then
-    echo "✅ Trajectory already exists, skipping trace generation."
-else
-    cd "$MINI_DIR"
-    python -m minisweagent.run.benchmarks.swebench \
-        --subset "$SUBSET" \
-        --split test \
-        --instance-ids "$INSTANCE_ID" \
-        --model "$MODEL" \
-        --output "$TRACES_DIR" \
-        --workers 1
-    echo "✅ Trajectory saved to $TRAJ_FILE"
+    echo ""
+    echo "================================================="
+    echo "Pipeline: $instance_id  (subset: $SUBSET, model: $MODEL)"
+    echo "================================================="
+
+    # Step 1: Trace generation
+    echo -e "\n--- Step 1: Trace Generation (mini-swe-agent) ---"
+    if [ "${SKIP_TRACES:-0}" = "1" ] && [ -f "$traj_file" ]; then
+        echo "✅ Trajectory already exists, skipping."
+    else
+        cd "$MINI_DIR"
+        python -m minisweagent.run.benchmarks.swebench \
+            --subset "$SUBSET" \
+            --split test \
+            --instance-ids "$instance_id" \
+            --model "$MODEL" \
+            --output "$TRACES_DIR" \
+            --workers 1
+        echo "✅ Trajectory saved to $traj_file"
+        cd "$SCRIPT_DIR"
+    fi
+
+    # Step 2: KGCompass repair
+    echo -e "\n--- Step 2: KGCompass Repair ---"
+    cd "$KGCOMPASS_DIR"
+    TRACES_DIR="$TRACES_DIR" SUBSET="$SUBSET" ./run_repair.sh "$instance_id"
     cd "$SCRIPT_DIR"
+
+    echo "✅ Done: $instance_id"
+}
+
+export -f run_one
+export SCRIPT_DIR MINI_DIR KGCOMPASS_DIR TRACES_DIR SUBSET MODEL DATASET SKIP_TRACES
+
+# ----------------------------------------------------------------
+# Batch mode
+# ----------------------------------------------------------------
+if [ "$INSTANCE_ID" = "all" ]; then
+    echo "Fetching instance IDs for subset '$SUBSET' ($DATASET)..."
+    INSTANCE_IDS=$(python3 -c "
+from datasets import load_dataset
+ds = load_dataset('$DATASET', split='test')
+for row in ds:
+    print(row['instance_id'])
+")
+    TOTAL=$(echo "$INSTANCE_IDS" | wc -l | tr -d ' ')
+    echo "Running pipeline for $TOTAL instances (parallelism: $PARALLEL)"
+
+    if [ "$PARALLEL" -gt 1 ]; then
+        echo "$INSTANCE_IDS" | xargs -P "$PARALLEL" -I{} bash -c 'run_one "$@"' _ {}
+    else
+        while IFS= read -r iid; do
+            run_one "$iid" || echo "⚠️  Failed: $iid (continuing)"
+        done <<< "$INSTANCE_IDS"
+    fi
+
+    echo -e "\n================================================="
+    echo "Batch complete for subset: $SUBSET"
+    echo "================================================="
+else
+    run_one "$INSTANCE_ID"
 fi
-
-# --- Step 2: KGCompass repair ---
-echo -e "\n--- Step 2: KGCompass Repair ---"
-cd "$KGCOMPASS_DIR"
-TRACES_DIR="$TRACES_DIR" ./run_repair.sh "$INSTANCE_ID"
-cd "$SCRIPT_DIR"
-
-echo -e "\n================================================="
-echo "Pipeline complete for: $INSTANCE_ID"
-echo "================================================="

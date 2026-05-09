@@ -162,9 +162,14 @@ fi
 echo -e "\n--- Step 4: Final Patch Generation ---"
 
 # Checkout the base commit so repair.py sees the buggy code, not HEAD
+case "${SUBSET:-verified}" in
+    "verified") _DATASET="princeton-nlp/SWE-bench_Verified" ;;
+    "lite")     _DATASET="princeton-nlp/SWE-bench_Lite" ;;
+    *)          _DATASET="${SUBSET}" ;;
+esac
 BASE_COMMIT=$(python3 -c "
 from datasets import load_dataset
-ds = load_dataset('princeton-nlp/SWE-bench_Verified', split='test')
+ds = load_dataset('$_DATASET', split='test')
 row = next((r for r in ds if r['instance_id'] == '$INSTANCE_ID'), None)
 if row:
     print(row['base_commit'])

@@ -1,0 +1,142 @@
+We need to add direct transforms between ITRS and AltAz/HADec that stay within the ITRS, ignoring geocentric aberration, and treat the input ITRS position as time‑invariant. The proposed code from the issue is the correct fix. We will add the necessary imports and functions to `altaz.py` and `hadec.py`, and register the transforms in both files.
+
+### File: astropy/coordinates/builtin_frames/altaz.py
+
+Add the required imports at the top of the file (after the existing imports) and the new transform functions at the end.
+
+```python
+### astropy/coordinates/builtin_frames/altaz.py
+- start_line : 1
+- end_line : 8
+<<<<<<< SEARCH
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+"""
+AltAz coordinate frame.
+"""
+=======
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+"""
+AltAz coordinate frame.
+"""
+import numpy as np
+from astropy import units as u
+from astropy.coordinates.matrix_utilities import rotation_matrix, matrix_transpose
+from astropy.coordinates.baseframe import frame_transform_graph
+from astropy.coordinates.transformations import FunctionTransformWithFiniteDifference
+from .hadec import HADec
+from .itrs import ITRS
+from .utils import PIOVER2
+>>>>>>> REPLACE
+```
+
+```python
+### astropy/coordinates/builtin_frames/altaz.py
+- start_line : 100
+- end_line : 108
+<<<<<<< SEARCH
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+=======
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+def itrs_to_observed_mat(observed_frame):
+    """Return the rotation matrix from ITRS to an observed frame (AltAz or HADec)."""
+    lon, lat, height = observed_frame.location.to_geodetic('WGS84')
+    elong = lon.to_value(u.radian)
+
+    if isinstance(observed_frame, AltAz):
+        elat = lat.to_value(u.radian)
+        minus_x = np.eye(3)
+        minus_x[0][0] = -1.0
+        mat = (minus_x
+               @ rotation_matrix(PIOVER2 - elat, 'y', unit=u.radian)
+               @ rotation_matrix(elong, 'z', unit=u.radian))
+    else:
+        # HADec
+        minus_y = np.eye(3)
+        minus_y[1][1] = -1.0
+        mat = (minus_y
+               @ rotation_matrix(elong, 'z', unit=u.radian))
+    return mat
+
+@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, AltAz)
+def itrs_to_altaz(itrs_coo, altaz_frame):
+    """Direct transform from ITRS to AltAz (topocentric, no aberration)."""
+    topocentric_itrs_repr = (itrs_coo.cartesian
+                             - altaz_frame.location.get_itrs().cartesian)
+    rep = topocentric_itrs_repr.transform(itrs_to_observed_mat(altaz_frame))
+    return altaz_frame.realize_frame(rep)
+
+@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, AltAz, ITRS)
+def altaz_to_itrs(altaz_coo, itrs_frame):
+    """Direct transform from AltAz to ITRS."""
+    topocentric_itrs_repr = altaz_coo.cartesian.transform(matrix_transpose(
+                            itrs_to_observed_mat(altaz_coo)))
+    geocentric_itrs_repr = topocentric_itrs_repr + altaz_coo.location.get_itrs().cartesian
+    return itrs_frame.realize_frame(geocentric_itrs_repr)
+>>>>>>> REPLACE
+```
+
+### File: astropy/coordinates/builtin_frames/hadec.py
+
+Add imports and register transforms for HADec.
+
+```python
+### astropy/coordinates/builtin_frames/hadec.py
+- start_line : 1
+- end_line : 8
+<<<<<<< SEARCH
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+"""
+HADec coordinate frame.
+"""
+=======
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+"""
+HADec coordinate frame.
+"""
+import numpy as np
+from astropy import units as u
+from astropy.coordinates.matrix_utilities import rotation_matrix, matrix_transpose
+from astropy.coordinates.baseframe import frame_transform_graph
+from astropy.coordinates.transformations import FunctionTransformWithFiniteDifference
+from .altaz import itrs_to_observed_mat
+from .itrs import ITRS
+>>>>>>> REPLACE
+```
+
+```python
+### astropy/coordinates/builtin_frames/hadec.py
+- start_line : 98
+- end_line : 106
+<<<<<<< SEARCH
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.has_data:
+            self._set_data_lon_wrap_angle(self.data)
+=======
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.has_data:
+            self._set_data_lon_wrap_angle(self.data)
+
+@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, HADec)
+def itrs_to_hadec(itrs_coo, hadec_frame):
+    """Direct transform from ITRS to HADec (topocentric, no aberration)."""
+    topocentric_itrs_repr = (itrs_coo.cartesian
+                             - hadec_frame.location.get_itrs().cartesian)
+    rep = topocentric_itrs_repr.transform(itrs_to_observed_mat(hadec_frame))
+    return hadec_frame.realize_frame(rep)
+
+@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, HADec, ITRS)
+def hadec_to_itrs(hadec_coo, itrs_frame):
+    """Direct transform from HADec to ITRS."""
+    topocentric_itrs_repr = hadec_coo.cartesian.transform(matrix_transpose(
+                            itrs_to_observed_mat(hadec_coo)))
+    geocentric_itrs_repr = topocentric_itrs_repr + hadec_coo.location.get_itrs().cartesian
+    return itrs_frame.realize_frame(geocentric_itrs_repr)
+>>>>>>> REPLACE
+```
+
+These changes add the new direct transforms while keeping the old transform paths for users who need the full ICRS‑based treatment (e.g., for distant objects where aberration matters). The new transforms treat ITRS positions as time‑invariant and subtract the observer location to get topocentric coordinates, matching the proposed solution in the issue.
