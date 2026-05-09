@@ -1,0 +1,54 @@
+The bug occurs because the `members` variable passed to the module template during stub generation includes all module members, including imported ones, regardless of the `autosummary_imported_members` setting. The fix ensures that when `autosummary_imported_members` is `False`, members whose `__module__` attribute does not match the module being documented are filtered out.
+
+The change is made in `sphinx/ext/autosummary/generate.py` where the context dict for the module template is built. The exact location is the function that assembles the `members` list.
+
+```python
+### sphinx/ext/autosummary/generate.py
+- start_line : 162
+- end_line : 173
+<<<<<<< SEARCH
+    def render(self, template_name: str, context: Dict) -> str:
+        """Render a template file."""
+        try:
+            template = self.env.get_template(template_name)
+        except TemplateNotFound:
+            try:
+                # objtype is given as template_name
+                template = self.env.get_template('autosummary/%s.rst' % template_name)
+            except TemplateNotFound:
+                # fallback to base.rst
+                template = self.env.get_template('autosummary/base.rst')
+
+        return template.render(context)
+=======
+    def render(self, template_name: str, context: Dict) -> str:
+        """Render a template file."""
+        # Filter 'members' for module templates to respect autosummary_imported_members
+        if 'members' in context and not self.env.config.autosummary_imported_members:
+            module = context.get('module')
+            if module is not None:
+                members = []
+                for name in context['members']:
+                    obj = getattr(module, name, None)
+                    if obj is not None:
+                        obj_module = getattr(obj, '__module__', None)
+                        if obj_module is None or obj_module == module.__name__:
+                            members.append(name)
+                    else:
+                        # keep if cannot be resolved
+                        members.append(name)
+                context['members'] = members
+
+        try:
+            template = self.env.get_template(template_name)
+        except TemplateNotFound:
+            try:
+                # objtype is given as template_name
+                template = self.env.get_template('autosummary/%s.rst' % template_name)
+            except TemplateNotFound:
+                # fallback to base.rst
+                template = self.env.get_template('autosummary/base.rst')
+
+        return template.render(context)
+>>>>>>> REPLACE
+```

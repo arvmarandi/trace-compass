@@ -906,7 +906,7 @@ def extract_python_blocks(text):
     # Capture optional ### header lines preceding each ```python block so the
     # file name is available to split_edit_multifile_commands even when the LLM
     # places the header outside the fenced block.
-    pattern = r"((?:### [^\n]+\n(?:- [^\n]+\n)*)?)```python\n(.*?)\n```"
+    pattern = r"((?:### [^\n]+\n(?:- [^\n]+\n)*)\n*)?```python\n(.*?)\n```"
     matches = re.findall(pattern, text, re.DOTALL)
 
     if not matches:

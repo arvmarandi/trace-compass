@@ -1,0 +1,53 @@
+--- a/sympy/simplify/simplify.py
++++ b/sympy/simplify/simplify.py
+@@ -382,6 +382,26 @@
+     return e
+ 
+ 
++def composed_inverse(expr):
++    """Cancel composition of functions with its own inverse:
++        f(finv(x)) ==> x
++    So The next substitutions are applied:
++    >>> composed_inverse(asin(sin(x)))
++    x
++    >>> composed_inverse(exp(log(x)))
++    x
++
++    If no cancellation is possible returns the same expression.
++    """
++
++    if isinstance(expr, Function) and hasattr(expr, "inverse"):
++        # TODO: Can be just change this check to something simpler
++        if len(expr.args) == 1 and len(expr.args[0].args) == 1 and \
++           isinstance(expr.args[0], expr.inverse(argindex=1)):
++            return expr.args[0].args[0]
++    return expr
++
++
+ def simplify(expr, ratio=1.7, measure=count_ops, fu=False):
+     """
+     Simplifies the given expression.
+@@ -521,14 +541,16 @@
+     if not isinstance(expr, Basic) or not expr.args:  # XXX: temporary hack
+         return expr
+ 
+-    if not isinstance(expr, (Add, Mul, Pow, ExpBase)):
+-        if isinstance(expr, Function) and hasattr(expr, "inverse"):
+-            if len(expr.args) == 1 and len(expr.args[0].args) == 1 and \
+-               isinstance(expr.args[0], expr.inverse(argindex=1)):
+-                return simplify(expr.args[0].args[0], ratio=ratio,
+-                                measure=measure, fu=fu)
+-        return expr.func(*[simplify(x, ratio=ratio, measure=measure, fu=fu)
++    if isinstance(expr, (Add, Mul, Pow, ExpBase)):
++        # Try to cancel all the sub-terms
++        expr = expr.func(*[composed_inverse(x) for x in expr.args])
++    else:
++        expr = composed_inverse(expr)
++        # If no simplification was possible, try nested simplification
++        if expr is original_expr:
++            return expr.func(*[simplify(x, ratio=ratio, measure=measure, fu=fu)
+                          for x in expr.args])
++        # Otherwise continue with the normal simplification
+ 
+     # TODO: Apply different strategies, considering expression pattern:
+     # is it a purely rational function? Is there any trigonometric function?...

@@ -1,0 +1,283 @@
+We need to fix the issue where array arguments that do not appear in the expression are incorrectly treated as scalars in the generated C code when using argument_sequence. The fix ensures that when an argument is added via argument_sequence and it is a `MatrixSymbol`, it is given the correct dimensions so that the C code treats it as a pointer.
+
+The same issue exists in the base `CodeGen.routine` (used by C and Fortran) and in the overridden `routine` methods for Julia, Rust, and Octave. We'll modify each of those sections.
+
+Below are the SEARCH/REPLACE edits for `sympy/utilities/codegen.py`.
+
+### 1. Base `CodeGen.routine` (for C and Fortran)
+
+```python
+### sympy/utilities/codegen.py
+- start_line : 730
+- end_line : 745
+<<<<<<< SEARCH
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_val, local_vars, global_vars)
+=======
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    if isinstance(symbol, MatrixSymbol):
+                        dims = [(S.Zero, dim - 1) for dim in symbol.shape]
+                        new_args.append(InputArgument(symbol, dimensions=dims))
+                    else:
+                        new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_val, local_vars, global_vars)
+>>>>>>> REPLACE
+```
+
+### 2. JuliaCodeGen.routine
+
+```python
+### sympy/utilities/codegen.py
+- start_line : 1398
+- end_line : 1408
+<<<<<<< SEARCH
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+=======
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    if isinstance(symbol, MatrixSymbol):
+                        dims = [(S.Zero, dim - 1) for dim in symbol.shape]
+                        new_args.append(InputArgument(symbol, dimensions=dims))
+                    else:
+                        new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+>>>>>>> REPLACE
+```
+
+### 3. RustCodeGen.routine
+
+```python
+### sympy/utilities/codegen.py
+- start_line : 1837
+- end_line : 1847
+<<<<<<< SEARCH
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+=======
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    if isinstance(symbol, MatrixSymbol):
+                        dims = [(S.Zero, dim - 1) for dim in symbol.shape]
+                        new_args.append(InputArgument(symbol, dimensions=dims))
+                    else:
+                        new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+>>>>>>> REPLACE
+```
+
+### 4. OctaveCodeGen.routine
+
+```python
+### sympy/utilities/codegen.py
+- start_line : 1606
+- end_line : 1616
+<<<<<<< SEARCH
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+=======
+        if argument_sequence is not None:
+            # if the user has supplied IndexedBase instances, we'll accept that
+            new_sequence = []
+            for arg in argument_sequence:
+                if isinstance(arg, IndexedBase):
+                    new_sequence.append(arg.label)
+                else:
+                    new_sequence.append(arg)
+            argument_sequence = new_sequence
+
+            missing = [x for x in arg_list if x.name not in argument_sequence]
+            if missing:
+                msg = "Argument list didn't specify: {0} "
+                msg = msg.format(", ".join([str(m.name) for m in missing]))
+                raise CodeGenArgumentListError(msg, missing)
+
+            # create redundant arguments to produce the requested sequence
+            name_arg_dict = {x.name: x for x in arg_list}
+            new_args = []
+            for symbol in argument_sequence:
+                try:
+                    new_args.append(name_arg_dict[symbol])
+                except KeyError:
+                    if isinstance(symbol, MatrixSymbol):
+                        dims = [(S.Zero, dim - 1) for dim in symbol.shape]
+                        new_args.append(InputArgument(symbol, dimensions=dims))
+                    else:
+                        new_args.append(InputArgument(symbol))
+            arg_list = new_args
+
+        return Routine(name, arg_list, return_vals, local_vars, global_vars)
+>>>>>>> REPLACE
+```
+
+These changes ensure that when an argument sequence includes a `MatrixSymbol` that was not used in the expression, it is still created as an array input argument with the correct dimensions.

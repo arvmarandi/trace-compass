@@ -1,0 +1,2956 @@
+{
+  "related_entities": {
+    "methods": [
+      {
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.run",
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "start_line": 238,
+        "end_line": 283,
+        "source_code": "    def run(self) -> List[Node]:\n        self.bridge = DocumenterBridge(self.env, self.state.document.reporter,\n                                       Options(), self.lineno, self.state)\n\n        names = [x.strip().split()[0] for x in self.content\n                 if x.strip() and re.search(r'^[~a-zA-Z_]', x.strip()[0])]\n        items = self.get_items(names)\n        nodes = self.get_table(items)\n\n        if 'toctree' in self.options:\n            dirname = posixpath.dirname(self.env.docname)\n\n            tree_prefix = self.options['toctree'].strip()\n            docnames = []\n            excluded = Matcher(self.config.exclude_patterns)\n            for name, sig, summary, real_name in items:\n                docname = posixpath.join(tree_prefix, real_name)\n                docname = posixpath.normpath(posixpath.join(dirname, docname))\n                if docname not in self.env.found_docs:\n                    location = self.state_machine.get_source_and_line(self.lineno)\n                    if excluded(self.env.doc2path(docname, None)):\n                        msg = __('autosummary references excluded document %r. Ignored.')\n                    else:\n                        msg = __('autosummary: stub file not found %r. '\n                                 'Check your autosummary_generate setting.')\n\n                    logger.warning(msg, real_name, location=location)\n                    continue\n\n                docnames.append(docname)\n\n            if docnames:\n                tocnode = addnodes.toctree()\n                tocnode['includefiles'] = docnames\n                tocnode['entries'] = [(None, docn) for docn in docnames]\n                tocnode['maxdepth'] = -1\n                tocnode['glob'] = None\n                tocnode['caption'] = self.options.get('caption')\n\n                nodes.append(autosummary_toc('', '', tocnode))\n\n        if 'toctree' not in self.options and 'caption' in self.options:\n            logger.warning(__('A captioned autosummary requires :toctree: option. ignored.'),\n                           location=nodes[-1])\n\n        return nodes",
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.run(self)",
+        "doc_string": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.run"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.get_items",
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "start_line": 285,
+        "end_line": 362,
+        "source_code": "    def get_items(self, names: List[str]) -> List[Tuple[str, str, str, str]]:\n        \"\"\"Try to import the given names, and return a list of\n        ``[(name, signature, summary_string, real_name), ...]``.\n        \"\"\"\n        prefixes = get_import_prefixes_from_env(self.env)\n\n        items = []  # type: List[Tuple[str, str, str, str]]\n\n        max_item_chars = 50\n\n        for name in names:\n            display_name = name\n            if name.startswith('~'):\n                name = name[1:]\n                display_name = name.split('.')[-1]\n\n            try:\n                with mock(self.config.autosummary_mock_imports):\n                    real_name, obj, parent, modname = import_by_name(name, prefixes=prefixes)\n            except ImportError:\n                logger.warning(__('autosummary: failed to import %s'), name)\n                continue\n\n            self.bridge.result = StringList()  # initialize for each documenter\n            full_name = real_name\n            if not isinstance(obj, ModuleType):\n                # give explicitly separated module name, so that members\n                # of inner classes can be documented\n                full_name = modname + '::' + full_name[len(modname) + 1:]\n            # NB. using full_name here is important, since Documenters\n            #     handle module prefixes slightly differently\n            doccls = get_documenter(self.env.app, obj, parent)\n            documenter = doccls(self.bridge, full_name)\n            if not documenter.parse_name():\n                logger.warning(__('failed to parse name %s'), real_name)\n                items.append((display_name, '', '', real_name))\n                continue\n            if not documenter.import_object():\n                logger.warning(__('failed to import object %s'), real_name)\n                items.append((display_name, '', '', real_name))\n                continue\n            if documenter.options.members and not documenter.check_module():\n                continue\n\n            # try to also get a source code analyzer for attribute docs\n            try:\n                documenter.analyzer = ModuleAnalyzer.for_module(\n                    documenter.get_real_modname())\n                # parse right now, to get PycodeErrors on parsing (results will\n                # be cached anyway)\n                documenter.analyzer.find_attr_docs()\n            except PycodeError as err:\n                logger.debug('[autodoc] module analyzer failed: %s', err)\n                # no source file -- e.g. for builtin and C modules\n                documenter.analyzer = None\n\n            # -- Grab the signature\n\n            try:\n                sig = documenter.format_signature(show_annotation=False)\n            except TypeError:\n                # the documenter does not support ``show_annotation`` option\n                sig = documenter.format_signature()\n\n            if not sig:\n                sig = ''\n            else:\n                max_chars = max(10, max_item_chars - len(display_name))\n                sig = mangle_signature(sig, max_chars=max_chars)\n\n            # -- Grab the summary\n\n            documenter.add_content(None)\n            summary = extract_summary(self.bridge.result.data[:], self.state.document)\n\n            items.append((display_name, sig, summary, real_name))\n\n        return items",
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.get_items(self, names)",
+        "doc_string": "Try to import the given names, and return a list of\n``[(name, signature, summary_string, real_name), ...]``.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.get_items"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sphinx.ext.autodoc.__init__.ModuleDocumenter.get_object_members",
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "start_line": 863,
+        "end_line": 896,
+        "source_code": "    def get_object_members(self, want_all: bool) -> Tuple[bool, List[Tuple[str, Any]]]:\n        if want_all:\n            if (self.options.ignore_module_all or not\n                    hasattr(self.object, '__all__')):\n                # for implicit module members, check __module__ to avoid\n                # documenting imported objects\n                return True, get_module_members(self.object)\n            else:\n                memberlist = self.object.__all__\n                # Sometimes __all__ is broken...\n                if not isinstance(memberlist, (list, tuple)) or not \\\n                   all(isinstance(entry, str) for entry in memberlist):\n                    logger.warning(\n                        __('__all__ should be a list of strings, not %r '\n                           '(in module %s) -- ignoring __all__') %\n                        (memberlist, self.fullname),\n                        type='autodoc'\n                    )\n                    # fall back to all members\n                    return True, get_module_members(self.object)\n        else:\n            memberlist = self.options.members or []\n        ret = []\n        for mname in memberlist:\n            try:\n                ret.append((mname, safe_getattr(self.object, mname)))\n            except AttributeError:\n                logger.warning(\n                    __('missing attribute mentioned in :members: or __all__: '\n                       'module %s, attribute %s') %\n                    (safe_getattr(self.object, '__name__', '???'), mname),\n                    type='autodoc'\n                )\n        return False, ret",
+        "signature": "sphinx.ext.autodoc.__init__.ModuleDocumenter.get_object_members(self, want_all)",
+        "doc_string": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ModuleDocumenter.get_object_members"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sphinx.ext.autodoc.__init__.Documenter.check_module",
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "start_line": 352,
+        "end_line": 363,
+        "source_code": "    def check_module(self) -> bool:\n        \"\"\"Check if *self.object* is really defined in the module given by\n        *self.modname*.\n        \"\"\"\n        if self.options.imported_members:\n            return True\n\n        subject = inspect.unpartial(self.object)\n        modname = self.get_attr(subject, '__module__', None)\n        if modname and modname != self.modname:\n            return False\n        return True",
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.check_module(self)",
+        "doc_string": "Check if *self.object* is really defined in the module given by\n*self.modname*.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.check_module"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sphinx.ext.autosummary.generate.AutosummaryRenderer.render",
+        "file_path": "sphinx/ext/autosummary/generate.py",
+        "start_line": 161,
+        "end_line": 173,
+        "source_code": "    def render(self, template_name: str, context: Dict) -> str:\n        \"\"\"Render a template file.\"\"\"\n        try:\n            template = self.env.get_template(template_name)\n        except TemplateNotFound:\n            try:\n                # objtype is given as template_name\n                template = self.env.get_template('autosummary/%s.rst' % template_name)\n            except TemplateNotFound:\n                # fallback to base.rst\n                template = self.env.get_template('autosummary/base.rst')\n\n        return template.render(context)",
+        "signature": "sphinx.ext.autosummary.generate.AutosummaryRenderer.render(self, template_name, context)",
+        "doc_string": "Render a template file.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/generate.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/generate.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.generate.AutosummaryRenderer.render"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "start_line": 364,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_table(self, items: List[Tuple[str, str, str, str]]) -> List[Node]:\n        \"\"\"Generate a proper list of table nodes for autosummary:: directive.\n\n        *items* is a list produced by :meth:`get_items`.\n        \"\"\"\n        table_spec = addnodes.tabular_col_spec()\n        table_spec['spec'] = r'\\X{1}{2}\\X{1}{2}'\n\n        table = autosummary_table('')\n        real_table = nodes.table('', classes=['longtable'])\n        table.append(real_table)\n        group = nodes.tgroup('', cols=2)\n        real_table.append(group)\n        group.append(nodes.colspec('', colwidth=10))\n        group.append(nodes.colspec('', colwidth=90))\n        body = nodes.tbody('')\n        group.append(body)\n\n        def append_row(*column_texts: str) -> None:\n            row = nodes.row('')\n            source, line = self.state_machine.get_source_and_line()\n            for text in column_texts:\n                node = nodes.paragraph('')\n                vl = StringList()\n                vl.append(text, '%s:%d:<autosummary>' % (source, line))\n                with switch_source_input(self.state, vl):\n                    self.state.nested_parse(vl, 0, node)\n                    try:\n                        if isinstance(node[0], nodes.paragraph):\n                            node = node[0]\n                    except IndexError:\n                        pass\n                    row.append(nodes.entry('', node))\n            body.append(row)\n\n        for name, sig, summary, real_name in items:\n            qualifier = 'obj'\n            if 'nosignatures' not in self.options:\n                col1 = ':%s:`%s <%s>`\\\\ %s' % (qualifier, name, real_name, rst.escape(sig))\n            else:\n                col1 = ':%s:`%s <%s>`' % (qualifier, name, real_name)\n            col2 = summary\n            append_row(col1, col2)\n\n        return [table_spec, table]",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.get_table",
+        "documentation": "Generate a proper list of table nodes for autosummary:: directive.\n\n*items* is a list produced by :meth:`get_items`.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.get_table"
+          }
+        ],
+        "similarity": 0.24250658920249113,
+        "end_line": 408,
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.get_table(self, items)"
+      },
+      {
+        "start_line": 686,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def run(self) -> Tuple[List[Node], List[system_message]]:\n        pyobj_role = self.env.get_domain('py').role('obj')\n        objects, errors = pyobj_role('obj', self.rawtext, self.text, self.lineno,\n                                     self.inliner, self.options, self.content)\n        if errors:\n            return objects, errors\n\n        assert len(objects) == 1\n        pending_xref = cast(addnodes.pending_xref, objects[0])\n        try:\n            # try to import object by name\n            prefixes = get_import_prefixes_from_env(self.env)\n            import_by_name(pending_xref['reftarget'], prefixes)\n        except ImportError:\n            literal = cast(nodes.literal, pending_xref[0])\n            objects[0] = nodes.emphasis(self.rawtext, literal.astext(),\n                                        classes=literal['classes'])\n\n        return objects, errors",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.AutoLink.run",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.AutoLink.run"
+          }
+        ],
+        "similarity": 0.21813162459893828,
+        "end_line": 704,
+        "signature": "sphinx.ext.autosummary.__init__.AutoLink.run(self)"
+      },
+      {
+        "start_line": 175,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self) -> None:\n        settings = Struct(tab_width=8)\n        document = Struct(settings=settings)\n        state = Struct(document=document)\n        super().__init__({}, None, Options(), 0, state)  # type: ignore",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.FakeDirective.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.FakeDirective.__init__"
+          }
+        ],
+        "similarity": 0.17198525231889117,
+        "end_line": 179,
+        "signature": "sphinx.ext.autosummary.__init__.FakeDirective.__init__(self)"
+      },
+      {
+        "start_line": 657,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def document_members(self, all_members: bool = False) -> None:\n        \"\"\"Generate reST for member documentation.\n\n        If *all_members* is True, do all members, else those given by\n        *self.options.members*.\n        \"\"\"\n        # set current namespace for finding members\n        self.env.temp_data['autodoc:module'] = self.modname\n        if self.objpath:\n            self.env.temp_data['autodoc:class'] = self.objpath[0]\n\n        want_all = all_members or self.options.inherited_members or \\\n            self.options.members is ALL\n        # find out which members are documentable\n        members_check_module, members = self.get_object_members(want_all)\n\n        # remove members given by exclude-members\n        if self.options.exclude_members:\n            members = [\n                (membername, member) for (membername, member) in members\n                if (\n                    self.options.exclude_members is ALL or\n                    membername not in self.options.exclude_members\n                )\n            ]\n\n        # document non-skipped members\n        memberdocumenters = []  # type: List[Tuple[Documenter, bool]]\n        for (mname, member, isattr) in self.filter_members(members, want_all):\n            classes = [cls for cls in self.documenters.values()\n                       if cls.can_document_member(member, mname, isattr, self)]\n            if not classes:\n                # don't know how to document this member\n                continue\n            # prefer the documenter with the highest priority\n            classes.sort(key=lambda cls: cls.priority)\n            # give explicitly separated module name, so that members\n            # of inner classes can be documented\n            full_mname = self.modname + '::' + \\\n                '.'.join(self.objpath + [mname])\n            documenter = classes[-1](self.directive, full_mname, self.indent)\n            memberdocumenters.append((documenter, isattr))\n        member_order = self.options.member_order or \\\n            self.env.config.autodoc_member_order\n        if member_order == 'groupwise':\n            # sort by group; relies on stable sort to keep items in the\n            # same group sorted alphabetically\n            memberdocumenters.sort(key=lambda e: e[0].member_order)\n        elif member_order == 'bysource' and self.analyzer:\n            # sort by source order, by virtue of the module analyzer\n            tagorder = self.analyzer.tagorder\n\n            def keyfunc(entry: Tuple[Documenter, bool]) -> int:\n                fullname = entry[0].name.split('::')[1]\n                return tagorder.get(fullname, len(tagorder))\n            memberdocumenters.sort(key=keyfunc)\n\n        for documenter, isattr in memberdocumenters:\n            documenter.generate(\n                all_members=True, real_modname=self.real_modname,\n                check_module=members_check_module and not isattr)\n\n        # reset current objects\n        self.env.temp_data['autodoc:module'] = None\n        self.env.temp_data['autodoc:class'] = None",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.document_members",
+        "documentation": "Generate reST for member documentation.\n\nIf *all_members* is True, do all members, else those given by\n*self.options.members*.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.document_members"
+          }
+        ],
+        "similarity": 0.16909296388507988,
+        "end_line": 721,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.document_members(self, all_members)"
+      },
+      {
+        "start_line": 422,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def warnings(self) -> List[Node]:\n        warnings.warn('Autosummary.warnings is deprecated',\n                      RemovedInSphinx40Warning, stacklevel=2)\n        return []",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.warnings",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.warnings"
+          }
+        ],
+        "similarity": 0.1567052541800437,
+        "end_line": 425,
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.warnings(self)"
+      },
+      {
+        "start_line": 1295,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def generate(self, more_content: Any = None, real_modname: str = None,\n                 check_module: bool = False, all_members: bool = False) -> None:\n        # Do not pass real_modname and use the name from the __module__\n        # attribute of the class.\n        # If a class gets imported into the module real_modname\n        # the analyzer won't find the source of the class, if\n        # it looks in real_modname.\n        return super().generate(more_content=more_content,\n                                check_module=check_module,\n                                all_members=all_members)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ClassDocumenter.generate",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ClassDocumenter.generate"
+          }
+        ],
+        "similarity": 0.1537390217866486,
+        "end_line": 1304,
+        "signature": "sphinx.ext.autodoc.__init__.ClassDocumenter.generate(self, more_content, real_modname, check_module, all_members)"
+      },
+      {
+        "start_line": 410,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def warn(self, msg: str) -> None:\n        warnings.warn('Autosummary.warn() is deprecated',\n                      RemovedInSphinx40Warning, stacklevel=2)\n        logger.warning(msg)",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.warn",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.warn"
+          }
+        ],
+        "similarity": 0.15208959239435849,
+        "end_line": 413,
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.warn(self, msg)"
+      },
+      {
+        "start_line": 428,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def result(self) -> StringList:\n        warnings.warn('Autosummary.result is deprecated',\n                      RemovedInSphinx40Warning, stacklevel=2)\n        return self.bridge.result",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.result",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.result"
+          }
+        ],
+        "similarity": 0.14978341844840998,
+        "end_line": 431,
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.result(self)"
+      },
+      {
+        "start_line": 1275,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def add_content(self, more_content: Any, no_docstring: bool = False) -> None:\n        if self.doc_as_attr:\n            classname = safe_getattr(self.object, '__qualname__', None)\n            if not classname:\n                classname = safe_getattr(self.object, '__name__', None)\n            if classname:\n                module = safe_getattr(self.object, '__module__', None)\n                parentmodule = safe_getattr(self.parent, '__module__', None)\n                if module and module != parentmodule:\n                    classname = str(module) + '.' + str(classname)\n                content = StringList([_('alias of :class:`%s`') % classname], source='')\n                super().add_content(content, no_docstring=True)\n        else:\n            super().add_content(more_content)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ClassDocumenter.add_content",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ClassDocumenter.add_content"
+          }
+        ],
+        "similarity": 0.14916541052698729,
+        "end_line": 1288,
+        "signature": "sphinx.ext.autodoc.__init__.ClassDocumenter.add_content(self, more_content, no_docstring)"
+      },
+      {
+        "start_line": 1048,
+        "file_path": "sphinx/domains/python.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def generate(self, docnames: Iterable[str] = None\n                 ) -> Tuple[List[Tuple[str, List[IndexEntry]]], bool]:\n        content = {}  # type: Dict[str, List[IndexEntry]]\n        # list of prefixes to ignore\n        ignores = None  # type: List[str]\n        ignores = self.domain.env.config['modindex_common_prefix']  # type: ignore\n        ignores = sorted(ignores, key=len, reverse=True)\n        # list of all modules, sorted by module name\n        modules = sorted(self.domain.data['modules'].items(),\n                         key=lambda x: x[0].lower())\n        # sort out collapsable modules\n        prev_modname = ''\n        num_toplevels = 0\n        for modname, (docname, node_id, synopsis, platforms, deprecated) in modules:\n            if docnames and docname not in docnames:\n                continue\n\n            for ignore in ignores:\n                if modname.startswith(ignore):\n                    modname = modname[len(ignore):]\n                    stripped = ignore\n                    break\n            else:\n                stripped = ''\n\n            # we stripped the whole module name?\n            if not modname:\n                modname, stripped = stripped, ''\n\n            entries = content.setdefault(modname[0].lower(), [])\n\n            package = modname.split('.')[0]\n            if package != modname:\n                # it's a submodule\n                if prev_modname == package:\n                    # first submodule - make parent a group head\n                    if entries:\n                        last = entries[-1]\n                        entries[-1] = IndexEntry(last[0], 1, last[2], last[3],\n                                                 last[4], last[5], last[6])\n                elif not prev_modname.startswith(package):\n                    # submodule without parent in list, add dummy entry\n                    entries.append(IndexEntry(stripped + package, 1, '', '', '', '', ''))\n                subtype = 2\n            else:\n                num_toplevels += 1\n                subtype = 0\n\n            qualifier = _('Deprecated') if deprecated else ''\n            entries.append(IndexEntry(stripped + modname, subtype, docname,\n                                      node_id, platforms, qualifier, synopsis))\n            prev_modname = modname\n\n        # apply heuristics when to collapse modindex at page load:\n        # only collapse if number of toplevel modules is larger than\n        # number of submodules\n        collapse = len(modules) - num_toplevels < num_toplevels\n\n        # sort by first letter\n        sorted_content = sorted(content.items())\n\n        return sorted_content, collapse",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domainsthon.PythonModuleIndex.generate",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/python.py"
+          },
+          {
+            "start_node": "sphinx/domains/python.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domainsthon.PythonModuleIndex.generate"
+          }
+        ],
+        "similarity": 0.14784486711292946,
+        "end_line": 1109,
+        "signature": "sphinx.domainsthon.PythonModuleIndex.generate(self, docnames)"
+      },
+      {
+        "start_line": 723,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def generate(self, more_content: Any = None, real_modname: str = None,\n                 check_module: bool = False, all_members: bool = False) -> None:\n        \"\"\"Generate reST for the object given by *self.name*, and possibly for\n        its members.\n\n        If *more_content* is given, include that content. If *real_modname* is\n        given, use that module name to find attribute docs. If *check_module* is\n        True, only generate if the object is defined in the module name it is\n        imported from. If *all_members* is True, document all members.\n        \"\"\"\n        if not self.parse_name():\n            # need a module to import\n            logger.warning(\n                __('don\\'t know which module to import for autodocumenting '\n                   '%r (try placing a \"module\" or \"currentmodule\" directive '\n                   'in the document, or giving an explicit module name)') %\n                self.name, type='autodoc')\n            return\n\n        # now, import the module and get object to document\n        if not self.import_object():\n            return\n\n        # If there is no real module defined, figure out which to use.\n        # The real module is used in the module analyzer to look up the module\n        # where the attribute documentation would actually be found in.\n        # This is used for situations where you have a module that collects the\n        # functions and classes of internal submodules.\n        guess_modname = self.get_real_modname()\n        self.real_modname = real_modname or guess_modname\n\n        # try to also get a source code analyzer for attribute docs\n        try:\n            self.analyzer = ModuleAnalyzer.for_module(self.real_modname)\n            # parse right now, to get PycodeErrors on parsing (results will\n            # be cached anyway)\n            self.analyzer.find_attr_docs()\n        except PycodeError:\n            logger.debug('[autodoc] module analyzer failed:', exc_info=True)\n            # no source file -- e.g. for builtin and C modules\n            self.analyzer = None\n            # at least add the module.__file__ as a dependency\n            if hasattr(self.module, '__file__') and self.module.__file__:\n                self.directive.filename_set.add(self.module.__file__)\n        else:\n            self.directive.filename_set.add(self.analyzer.srcname)\n\n        if self.real_modname != guess_modname:\n            # Add module to dependency list if target object is defined in other module.\n            try:\n                analyzer = ModuleAnalyzer.for_module(guess_modname)\n                self.directive.filename_set.add(analyzer.srcname)\n            except PycodeError:\n                pass\n\n        # check __module__ of object (for members not given explicitly)\n        if check_module:\n            if not self.check_module():\n                return\n\n        sourcename = self.get_sourcename()\n\n        # make sure that the result starts with an empty line.  This is\n        # necessary for some situations where another directive preprocesses\n        # reST and no starting newline is present\n        self.add_line('', sourcename)\n\n        # format the object's signature, if any\n        sig = self.format_signature()\n\n        # generate the directive header and options, if applicable\n        self.add_directive_header(sig)\n        self.add_line('', sourcename)\n\n        # e.g. the module directive doesn't have content\n        self.indent += self.content_indent\n\n        # add all content (from docstrings, attribute docs etc.)\n        self.add_content(more_content)\n\n        # document members, if possible\n        self.document_members(all_members)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.generate",
+        "documentation": "Generate reST for the object given by *self.name*, and possibly for\nits members.\n\nIf *more_content* is given, include that content. If *real_modname* is\ngiven, use that module name to find attribute docs. If *check_module* is\nTrue, only generate if the object is defined in the module name it is\nimported from. If *all_members* is True, document all members.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.generate"
+          }
+        ],
+        "similarity": 0.1477506848297457,
+        "end_line": 804,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.generate(self, more_content, real_modname, check_module, all_members)"
+      },
+      {
+        "start_line": 1560,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def can_document_member(cls, member: Any, membername: str, isattr: bool, parent: Any\n                            ) -> bool:\n        if inspect.isattributedescriptor(member):\n            return True\n        elif (not isinstance(parent, ModuleDocumenter) and\n              not inspect.isroutine(member) and\n              not isinstance(member, type)):\n            return True\n        else:\n            return False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.AttributeDocumenter.can_document_member",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.AttributeDocumenter.can_document_member"
+          }
+        ],
+        "similarity": 0.1456423558169415,
+        "end_line": 1569,
+        "signature": "sphinx.ext.autodoc.__init__.AttributeDocumenter.can_document_member(cls, member, membername, isattr, parent)"
+      },
+      {
+        "start_line": 904,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def resolve_name(self, modname: str, parents: Any, path: str, base: Any\n                     ) -> Tuple[str, List[str]]:\n        if modname is None:\n            if path:\n                stripped = path.rstrip('.')\n                modname, qualname = split_full_qualified_name(stripped)\n                if qualname:\n                    parents = qualname.split(\".\")\n                else:\n                    parents = []\n\n            if modname is None:\n                # if documenting a toplevel object without explicit module,\n                # it can be contained in another auto directive ...\n                modname = self.env.temp_data.get('autodoc:module')\n                # ... or in the scope of a module directive\n                if not modname:\n                    modname = self.env.ref_context.get('py:module')\n                # ... else, it stays None, which means invalid\n        return modname, parents + [base]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ModuleLevelDocumenter.resolve_name",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ModuleLevelDocumenter.resolve_name"
+          }
+        ],
+        "similarity": 0.14308999690479687,
+        "end_line": 923,
+        "signature": "sphinx.ext.autodoc.__init__.ModuleLevelDocumenter.resolve_name(self, modname, parents, path, base)"
+      },
+      {
+        "start_line": 1709,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def import_object(self) -> Any:\n        \"\"\"Never import anything.\"\"\"\n        # disguise as an attribute\n        self.objtype = 'attribute'\n        self._datadescriptor = True\n\n        with mock(self.env.config.autodoc_mock_imports):\n            try:\n                ret = import_object(self.modname, self.objpath[:-1], 'class',\n                                    attrgetter=self.get_attr,\n                                    warningiserror=self.env.config.autodoc_warningiserror)\n                self.module, _, _, self.parent = ret\n                return True\n            except ImportError as exc:\n                logger.warning(exc.args[0], type='autodoc', subtype='import_object')\n                self.env.note_reread()\n                return False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.SlotsAttributeDocumenter.import_object",
+        "documentation": "Never import anything.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.SlotsAttributeDocumenter.import_object"
+          }
+        ],
+        "similarity": 0.1427985131916542,
+        "end_line": 1725,
+        "signature": "sphinx.ext.autodoc.__init__.SlotsAttributeDocumenter.import_object(self)"
+      },
+      {
+        "start_line": 166,
+        "file_path": "sphinx/writers/texinfo.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, document: nodes.document, builder: \"TexinfoBuilder\") -> None:\n        super().__init__(document, builder)\n        self.init_settings()\n\n        self.written_ids = set()        # type: Set[str]\n                                        # node names and anchors in output\n        # node names and anchors that should be in output\n        self.referenced_ids = set()     # type: Set[str]\n        self.indices = []               # type: List[Tuple[str, str]]\n                                        # (node name, content)\n        self.short_ids = {}             # type: Dict[str, str]\n                                        # anchors --> short ids\n        self.node_names = {}            # type: Dict[str, str]\n                                        # node name --> node's name to display\n        self.node_menus = {}            # type: Dict[str, List[str]]\n                                        # node name --> node's menu entries\n        self.rellinks = {}              # type: Dict[str, List[str]]\n                                        # node name --> (next, previous, up)\n\n        self.collect_indices()\n        self.collect_node_names()\n        self.collect_node_menus()\n        self.collect_rellinks()\n\n        self.body = []                  # type: List[str]\n        self.context = []               # type: List[str]\n        self.previous_section = None    # type: nodes.section\n        self.section_level = 0\n        self.seen_title = False\n        self.next_section_ids = set()   # type: Set[str]\n        self.escape_newlines = 0\n        self.escape_hyphens = 0\n        self.curfilestack = []          # type: List[str]\n        self.footnotestack = []         # type: List[Dict[str, List[Union[collected_footnote, bool]]]]  # NOQA\n        self.in_footnote = 0\n        self.handled_abbrs = set()      # type: Set[str]\n        self.colwidths = None           # type: List[int]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.writers.texinfo.TexinfoTranslator.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/writers/texinfo.py"
+          },
+          {
+            "start_node": "sphinx/writers/texinfo.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.writers.texinfo.TexinfoTranslator.__init__"
+          }
+        ],
+        "similarity": 0.1411781216451701,
+        "end_line": 202,
+        "signature": "sphinx.writers.texinfo.TexinfoTranslator.__init__(self, document, builder)"
+      },
+      {
+        "start_line": 321,
+        "file_path": "sphinx/builders/latex/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def assemble_doctree(self, indexfile: str, toctree_only: bool, appendices: List[str]) -> nodes.document:  # NOQA\n        self.docnames = set([indexfile] + appendices)\n        logger.info(darkgreen(indexfile) + \" \", nonl=True)\n        tree = self.env.get_doctree(indexfile)\n        tree['docname'] = indexfile\n        if toctree_only:\n            # extract toctree nodes from the tree and put them in a\n            # fresh document\n            new_tree = new_document('<latex output>')\n            new_sect = nodes.section()\n            new_sect += nodes.title('<Set title in conf.py>',\n                                    '<Set title in conf.py>')\n            new_tree += new_sect\n            for node in tree.traverse(addnodes.toctree):\n                new_sect += node\n            tree = new_tree\n        largetree = inline_all_toctrees(self, self.docnames, indexfile, tree,\n                                        darkgreen, [indexfile])\n        largetree['docname'] = indexfile\n        for docname in appendices:\n            appendix = self.env.get_doctree(docname)\n            appendix['docname'] = docname\n            largetree.append(appendix)\n        logger.info('')\n        logger.info(__(\"resolving references...\"))\n        self.env.resolve_references(largetree, indexfile, self)\n        # resolve :ref:s to distant tex files -- we can't add a cross-reference,\n        # but append the document name\n        for pendingnode in largetree.traverse(addnodes.pending_xref):\n            docname = pendingnode['refdocname']\n            sectname = pendingnode['refsectname']\n            newnodes = [nodes.emphasis(sectname, sectname)]  # type: List[Node]\n            for subdir, title in self.titles:\n                if docname.startswith(subdir):\n                    newnodes.append(nodes.Text(_(' (in '), _(' (in ')))\n                    newnodes.append(nodes.emphasis(title, title))\n                    newnodes.append(nodes.Text(')', ')'))\n                    break\n            else:\n                pass\n            pendingnode.replace_self(newnodes)\n        return largetree",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.builders.latex.__init__.LaTeXBuilder.assemble_doctree",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/builders/latex/__init__.py"
+          },
+          {
+            "start_node": "sphinx/builders/latex/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.builders.latex.__init__.LaTeXBuilder.assemble_doctree"
+          }
+        ],
+        "similarity": 0.14117013147551005,
+        "end_line": 362,
+        "signature": "sphinx.builders.latex.__init__.LaTeXBuilder.assemble_doctree(self, indexfile, toctree_only, appendices)"
+      },
+      {
+        "start_line": 416,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def genopt(self) -> Options:\n        warnings.warn('Autosummary.genopt is deprecated',\n                      RemovedInSphinx40Warning, stacklevel=2)\n        return self.bridge.genopt",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.Autosummary.genopt",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.Autosummary.genopt"
+          }
+        ],
+        "similarity": 0.1394553288718503,
+        "end_line": 419,
+        "signature": "sphinx.ext.autosummary.__init__.Autosummary.genopt(self)"
+      },
+      {
+        "start_line": 84,
+        "file_path": "sphinx/writers/manpage.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, *args: Any) -> None:\n        if isinstance(args[0], nodes.document) and isinstance(args[1], Builder):\n            document, builder = args\n        else:\n            warnings.warn('The order of arguments for ManualPageTranslator has been changed. '\n                          'Please give \"document\" as 1st and \"builder\" as 2nd.',\n                          RemovedInSphinx40Warning, stacklevel=2)\n            builder, document = args\n        super().__init__(document, builder)\n\n        self.in_productionlist = 0\n\n        # first title is the manpage title\n        self.section_level = -1\n\n        # docinfo set by man_pages config value\n        self._docinfo['title'] = self.settings.title\n        self._docinfo['subtitle'] = self.settings.subtitle\n        if self.settings.authors:\n            # don't set it if no author given\n            self._docinfo['author'] = self.settings.authors\n        self._docinfo['manual_section'] = self.settings.section\n\n        # docinfo set by other config values\n        self._docinfo['title_upper'] = self._docinfo['title'].upper()\n        if self.config.today:\n            self._docinfo['date'] = self.config.today\n        else:\n            self._docinfo['date'] = format_date(self.config.today_fmt or _('%b %d, %Y'),\n                                                language=self.config.language)\n        self._docinfo['copyright'] = self.config.copyright\n        self._docinfo['version'] = self.config.version\n        self._docinfo['manual_group'] = self.config.project\n\n        # Overwrite admonition label translations with our own\n        for label, translation in admonitionlabels.items():\n            self.language.labels[label] = self.deunicode(translation)  # type: ignore",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.writers.manpage.ManualPageTranslator.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/writers/manpage.py"
+          },
+          {
+            "start_node": "sphinx/writers/manpage.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.writers.manpage.ManualPageTranslator.__init__"
+          }
+        ],
+        "similarity": 0.13942047606929817,
+        "end_line": 120,
+        "signature": "sphinx.writers.manpage.ManualPageTranslator.__init__(self)"
+      },
+      {
+        "start_line": 6331,
+        "file_path": "sphinx/domains/cpp.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _check_template_consistency(self, nestedName: ASTNestedName,\n                                    templatePrefix: ASTTemplateDeclarationPrefix,\n                                    fullSpecShorthand: bool, isMember: bool = False\n                                    ) -> ASTTemplateDeclarationPrefix:\n        numArgs = nestedName.num_templates()\n        isMemberInstantiation = False\n        if not templatePrefix:\n            numParams = 0\n        else:\n            if isMember and templatePrefix.templates is None:\n                numParams = 0\n                isMemberInstantiation = True\n            else:\n                numParams = len(templatePrefix.templates)\n        if numArgs + 1 < numParams:\n            self.fail(\"Too few template argument lists comapred to parameter\"\n                      \" lists. Argument lists: %d, Parameter lists: %d.\"\n                      % (numArgs, numParams))\n        if numArgs > numParams:\n            numExtra = numArgs - numParams\n            if not fullSpecShorthand and not isMemberInstantiation:\n                msg = \"Too many template argument lists compared to parameter\" \\\n                    \" lists. Argument lists: %d, Parameter lists: %d,\" \\\n                    \" Extra empty parameters lists prepended: %d.\" \\\n                    % (numArgs, numParams, numExtra)\n                msg += \" Declaration:\\n\\t\"\n                if templatePrefix:\n                    msg += \"%s\\n\\t\" % templatePrefix\n                msg += str(nestedName)\n                self.warn(msg)\n\n            newTemplates = []  # type: List[Union[ASTTemplateParams, ASTTemplateIntroduction]]\n            for i in range(numExtra):\n                newTemplates.append(ASTTemplateParams([]))\n            if templatePrefix and not isMemberInstantiation:\n                newTemplates.extend(templatePrefix.templates)\n            templatePrefix = ASTTemplateDeclarationPrefix(newTemplates)\n        return templatePrefix",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domains.cpp.DefinitionParser._check_template_consistency",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/cpp.py"
+          },
+          {
+            "start_node": "sphinx/domains/cpp.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domains.cpp.DefinitionParser._check_template_consistency"
+          }
+        ],
+        "similarity": 0.13908377653131268,
+        "end_line": 6368,
+        "signature": "sphinx.domains.cpp.DefinitionParser._check_template_consistency(self, nestedName, templatePrefix, fullSpecShorthand, isMember)"
+      },
+      {
+        "start_line": 1428,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def import_object(self) -> Any:\n        ret = super().import_object()\n        if not ret:\n            return ret\n\n        # to distinguish classmethod/staticmethod\n        obj = self.parent.__dict__.get(self.object_name)\n        if obj is None:\n            obj = self.object\n\n        if (inspect.isclassmethod(obj) or\n                inspect.isstaticmethod(obj, cls=self.parent, name=self.object_name)):\n            # document class and static members before ordinary ones\n            self.member_order = self.member_order - 1\n\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.MethodDocumenter.import_object",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.MethodDocumenter.import_object"
+          }
+        ],
+        "similarity": 0.13855063847656082,
+        "end_line": 1443,
+        "signature": "sphinx.ext.autodoc.__init__.MethodDocumenter.import_object(self)"
+      },
+      {
+        "start_line": 1050,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def can_document_member(cls, member: Any, membername: str, isattr: bool, parent: Any\n                            ) -> bool:\n        # supports functions, builtins and bound methods exported at the module level\n        return (inspect.isfunction(member) or inspect.isbuiltin(member) or\n                (inspect.isroutine(member) and isinstance(parent, ModuleDocumenter)))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.FunctionDocumenter.can_document_member",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.FunctionDocumenter.can_document_member"
+          }
+        ],
+        "similarity": 0.1376872462733361,
+        "end_line": 1054,
+        "signature": "sphinx.ext.autodoc.__init__.FunctionDocumenter.can_document_member(cls, member, membername, isattr, parent)"
+      },
+      {
+        "start_line": 130,
+        "file_path": "sphinx/builders/texinfo.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def assemble_doctree(self, indexfile: str, toctree_only: bool, appendices: List[str]) -> nodes.document:  # NOQA\n        self.docnames = set([indexfile] + appendices)\n        logger.info(darkgreen(indexfile) + \" \", nonl=True)\n        tree = self.env.get_doctree(indexfile)\n        tree['docname'] = indexfile\n        if toctree_only:\n            # extract toctree nodes from the tree and put them in a\n            # fresh document\n            new_tree = new_document('<texinfo output>')\n            new_sect = nodes.section()\n            new_sect += nodes.title('<Set title in conf.py>',\n                                    '<Set title in conf.py>')\n            new_tree += new_sect\n            for node in tree.traverse(addnodes.toctree):\n                new_sect += node\n            tree = new_tree\n        largetree = inline_all_toctrees(self, self.docnames, indexfile, tree,\n                                        darkgreen, [indexfile])\n        largetree['docname'] = indexfile\n        for docname in appendices:\n            appendix = self.env.get_doctree(docname)\n            appendix['docname'] = docname\n            largetree.append(appendix)\n        logger.info('')\n        logger.info(__(\"resolving references...\"))\n        self.env.resolve_references(largetree, indexfile, self)\n        # TODO: add support for external :ref:s\n        for pendingnode in largetree.traverse(addnodes.pending_xref):\n            docname = pendingnode['refdocname']\n            sectname = pendingnode['refsectname']\n            newnodes = [nodes.emphasis(sectname, sectname)]  # type: List[nodes.Node]\n            for subdir, title in self.titles:\n                if docname.startswith(subdir):\n                    newnodes.append(nodes.Text(_(' (in '), _(' (in ')))\n                    newnodes.append(nodes.emphasis(title, title))\n                    newnodes.append(nodes.Text(')', ')'))\n                    break\n            else:\n                pass\n            pendingnode.replace_self(newnodes)\n        return largetree",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.builders.texinfo.TexinfoBuilder.assemble_doctree",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/builders/texinfo.py"
+          },
+          {
+            "start_node": "sphinx/builders/texinfo.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.builders.texinfo.TexinfoBuilder.assemble_doctree"
+          }
+        ],
+        "similarity": 0.13701152494953528,
+        "end_line": 170,
+        "signature": "sphinx.builders.texinfo.TexinfoBuilder.assemble_doctree(self, indexfile, toctree_only, appendices)"
+      },
+      {
+        "start_line": 578,
+        "file_path": "sphinx/ext/napoleon/docstring.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _parse_attributes_section(self, section: str) -> List[str]:\n        lines = []\n        for _name, _type, _desc in self._consume_fields():\n            if self._config.napoleon_use_ivar:\n                _name = self._qualify_name(_name, self._obj)\n                field = ':ivar %s: ' % _name\n                lines.extend(self._format_block(field, _desc))\n                if _type:\n                    lines.append(':vartype %s: %s' % (_name, _type))\n            else:\n                lines.append('.. attribute:: ' + _name)\n                if self._opt and 'noindex' in self._opt:\n                    lines.append('   :noindex:')\n                if _type:\n                    lines.extend(self._indent([':type: %s' % _type], 3))\n                lines.append('')\n\n                fields = self._format_field('', '', _desc)\n                lines.extend(self._indent(fields, 3))\n                lines.append('')\n        if self._config.napoleon_use_ivar:\n            lines.append('')\n        return lines",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.napoleon.docstring.GoogleDocstring._parse_attributes_section",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/napoleon/docstring.py"
+          },
+          {
+            "start_node": "sphinx/ext/napoleon/docstring.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.napoleon.docstring.GoogleDocstring._parse_attributes_section"
+          }
+        ],
+        "similarity": 0.13683833170177584,
+        "end_line": 600,
+        "signature": "sphinx.ext.napoleon.docstring.GoogleDocstring._parse_attributes_section(self, section)"
+      },
+      {
+        "start_line": 472,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def add_content(self, more_content: Any, no_docstring: bool = False) -> None:\n        \"\"\"Add content from docstrings, attribute documentation and user.\"\"\"\n        # set sourcename and add content from attribute documentation\n        sourcename = self.get_sourcename()\n        if self.analyzer:\n            attr_docs = self.analyzer.find_attr_docs()\n            if self.objpath:\n                key = ('.'.join(self.objpath[:-1]), self.objpath[-1])\n                if key in attr_docs:\n                    no_docstring = True\n                    # make a copy of docstring for attributes to avoid cache\n                    # the change of autodoc-process-docstring event.\n                    docstrings = [list(attr_docs[key])]\n\n                    for i, line in enumerate(self.process_doc(docstrings)):\n                        self.add_line(line, sourcename, i)\n\n        # add content from docstrings\n        if not no_docstring:\n            docstrings = self.get_doc()\n            if not docstrings:\n                # append at least a dummy docstring, so that the event\n                # autodoc-process-docstring is fired and can add some\n                # content if desired\n                docstrings.append([])\n            for i, line in enumerate(self.process_doc(docstrings)):\n                self.add_line(line, sourcename, i)\n\n        # add additional content (e.g. from document), if present\n        if more_content:\n            for line, src in zip(more_content.data, more_content.items):\n                self.add_line(line, src[0], src[1])",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.add_content",
+        "documentation": "Add content from docstrings, attribute documentation and user.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.add_content"
+          }
+        ],
+        "similarity": 0.1359874080333222,
+        "end_line": 503,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.add_content(self, more_content, no_docstring)"
+      },
+      {
+        "start_line": 531,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def filter_members(self, members: List[Tuple[str, Any]], want_all: bool\n                       ) -> List[Tuple[str, Any, bool]]:\n        \"\"\"Filter the given member list.\n\n        Members are skipped if\n\n        - they are private (except if given explicitly or the private-members\n          option is set)\n        - they are special methods (except if given explicitly or the\n          special-members option is set)\n        - they are undocumented (except if the undoc-members option is set)\n\n        The user can override the skipping decision by connecting to the\n        ``autodoc-skip-member`` event.\n        \"\"\"\n        def is_filtered_inherited_member(name: str) -> bool:\n            if inspect.isclass(self.object):\n                for cls in self.object.__mro__:\n                    if cls.__name__ == self.options.inherited_members and cls != self.object:\n                        # given member is a member of specified *super class*\n                        return True\n                    elif name in cls.__dict__:\n                        return False\n\n            return False\n\n        ret = []\n\n        # search for members in source code too\n        namespace = '.'.join(self.objpath)  # will be empty for modules\n\n        if self.analyzer:\n            attr_docs = self.analyzer.find_attr_docs()\n        else:\n            attr_docs = {}\n\n        # process members and determine which to skip\n        for (membername, member) in members:\n            # if isattr is True, the member is documented as an attribute\n            if member is INSTANCEATTR:\n                isattr = True\n            else:\n                isattr = False\n\n            doc = getdoc(member, self.get_attr, self.env.config.autodoc_inherit_docstrings,\n                         self.parent, self.object_name)\n            if not isinstance(doc, str):\n                # Ignore non-string __doc__\n                doc = None\n\n            # if the member __doc__ is the same as self's __doc__, it's just\n            # inherited and therefore not the member's doc\n            cls = self.get_attr(member, '__class__', None)\n            if cls:\n                cls_doc = self.get_attr(cls, '__doc__', None)\n                if cls_doc == doc:\n                    doc = None\n            has_doc = bool(doc)\n\n            metadata = extract_metadata(doc)\n            if 'private' in metadata:\n                # consider a member private if docstring has \"private\" metadata\n                isprivate = True\n            elif 'public' in metadata:\n                # consider a member public if docstring has \"public\" metadata\n                isprivate = False\n            else:\n                isprivate = membername.startswith('_')\n\n            keep = False\n            if safe_getattr(member, '__sphinx_mock__', False):\n                # mocked module or object\n                pass\n            elif want_all and membername.startswith('__') and \\\n                    membername.endswith('__') and len(membername) > 4:\n                # special __methods__\n                if self.options.special_members is ALL:\n                    if membername == '__doc__':\n                        keep = False\n                    elif is_filtered_inherited_member(membername):\n                        keep = False\n                    else:\n                        keep = has_doc or self.options.undoc_members\n                elif self.options.special_members:\n                    if membername in self.options.special_members:\n                        keep = has_doc or self.options.undoc_members\n            elif (namespace, membername) in attr_docs:\n                if want_all and isprivate:\n                    # ignore members whose name starts with _ by default\n                    keep = self.options.private_members\n                else:\n                    # keep documented attributes\n                    keep = True\n                isattr = True\n            elif want_all and isprivate:\n                # ignore members whose name starts with _ by default\n                keep = self.options.private_members and \\\n                    (has_doc or self.options.undoc_members)\n            else:\n                if self.options.members is ALL and is_filtered_inherited_member(membername):\n                    keep = False\n                else:\n                    # ignore undocumented members if :undoc-members: is not given\n                    keep = has_doc or self.options.undoc_members\n\n            # give the user a chance to decide whether this member\n            # should be skipped\n            if self.env.app:\n                # let extensions preprocess docstrings\n                try:\n                    skip_user = self.env.app.emit_firstresult(\n                        'autodoc-skip-member', self.objtype, membername, member,\n                        not keep, self.options)\n                    if skip_user is not None:\n                        keep = not skip_user\n                except Exception as exc:\n                    logger.warning(__('autodoc: failed to determine %r to be documented, '\n                                      'the following exception was raised:\\n%s'),\n                                   member, exc, type='autodoc')\n                    keep = False\n\n            if keep:\n                ret.append((membername, member, isattr))\n\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.filter_members",
+        "documentation": "Filter the given member list.\n\nMembers are skipped if\n\n- they are private (except if given explicitly or the private-members\n  option is set)\n- they are special methods (except if given explicitly or the\n  special-members option is set)\n- they are undocumented (except if the undoc-members option is set)\n\nThe user can override the skipping decision by connecting to the\n``autodoc-skip-member`` event.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.filter_members"
+          }
+        ],
+        "similarity": 0.13548371026110326,
+        "end_line": 655,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.filter_members(self, members, want_all)"
+      },
+      {
+        "start_line": 505,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_object_members(self, want_all: bool) -> Tuple[bool, List[Tuple[str, Any]]]:\n        \"\"\"Return `(members_check_module, members)` where `members` is a\n        list of `(membername, member)` pairs of the members of *self.object*.\n\n        If *want_all* is True, return all members.  Else, only return those\n        members given by *self.options.members* (which may also be none).\n        \"\"\"\n        members = get_object_members(self.object, self.objpath, self.get_attr, self.analyzer)\n        if not want_all:\n            if not self.options.members:\n                return False, []\n            # specific members given\n            selected = []\n            for name in self.options.members:\n                if name in members:\n                    selected.append((name, members[name].value))\n                else:\n                    logger.warning(__('missing attribute %s in object %s') %\n                                   (name, self.fullname), type='autodoc')\n            return False, sorted(selected)\n        elif self.options.inherited_members:\n            return False, sorted((m.name, m.value) for m in members.values())\n        else:\n            return False, sorted((m.name, m.value) for m in members.values()\n                                 if m.directly_defined)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.get_object_members",
+        "documentation": "Return `(members_check_module, members)` where `members` is a\nlist of `(membername, member)` pairs of the members of *self.object*.\n\nIf *want_all* is True, return all members.  Else, only return those\nmembers given by *self.options.members* (which may also be none).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.get_object_members"
+          }
+        ],
+        "similarity": 0.13497808903754444,
+        "end_line": 529,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.get_object_members(self, want_all)"
+      },
+      {
+        "start_line": 1227,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_doc(self, encoding: str = None, ignore: int = None) -> List[List[str]]:\n        if encoding is not None:\n            warnings.warn(\"The 'encoding' argument to autodoc.%s.get_doc() is deprecated.\"\n                          % self.__class__.__name__,\n                          RemovedInSphinx40Warning, stacklevel=2)\n        lines = getattr(self, '_new_docstrings', None)\n        if lines is not None:\n            return lines\n\n        content = self.env.config.autoclass_content\n\n        docstrings = []\n        attrdocstring = self.get_attr(self.object, '__doc__', None)\n        if attrdocstring:\n            docstrings.append(attrdocstring)\n\n        # for classes, what the \"docstring\" is can be controlled via a\n        # config value; the default is only the class docstring\n        if content in ('both', 'init'):\n            __init__ = self.get_attr(self.object, '__init__', None)\n            initdocstring = getdoc(__init__, self.get_attr,\n                                   self.env.config.autodoc_inherit_docstrings,\n                                   self.parent, self.object_name)\n            # for new-style classes, no __init__ means default __init__\n            if (initdocstring is not None and\n                (initdocstring == object.__init__.__doc__ or  # for pypy\n                 initdocstring.strip() == object.__init__.__doc__)):  # for !pypy\n                initdocstring = None\n            if not initdocstring:\n                # try __new__\n                __new__ = self.get_attr(self.object, '__new__', None)\n                initdocstring = getdoc(__new__, self.get_attr,\n                                       self.env.config.autodoc_inherit_docstrings,\n                                       self.parent, self.object_name)\n                # for new-style classes, no __new__ means default __new__\n                if (initdocstring is not None and\n                    (initdocstring == object.__new__.__doc__ or  # for pypy\n                     initdocstring.strip() == object.__new__.__doc__)):  # for !pypy\n                    initdocstring = None\n            if initdocstring:\n                if content == 'init':\n                    docstrings = [initdocstring]\n                else:\n                    docstrings.append(initdocstring)\n\n        tab_width = self.directive.state.document.settings.tab_width\n        return [prepare_docstring(docstring, ignore, tab_width) for docstring in docstrings]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ClassDocumenter.get_doc",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ClassDocumenter.get_doc"
+          }
+        ],
+        "similarity": 0.13446503338654087,
+        "end_line": 1273,
+        "signature": "sphinx.ext.autodoc.__init__.ClassDocumenter.get_doc(self, encoding, ignore)"
+      },
+      {
+        "start_line": 934,
+        "file_path": "sphinx/ext/napoleon/docstring.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _parse_numpydoc_see_also_section(self, content: List[str]) -> List[str]:\n        \"\"\"\n        Derived from the NumpyDoc implementation of _parse_see_also.\n\n        See Also\n        --------\n        func_name : Descriptive text\n            continued text\n        another_func_name : Descriptive text\n        func_name1, func_name2, :meth:`func_name`, func_name3\n\n        \"\"\"\n        items = []\n\n        def parse_item_name(text: str) -> Tuple[str, str]:\n            \"\"\"Match ':role:`name`' or 'name'\"\"\"\n            m = self._name_rgx.match(text)\n            if m:\n                g = m.groups()\n                if g[1] is None:\n                    return g[3], None\n                else:\n                    return g[2], g[1]\n            raise ValueError(\"%s is not a item name\" % text)\n\n        def push_item(name: str, rest: List[str]) -> None:\n            if not name:\n                return\n            name, role = parse_item_name(name)\n            items.append((name, list(rest), role))\n            del rest[:]\n\n        current_func = None\n        rest = []  # type: List[str]\n\n        for line in content:\n            if not line.strip():\n                continue\n\n            m = self._name_rgx.match(line)\n            if m and line[m.end():].strip().startswith(':'):\n                push_item(current_func, rest)\n                current_func, line = line[:m.end()], line[m.end():]\n                rest = [line.split(':', 1)[1].strip()]\n                if not rest[0]:\n                    rest = []\n            elif not line.startswith(' '):\n                push_item(current_func, rest)\n                current_func = None\n                if ',' in line:\n                    for func in line.split(','):\n                        if func.strip():\n                            push_item(func, [])\n                elif line.strip():\n                    current_func = line\n            elif current_func is not None:\n                rest.append(line.strip())\n        push_item(current_func, rest)\n\n        if not items:\n            return []\n\n        roles = {\n            'method': 'meth',\n            'meth': 'meth',\n            'function': 'func',\n            'func': 'func',\n            'class': 'class',\n            'exception': 'exc',\n            'exc': 'exc',\n            'object': 'obj',\n            'obj': 'obj',\n            'module': 'mod',\n            'mod': 'mod',\n            'data': 'data',\n            'constant': 'const',\n            'const': 'const',\n            'attribute': 'attr',\n            'attr': 'attr'\n        }\n        if self._what is None:\n            func_role = 'obj'\n        else:\n            func_role = roles.get(self._what, '')\n        lines = []  # type: List[str]\n        last_had_desc = True\n        for func, desc, role in items:\n            if role:\n                link = ':%s:`%s`' % (role, func)\n            elif func_role:\n                link = ':%s:`%s`' % (func_role, func)\n            else:\n                link = \"`%s`_\" % func\n            if desc or last_had_desc:\n                lines += ['']\n                lines += [link]\n            else:\n                lines[-1] += \", %s\" % link\n            if desc:\n                lines += self._indent([' '.join(desc)])\n                last_had_desc = True\n            else:\n                last_had_desc = False\n        lines += ['']\n\n        return self._format_admonition('seealso', lines)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.napoleon.docstring.NumpyDocstring._parse_numpydoc_see_also_section",
+        "documentation": "Derived from the NumpyDoc implementation of _parse_see_also.\n\nSee Also\n--------\nfunc_name : Descriptive text\n    continued text\nanother_func_name : Descriptive text\nfunc_name1, func_name2, :meth:`func_name`, func_name3",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/napoleon/docstring.py"
+          },
+          {
+            "start_node": "sphinx/ext/napoleon/docstring.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.napoleon.docstring.NumpyDocstring._parse_numpydoc_see_also_section"
+          }
+        ],
+        "similarity": 0.13401514154490027,
+        "end_line": 1039,
+        "signature": "sphinx.ext.napoleon.docstring.NumpyDocstring._parse_numpydoc_see_also_section(self, content)"
+      },
+      {
+        "start_line": 215,
+        "file_path": "sphinx/builders/_epub_base.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_toc(self) -> None:\n        \"\"\"Get the total table of contents, containing the master_doc\n        and pre and post files not managed by sphinx.\n        \"\"\"\n        doctree = self.env.get_and_resolve_doctree(self.config.master_doc,\n                                                   self, prune_toctrees=False,\n                                                   includehidden=True)\n        self.refnodes = self.get_refnodes(doctree, [])\n        master_dir = path.dirname(self.config.master_doc)\n        if master_dir:\n            master_dir += '/'  # XXX or os.sep?\n            for item in self.refnodes:\n                item['refuri'] = master_dir + item['refuri']\n        self.toc_add_files(self.refnodes)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.builders._epub_base.EpubBuilder.get_toc",
+        "documentation": "Get the total table of contents, containing the master_doc\nand pre and post files not managed by sphinx.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/builders/_epub_base.py"
+          },
+          {
+            "start_node": "sphinx/builders/_epub_base.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.builders._epub_base.EpubBuilder.get_toc"
+          }
+        ],
+        "similarity": 0.13395016752540903,
+        "end_line": 228,
+        "signature": "sphinx.builders._epub_base.EpubBuilder.get_toc(self)"
+      },
+      {
+        "start_line": 299,
+        "file_path": "sphinx/directives/other.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def run(self) -> List[Node]:\n        node = addnodes.only()\n        node.document = self.state.document\n        self.set_source_info(node)\n        node['expr'] = self.arguments[0]\n\n        # Same as util.nested_parse_with_titles but try to handle nested\n        # sections which should be raised higher up the doctree.\n        memo = self.state.memo  # type: Any\n        surrounding_title_styles = memo.title_styles\n        surrounding_section_level = memo.section_level\n        memo.title_styles = []\n        memo.section_level = 0\n        try:\n            self.state.nested_parse(self.content, self.content_offset,\n                                    node, match_titles=True)\n            title_styles = memo.title_styles\n            if (not surrounding_title_styles or\n                    not title_styles or\n                    title_styles[0] not in surrounding_title_styles or\n                    not self.state.parent):\n                # No nested sections so no special handling needed.\n                return [node]\n            # Calculate the depths of the current and nested sections.\n            current_depth = 0\n            parent = self.state.parent\n            while parent:\n                current_depth += 1\n                parent = parent.parent\n            current_depth -= 2\n            title_style = title_styles[0]\n            nested_depth = len(surrounding_title_styles)\n            if title_style in surrounding_title_styles:\n                nested_depth = surrounding_title_styles.index(title_style)\n            # Use these depths to determine where the nested sections should\n            # be placed in the doctree.\n            n_sects_to_raise = current_depth - nested_depth + 1\n            parent = cast(nodes.Element, self.state.parent)\n            for i in range(n_sects_to_raise):\n                if parent.parent:\n                    parent = parent.parent\n            parent.append(node)\n            return []\n        finally:\n            memo.title_styles = surrounding_title_styles\n            memo.section_level = surrounding_section_level",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.directives.other.Only.run",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/directives/other.py"
+          },
+          {
+            "start_node": "sphinx/directives/other.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.directives.other.Only.run"
+          }
+        ],
+        "similarity": 0.13393525623687755,
+        "end_line": 344,
+        "signature": "sphinx.directives.other.Only.run(self)"
+      },
+      {
+        "start_line": 124,
+        "file_path": "sphinx/ext/autosummary/generate.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, app: Union[Builder, Sphinx], template_dir: str = None) -> None:\n        if isinstance(app, Builder):\n            warnings.warn('The first argument for AutosummaryRenderer has been '\n                          'changed to Sphinx object',\n                          RemovedInSphinx50Warning, stacklevel=2)\n        if template_dir:\n            warnings.warn('template_dir argument for AutosummaryRenderer is deprecated.',\n                          RemovedInSphinx50Warning, stacklevel=2)\n\n        system_templates_path = [os.path.join(package_dir, 'ext', 'autosummary', 'templates')]\n        loader = SphinxTemplateLoader(app.srcdir, app.config.templates_path,\n                                      system_templates_path)\n\n        self.env = SandboxedEnvironment(loader=loader)\n        self.env.filters['escape'] = rst.escape\n        self.env.filters['e'] = rst.escape\n        self.env.filters['underline'] = _underline\n\n        if isinstance(app, (Sphinx, DummyApplication)):\n            if app.translator:\n                self.env.add_extension(\"jinja2.ext.i18n\")\n                self.env.install_gettext_translations(app.translator)  # type: ignore\n        elif isinstance(app, Builder):\n            if app.app.translator:\n                self.env.add_extension(\"jinja2.ext.i18n\")\n                self.env.install_gettext_translations(app.app.translator)  # type: ignore",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autosummary.generate.AutosummaryRenderer.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/generate.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/generate.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.generate.AutosummaryRenderer.__init__"
+          }
+        ],
+        "similarity": 0.13392061712445844,
+        "end_line": 149,
+        "signature": "sphinx.ext.autosummary.generate.AutosummaryRenderer.__init__(self, app, template_dir)"
+      },
+      {
+        "start_line": 1309,
+        "file_path": "sphinx/domains/python.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _make_module_refnode(self, builder: Builder, fromdocname: str, name: str,\n                             contnode: Node) -> Element:\n        # get additional info for modules\n        module = self.modules[name]\n        title = name\n        if module.synopsis:\n            title += ': ' + module.synopsis\n        if module.deprecated:\n            title += _(' (deprecated)')\n        if module.platform:\n            title += ' (' + module.platform + ')'\n        return make_refnode(builder, fromdocname, module.docname, module.node_id,\n                            contnode, title)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domainsthon.PythonDomain._make_module_refnode",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/python.py"
+          },
+          {
+            "start_node": "sphinx/domains/python.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domainsthon.PythonDomain._make_module_refnode"
+          }
+        ],
+        "similarity": 0.13379193426848499,
+        "end_line": 1321,
+        "signature": "sphinx.domainsthon.PythonDomain._make_module_refnode(self, builder, fromdocname, name, contnode)"
+      },
+      {
+        "start_line": 65,
+        "file_path": "sphinx/ext/autosummary/generate.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, translator: NullTranslations) -> None:\n        self.config = Config()\n        self.registry = SphinxComponentRegistry()\n        self.messagelog = []  # type: List[str]\n        self.srcdir = \"/\"\n        self.translator = translator\n        self.verbosity = 0\n        self._warncount = 0\n        self.warningiserror = False\n\n        self.config.add('autosummary_context', {}, True, None)\n        self.config.init_values()",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autosummary.generate.DummyApplication.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/generate.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/generate.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.generate.DummyApplication.__init__"
+          }
+        ],
+        "similarity": 0.13336837189923506,
+        "end_line": 76,
+        "signature": "sphinx.ext.autosummary.generate.DummyApplication.__init__(self, translator)"
+      },
+      {
+        "start_line": 126,
+        "file_path": "sphinx/builders/singlehtml.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def get_doc_context(self, docname: str, body: str, metatags: str) -> Dict:\n        # no relation links...\n        toctree = TocTree(self.env).get_toctree_for(self.config.master_doc, self, False)\n        # if there is no toctree, toc is None\n        if toctree:\n            self.fix_refuris(toctree)\n            toc = self.render_partial(toctree)['fragment']\n            display_toc = True\n        else:\n            toc = ''\n            display_toc = False\n        return {\n            'parents': [],\n            'prev': None,\n            'next': None,\n            'docstitle': None,\n            'title': self.config.html_title,\n            'meta': None,\n            'body': body,\n            'metatags': metatags,\n            'rellinks': [],\n            'sourcename': '',\n            'toc': toc,\n            'display_toc': display_toc,\n        }",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.builders.singlehtml.SingleFileHTMLBuilder.get_doc_context",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/builders/singlehtml.py"
+          },
+          {
+            "start_node": "sphinx/builders/singlehtml.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.builders.singlehtml.SingleFileHTMLBuilder.get_doc_context"
+          }
+        ],
+        "similarity": 0.13336077283230288,
+        "end_line": 150,
+        "signature": "sphinx.builders.singlehtml.SingleFileHTMLBuilder.get_doc_context(self, docname, body, metatags)"
+      },
+      {
+        "start_line": 289,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def parse_name(self) -> bool:\n        \"\"\"Determine what module to import and what attribute to document.\n\n        Returns True and sets *self.modname*, *self.objpath*, *self.fullname*,\n        *self.args* and *self.retann* if parsing and resolving was successful.\n        \"\"\"\n        # first, parse the definition -- auto directives for classes and\n        # functions can contain a signature which is then used instead of\n        # an autogenerated one\n        try:\n            explicit_modname, path, base, args, retann = \\\n                py_ext_sig_re.match(self.name).groups()\n        except AttributeError:\n            logger.warning(__('invalid signature for auto%s (%r)') % (self.objtype, self.name),\n                           type='autodoc')\n            return False\n\n        # support explicit module and class name separation via ::\n        if explicit_modname is not None:\n            modname = explicit_modname[:-2]\n            parents = path.rstrip('.').split('.') if path else []\n        else:\n            modname = None\n            parents = []\n\n        with mock(self.env.config.autodoc_mock_imports):\n            self.modname, self.objpath = self.resolve_name(modname, parents, path, base)\n\n        if not self.modname:\n            return False\n\n        self.args = args\n        self.retann = retann\n        self.fullname = (self.modname or '') + \\\n                        ('.' + '.'.join(self.objpath) if self.objpath else '')\n        return True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.parse_name",
+        "documentation": "Determine what module to import and what attribute to document.\n\nReturns True and sets *self.modname*, *self.objpath*, *self.fullname*,\n*self.args* and *self.retann* if parsing and resolving was successful.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.parse_name"
+          }
+        ],
+        "similarity": 0.1333351660685563,
+        "end_line": 324,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.parse_name(self)"
+      },
+      {
+        "start_line": 830,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def can_document_member(cls, member: Any, membername: str, isattr: bool, parent: Any\n                            ) -> bool:\n        # don't document submodules automatically\n        return False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ModuleDocumenter.can_document_member",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ModuleDocumenter.can_document_member"
+          }
+        ],
+        "similarity": 0.1327286155669054,
+        "end_line": 833,
+        "signature": "sphinx.ext.autodoc.__init__.ModuleDocumenter.can_document_member(cls, member, membername, isattr, parent)"
+      },
+      {
+        "start_line": 88,
+        "file_path": "sphinx/directives/other.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def parse_content(self, toctree: addnodes.toctree) -> List[Node]:\n        suffixes = self.config.source_suffix\n\n        # glob target documents\n        all_docnames = self.env.found_docs.copy()\n        all_docnames.remove(self.env.docname)  # remove current document\n\n        ret = []  # type: List[Node]\n        excluded = Matcher(self.config.exclude_patterns)\n        for entry in self.content:\n            if not entry:\n                continue\n            # look for explicit titles (\"Some Title <document>\")\n            explicit = explicit_title_re.match(entry)\n            if (toctree['glob'] and glob_re.match(entry) and\n                    not explicit and not url_re.match(entry)):\n                patname = docname_join(self.env.docname, entry)\n                docnames = sorted(patfilter(all_docnames, patname))\n                for docname in docnames:\n                    all_docnames.remove(docname)  # don't include it again\n                    toctree['entries'].append((None, docname))\n                    toctree['includefiles'].append(docname)\n                if not docnames:\n                    ret.append(self.state.document.reporter.warning(\n                        'toctree glob pattern %r didn\\'t match any documents'\n                        % entry, line=self.lineno))\n            else:\n                if explicit:\n                    ref = explicit.group(2)\n                    title = explicit.group(1)\n                    docname = ref\n                else:\n                    ref = docname = entry\n                    title = None\n                # remove suffixes (backwards compatibility)\n                for suffix in suffixes:\n                    if docname.endswith(suffix):\n                        docname = docname[:-len(suffix)]\n                        break\n                # absolutize filenames\n                docname = docname_join(self.env.docname, docname)\n                if url_re.match(ref) or ref == 'self':\n                    toctree['entries'].append((title, ref))\n                elif docname not in self.env.found_docs:\n                    if excluded(self.env.doc2path(docname, None)):\n                        message = 'toctree contains reference to excluded document %r'\n                    else:\n                        message = 'toctree contains reference to nonexisting document %r'\n\n                    ret.append(self.state.document.reporter.warning(message % docname,\n                                                                    line=self.lineno))\n                    self.env.note_reread()\n                else:\n                    all_docnames.discard(docname)\n                    toctree['entries'].append((title, docname))\n                    toctree['includefiles'].append(docname)\n\n        # entries contains all entries (self references, external links etc.)\n        if 'reversed' in self.options:\n            toctree['entries'] = list(reversed(toctree['entries']))\n            toctree['includefiles'] = list(reversed(toctree['includefiles']))\n\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.directives.other.TocTree.parse_content",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/directives/other.py"
+          },
+          {
+            "start_node": "sphinx/directives/other.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.directives.other.TocTree.parse_content"
+          }
+        ],
+        "similarity": 0.13270638365987433,
+        "end_line": 150,
+        "signature": "sphinx.directives.other.TocTree.parse_content(self, toctree)"
+      },
+      {
+        "start_line": 1529,
+        "file_path": "sphinx/writers/latex.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def visit_reference(self, node: Element) -> None:\n        if not self.in_title:\n            for id in node.get('ids'):\n                anchor = not self.in_caption\n                self.body += self.hypertarget(id, anchor=anchor)\n        if not self.is_inline(node):\n            self.body.append('\\n')\n        uri = node.get('refuri', '')\n        if not uri and node.get('refid'):\n            uri = '%' + self.curfilestack[-1] + '#' + node['refid']\n        if self.in_title or not uri:\n            self.context.append('')\n        elif uri.startswith('#'):\n            # references to labels in the same document\n            id = self.curfilestack[-1] + ':' + uri[1:]\n            self.body.append(self.hyperlink(id))\n            self.body.append(r'\\emph{')\n            if self.builder.config.latex_show_pagerefs and not \\\n                    self.in_production_list:\n                self.context.append('}}} (%s)' % self.hyperpageref(id))\n            else:\n                self.context.append('}}}')\n        elif uri.startswith('%'):\n            # references to documents or labels inside documents\n            hashindex = uri.find('#')\n            if hashindex == -1:\n                # reference to the document\n                id = uri[1:] + '::doc'\n            else:\n                # reference to a label\n                id = uri[1:].replace('#', ':')\n            self.body.append(self.hyperlink(id))\n            if (len(node) and\n                    isinstance(node[0], nodes.Element) and\n                    'std-term' in node[0].get('classes', [])):\n                # don't add a pageref for glossary terms\n                self.context.append('}}}')\n                # mark up as termreference\n                self.body.append(r'\\sphinxtermref{')\n            else:\n                self.body.append(r'\\sphinxcrossref{')\n                if self.builder.config.latex_show_pagerefs and not \\\n                   self.in_production_list:\n                    self.context.append('}}} (%s)' % self.hyperpageref(id))\n                else:\n                    self.context.append('}}}')\n        else:\n            if len(node) == 1 and uri == node[0]:\n                if node.get('nolinkurl'):\n                    self.body.append('\\\\sphinxnolinkurl{%s}' % self.encode_uri(uri))\n                else:\n                    self.body.append('\\\\sphinxurl{%s}' % self.encode_uri(uri))\n                raise nodes.SkipNode\n            else:\n                self.body.append('\\\\sphinxhref{%s}{' % self.encode_uri(uri))\n                self.context.append('}')",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.writers.latex.LaTeXTranslator.visit_reference",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/writers/latex.py"
+          },
+          {
+            "start_node": "sphinx/writers/latex.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.writers.latex.LaTeXTranslator.visit_reference"
+          }
+        ],
+        "similarity": 0.1326523185161232,
+        "end_line": 1584,
+        "signature": "sphinx.writers.latex.LaTeXTranslator.visit_reference(self, node)"
+      },
+      {
+        "start_line": 54,
+        "file_path": "sphinx/registry.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self) -> None:\n        #: special attrgetter for autodoc; class object -> attrgetter\n        self.autodoc_attrgettrs = {}    # type: Dict[Type, Callable[[Any, str, Any], Any]]\n\n        #: builders; a dict of builder name -> bulider class\n        self.builders = {}              # type: Dict[str, Type[Builder]]\n\n        #: autodoc documenters; a dict of documenter name -> documenter class\n        self.documenters = {}           # type: Dict[str, Type[Documenter]]\n\n        #: css_files; a list of tuple of filename and attributes\n        self.css_files = []             # type: List[Tuple[str, Dict[str, str]]]\n\n        #: domains; a dict of domain name -> domain class\n        self.domains = {}               # type: Dict[str, Type[Domain]]\n\n        #: additional directives for domains\n        #: a dict of domain name -> dict of directive name -> directive\n        self.domain_directives = {}     # type: Dict[str, Dict[str, Any]]\n\n        #: additional indices for domains\n        #: a dict of domain name -> list of index class\n        self.domain_indices = {}        # type: Dict[str, List[Type[Index]]]\n\n        #: additional object types for domains\n        #: a dict of domain name -> dict of objtype name -> objtype\n        self.domain_object_types = {}   # type: Dict[str, Dict[str, ObjType]]\n\n        #: additional roles for domains\n        #: a dict of domain name -> dict of role name -> role impl.\n        self.domain_roles = {}          # type: Dict[str, Dict[str, Union[RoleFunction, XRefRole]]]  # NOQA\n\n        #: additional enumerable nodes\n        #: a dict of node class -> tuple of figtype and title_getter function\n        self.enumerable_nodes = {}      # type: Dict[Type[Node], Tuple[str, TitleGetter]]\n\n        #: HTML inline and block math renderers\n        #: a dict of name -> tuple of visit function and depart function\n        self.html_inline_math_renderers = {}    # type: Dict[str, Tuple[Callable, Callable]]\n        self.html_block_math_renderers = {}     # type: Dict[str, Tuple[Callable, Callable]]\n\n        #: js_files; list of JS paths or URLs\n        self.js_files = []              # type: List[Tuple[str, Dict[str, str]]]\n\n        #: LaTeX packages; list of package names and its options\n        self.latex_packages = []        # type: List[Tuple[str, str]]\n\n        #: post transforms; list of transforms\n        self.post_transforms = []       # type: List[Type[Transform]]\n\n        #: source paresrs; file type -> parser class\n        self.source_parsers = {}        # type: Dict[str, Type[Parser]]\n\n        #: source inputs; file type -> input class\n        self.source_inputs = {}         # type: Dict[str, Type[Input]]\n\n        #: source suffix: suffix -> file type\n        self.source_suffix = {}         # type: Dict[str, str]\n\n        #: custom translators; builder name -> translator class\n        self.translators = {}           # type: Dict[str, Type[nodes.NodeVisitor]]\n\n        #: custom handlers for translators\n        #: a dict of builder name -> dict of node name -> visitor and departure functions\n        self.translation_handlers = {}  # type: Dict[str, Dict[str, Tuple[Callable, Callable]]]\n\n        #: additional transforms; list of transforms\n        self.transforms = []            # type: List[Type[Transform]]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.registry.SphinxComponentRegistry.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/registry.py"
+          },
+          {
+            "start_node": "sphinx/registry.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.registry.SphinxComponentRegistry.__init__"
+          }
+        ],
+        "similarity": 0.13197012191468604,
+        "end_line": 121,
+        "signature": "sphinx.registry.SphinxComponentRegistry.__init__(self)"
+      },
+      {
+        "start_line": 164,
+        "file_path": "sphinx/directives/other.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def run(self) -> List[Node]:\n        if not self.config.show_authors:\n            return []\n        para = nodes.paragraph(translatable=False)  # type: Element\n        emph = nodes.emphasis()\n        para += emph\n        if self.name == 'sectionauthor':\n            text = _('Section author: ')\n        elif self.name == 'moduleauthor':\n            text = _('Module author: ')\n        elif self.name == 'codeauthor':\n            text = _('Code author: ')\n        else:\n            text = _('Author: ')\n        emph += nodes.Text(text, text)\n        inodes, messages = self.state.inline_text(self.arguments[0], self.lineno)\n        emph.extend(inodes)\n\n        ret = [para]  # type: List[Node]\n        ret += messages\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.directives.other.Author.run",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/directives/other.py"
+          },
+          {
+            "start_node": "sphinx/directives/other.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sphinx.directives.other.Author.run"
+          }
+        ],
+        "similarity": 0.13170841969806873,
+        "end_line": 184,
+        "signature": "sphinx.directives.other.Author.run(self)"
+      },
+      {
+        "start_line": 933,
+        "file_path": "sphinx/domains/python.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def run(self) -> List[Node]:\n        domain = cast(PythonDomain, self.env.get_domain('py'))\n\n        modname = self.arguments[0].strip()\n        noindex = 'noindex' in self.options\n        self.env.ref_context['py:module'] = modname\n        ret = []  # type: List[Node]\n        if not noindex:\n            # note module to the domain\n            node_id = make_id(self.env, self.state.document, 'module', modname)\n            target = nodes.target('', '', ids=[node_id], ismod=True)\n            self.set_source_info(target)\n\n            # Assign old styled node_id not to break old hyperlinks (if possible)\n            # Note: Will removed in Sphinx-5.0  (RemovedInSphinx50Warning)\n            old_node_id = self.make_old_id(modname)\n            if node_id != old_node_id and old_node_id not in self.state.document.ids:\n                target['ids'].append(old_node_id)\n\n            self.state.document.note_explicit_target(target)\n\n            domain.note_module(modname,\n                               node_id,\n                               self.options.get('synopsis', ''),\n                               self.options.get('platform', ''),\n                               'deprecated' in self.options)\n            domain.note_object(modname, 'module', node_id, location=target)\n\n            # the platform and synopsis aren't printed; in fact, they are only\n            # used in the modindex currently\n            ret.append(target)\n            indextext = '%s; %s' % (pairindextypes['module'], modname)\n            inode = addnodes.index(entries=[('pair', indextext, node_id, '', None)])\n            ret.append(inode)\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domainsthon.PyModule.run",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/python.py"
+          },
+          {
+            "start_node": "sphinx/domains/python.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domainsthon.PyModule.run"
+          }
+        ],
+        "similarity": 0.13126252056943435,
+        "end_line": 967,
+        "signature": "sphinx.domainsthon.PyModule.run(self)"
+      },
+      {
+        "start_line": 1167,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def import_object(self) -> Any:\n        ret = super().import_object()\n        # if the class is documented under another name, document it\n        # as data/attribute\n        if ret:\n            if hasattr(self.object, '__name__'):\n                self.doc_as_attr = (self.objpath[-1] != self.object.__name__)\n            else:\n                self.doc_as_attr = True\n        return ret",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.ClassDocumenter.import_object",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.ClassDocumenter.import_object"
+          }
+        ],
+        "similarity": 0.13095075164501732,
+        "end_line": 1176,
+        "signature": "sphinx.ext.autodoc.__init__.ClassDocumenter.import_object(self)"
+      },
+      {
+        "start_line": 517,
+        "file_path": "sphinx/ext/napoleon/docstring.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _load_custom_sections(self) -> None:\n        if self._config.napoleon_custom_sections is not None:\n            for entry in self._config.napoleon_custom_sections:\n                if isinstance(entry, str):\n                    # if entry is just a label, add to sections list,\n                    # using generic section logic.\n                    self._sections[entry.lower()] = self._parse_custom_generic_section\n                else:\n                    # otherwise, assume entry is container;\n                    # [0] is new section, [1] is the section to alias.\n                    # in the case of key mismatch, just handle as generic section.\n                    self._sections[entry[0].lower()] = \\\n                        self._sections.get(entry[1].lower(),\n                                           self._parse_custom_generic_section)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.napoleon.docstring.GoogleDocstring._load_custom_sections",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/napoleon/docstring.py"
+          },
+          {
+            "start_node": "sphinx/ext/napoleon/docstring.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.napoleon.docstring.GoogleDocstring._load_custom_sections"
+          }
+        ],
+        "similarity": 0.13093812979304406,
+        "end_line": 530,
+        "signature": "sphinx.ext.napoleon.docstring.GoogleDocstring._load_custom_sections(self)"
+      },
+      {
+        "start_line": 109,
+        "file_path": "sphinx/ext/napoleon/docstring.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, docstring: Union[str, List[str]], config: SphinxConfig = None,\n                 app: Sphinx = None, what: str = '', name: str = '',\n                 obj: Any = None, options: Any = None) -> None:\n        self._config = config\n        self._app = app\n\n        if not self._config:\n            from sphinx.ext.napoleon import Config\n            self._config = self._app.config if self._app else Config()  # type: ignore\n\n        if not what:\n            if inspect.isclass(obj):\n                what = 'class'\n            elif inspect.ismodule(obj):\n                what = 'module'\n            elif callable(obj):\n                what = 'function'\n            else:\n                what = 'object'\n\n        self._what = what\n        self._name = name\n        self._obj = obj\n        self._opt = options\n        if isinstance(docstring, str):\n            lines = docstring.splitlines()\n        else:\n            lines = docstring\n        self._line_iter = modify_iter(lines, modifier=lambda s: s.rstrip())\n        self._parsed_lines = []  # type: List[str]\n        self._is_in_section = False\n        self._section_indent = 0\n        if not hasattr(self, '_directive_sections'):\n            self._directive_sections = []  # type: List[str]\n        if not hasattr(self, '_sections'):\n            self._sections = {\n                'args': self._parse_parameters_section,\n                'arguments': self._parse_parameters_section,\n                'attention': partial(self._parse_admonition, 'attention'),\n                'attributes': self._parse_attributes_section,\n                'caution': partial(self._parse_admonition, 'caution'),\n                'danger': partial(self._parse_admonition, 'danger'),\n                'error': partial(self._parse_admonition, 'error'),\n                'example': self._parse_examples_section,\n                'examples': self._parse_examples_section,\n                'hint': partial(self._parse_admonition, 'hint'),\n                'important': partial(self._parse_admonition, 'important'),\n                'keyword args': self._parse_keyword_arguments_section,\n                'keyword arguments': self._parse_keyword_arguments_section,\n                'methods': self._parse_methods_section,\n                'note': partial(self._parse_admonition, 'note'),\n                'notes': self._parse_notes_section,\n                'other parameters': self._parse_other_parameters_section,\n                'parameters': self._parse_parameters_section,\n                'return': self._parse_returns_section,\n                'returns': self._parse_returns_section,\n                'raises': self._parse_raises_section,\n                'references': self._parse_references_section,\n                'see also': self._parse_see_also_section,\n                'tip': partial(self._parse_admonition, 'tip'),\n                'todo': partial(self._parse_admonition, 'todo'),\n                'warning': partial(self._parse_admonition, 'warning'),\n                'warnings': partial(self._parse_admonition, 'warning'),\n                'warns': self._parse_warns_section,\n                'yield': self._parse_yields_section,\n                'yields': self._parse_yields_section,\n            }  # type: Dict[str, Callable]\n\n        self._load_custom_sections()\n\n        self._parse()",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.napoleon.docstring.GoogleDocstring.__init__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/napoleon/docstring.py"
+          },
+          {
+            "start_node": "sphinx/ext/napoleon/docstring.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.napoleon.docstring.GoogleDocstring.__init__"
+          }
+        ],
+        "similarity": 0.1305950485110071,
+        "end_line": 179,
+        "signature": "sphinx.ext.napoleon.docstring.GoogleDocstring.__init__(self, docstring, config, app, what, name, obj, options)"
+      },
+      {
+        "start_line": 417,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def add_directive_header(self, sig: str) -> None:\n        \"\"\"Add the directive header and options to the generated content.\"\"\"\n        domain = getattr(self, 'domain', 'py')\n        directive = getattr(self, 'directivetype', self.objtype)\n        name = self.format_name()\n        sourcename = self.get_sourcename()\n\n        # one signature per line, indented by column\n        prefix = '.. %s:%s:: ' % (domain, directive)\n        for i, sig_line in enumerate(sig.split(\"\\n\")):\n            self.add_line('%s%s%s' % (prefix, name, sig_line),\n                          sourcename)\n            if i == 0:\n                prefix = \" \" * len(prefix)\n\n        if self.options.noindex:\n            self.add_line('   :noindex:', sourcename)\n        if self.objpath:\n            # Be explicit about the module, this is necessary since .. class::\n            # etc. don't support a prepended module name\n            self.add_line('   :module: %s' % self.modname, sourcename)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.Documenter.add_directive_header",
+        "documentation": "Add the directive header and options to the generated content.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.Documenter.add_directive_header"
+          }
+        ],
+        "similarity": 0.13041710083782224,
+        "end_line": 437,
+        "signature": "sphinx.ext.autodoc.__init__.Documenter.add_directive_header(self, sig)"
+      }
+    ],
+    "classes": [
+      {
+        "start_line": 105,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class autosummary_toc(nodes.comment):\n    pass",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.autosummary_toc",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.autosummary_toc"
+          }
+        ],
+        "similarity": 0.15859210782420638,
+        "end_line": 106,
+        "signature": null
+      },
+      {
+        "start_line": 146,
+        "file_path": "sphinx/ext/autosummary/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class autosummary_table(nodes.comment):\n    pass",
+        "distance": 0.5,
+        "title": null,
+        "name": "sphinx.ext.autosummary.__init__.autosummary_table",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autosummary/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autosummary/__init__.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autosummary.__init__.autosummary_table"
+          }
+        ],
+        "similarity": 0.1574467928654399,
+        "end_line": 147,
+        "signature": null
+      },
+      {
+        "start_line": 205,
+        "file_path": "sphinx/domains/javascript.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class JSCallable(JSObject):\n    \"\"\"Description of a JavaScript function, method or constructor.\"\"\"\n    has_arguments = True\n\n    doc_field_types = [\n        TypedField('arguments', label=_('Arguments'),\n                   names=('argument', 'arg', 'parameter', 'param'),\n                   typerolename='func', typenames=('paramtype', 'type')),\n        GroupedField('errors', label=_('Throws'), rolename='err',\n                     names=('throws', ),\n                     can_collapse=True),\n        Field('returnvalue', label=_('Returns'), has_arg=False,\n              names=('returns', 'return')),\n        Field('returntype', label=_('Return type'), has_arg=False,\n              names=('rtype',)),\n    ]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domains.javascript.JSCallable",
+        "documentation": "Description of a JavaScript function, method or constructor.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/javascript.py"
+          },
+          {
+            "start_node": "sphinx/domains/javascript.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domains.javascript.JSCallable"
+          }
+        ],
+        "similarity": 0.11666659278796196,
+        "end_line": 220,
+        "signature": null
+      },
+      {
+        "start_line": 1119,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SingledispatchFunctionDocumenter(FunctionDocumenter):\n    \"\"\"\n    Used to be a specialized Documenter subclass for singledispatch'ed functions.\n\n    Retained for backwards compatibility, now does the same as the FunctionDocumenter\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.SingledispatchFunctionDocumenter",
+        "documentation": "Used to be a specialized Documenter subclass for singledispatch'ed functions.\n\nRetained for backwards compatibility, now does the same as the FunctionDocumenter",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.SingledispatchFunctionDocumenter"
+          }
+        ],
+        "similarity": 0.10975229788848653,
+        "end_line": 1124,
+        "signature": null
+      },
+      {
+        "start_line": 1534,
+        "file_path": "sphinx/ext/autodoc/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SingledispatchMethodDocumenter(MethodDocumenter):\n    \"\"\"\n    Used to be a specialized Documenter subclass for singledispatch'ed methods.\n\n    Retained for backwards compatibility, now does the same as the MethodDocumenter\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.autodoc.__init__.SingledispatchMethodDocumenter",
+        "documentation": "Used to be a specialized Documenter subclass for singledispatch'ed methods.\n\nRetained for backwards compatibility, now does the same as the MethodDocumenter",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/autodoc/__init__.py"
+          },
+          {
+            "start_node": "sphinx/ext/autodoc/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.autodoc.__init__.SingledispatchMethodDocumenter"
+          }
+        ],
+        "similarity": 0.10946758489465874,
+        "end_line": 1539,
+        "signature": null
+      },
+      {
+        "start_line": 309,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class pending_xref(nodes.Inline, nodes.Element):\n    \"\"\"Node for cross-references that cannot be resolved without complete\n    information about all documents.\n\n    These nodes are resolved before writing output, in\n    BuildEnvironment.resolve_references.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.pending_xref",
+        "documentation": "Node for cross-references that cannot be resolved without complete\ninformation about all documents.\n\nThese nodes are resolved before writing output, in\nBuildEnvironment.resolve_references.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.pending_xref"
+          }
+        ],
+        "similarity": 0.10655914381604084,
+        "end_line": 315,
+        "signature": null
+      },
+      {
+        "start_line": 300,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class meta(nodes.Special, nodes.PreBibliographic, nodes.Element):\n    \"\"\"Node for meta directive -- same as docutils' standard meta node,\n    but pickleable.\n    \"\"\"\n    rawcontent = None",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.meta",
+        "documentation": "Node for meta directive -- same as docutils' standard meta node,\nbut pickleable.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.meta"
+          }
+        ],
+        "similarity": 0.10172974137030429,
+        "end_line": 304,
+        "signature": null
+      },
+      {
+        "start_line": 187,
+        "file_path": "sphinx/directives/other.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SeeAlso(BaseAdmonition):\n    \"\"\"\n    An admonition mentioning things to look at as reference.\n    \"\"\"\n    node_class = addnodes.seealso",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.directives.other.SeeAlso",
+        "documentation": "An admonition mentioning things to look at as reference.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/directives/other.py"
+          },
+          {
+            "start_node": "sphinx/directives/other.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.directives.other.SeeAlso"
+          }
+        ],
+        "similarity": 0.10172914126445064,
+        "end_line": 191,
+        "signature": null
+      },
+      {
+        "start_line": 97,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc(nodes.Admonition, nodes.Element):\n    \"\"\"Node for object descriptions.\n\n    This node is similar to a \"definition list\" with one definition.  It\n    contains one or more ``desc_signature`` and a ``desc_content``.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc",
+        "documentation": "Node for object descriptions.\n\nThis node is similar to a \"definition list\" with one definition.  It\ncontains one or more ``desc_signature`` and a ``desc_content``.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc"
+          }
+        ],
+        "similarity": 0.10067739759911026,
+        "end_line": 102,
+        "signature": null
+      },
+      {
+        "start_line": 239,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class index(nodes.Invisible, nodes.Inline, nodes.TextElement):\n    \"\"\"Node for index entries.\n\n    This node is created by the ``index`` directive and has one attribute,\n    ``entries``.  Its value is a list of 5-tuples of ``(entrytype, entryname,\n    target, ignored, key)``.\n\n    *entrytype* is one of \"single\", \"pair\", \"double\", \"triple\".\n\n    *key* is categorization characters (usually a single character) for\n    general index page. For the details of this, please see also:\n    :rst:dir:`glossary` and issue #2320.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.index",
+        "documentation": "Node for index entries.\n\nThis node is created by the ``index`` directive and has one attribute,\n``entries``.  Its value is a list of 5-tuples of ``(entrytype, entryname,\ntarget, ignored, key)``.\n\n*entrytype* is one of \"single\", \"pair\", \"double\", \"triple\".\n\n*key* is categorization characters (usually a single character) for\ngeneral index page. For the details of this, please see also:\n:rst:dir:`glossary` and issue #2320.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.index"
+          }
+        ],
+        "similarity": 0.09790440591499545,
+        "end_line": 251,
+        "signature": null
+      },
+      {
+        "start_line": 320,
+        "file_path": "sphinx/ext/inheritance_diagram.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class inheritance_diagram(graphviz):\n    \"\"\"\n    A docutils node to use as a placeholder for the inheritance diagram.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.inheritance_diagram.inheritance_diagram",
+        "documentation": "A docutils node to use as a placeholder for the inheritance diagram.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/inheritance_diagram.py"
+          },
+          {
+            "start_node": "sphinx/ext/inheritance_diagram.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.inheritance_diagram.inheritance_diagram"
+          }
+        ],
+        "similarity": 0.09463517973638358,
+        "end_line": 324,
+        "signature": null
+      },
+      {
+        "start_line": 180,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_content(nodes.General, nodes.Element):\n    \"\"\"Node for object description content.\n\n    This is the \"definition\" part of the custom Sphinx definition list.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_content",
+        "documentation": "Node for object description content.\n\nThis is the \"definition\" part of the custom Sphinx definition list.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_content"
+          }
+        ],
+        "similarity": 0.09368170766395162,
+        "end_line": 184,
+        "signature": null
+      },
+      {
+        "start_line": 68,
+        "file_path": "sphinx/writers/latex.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class collected_footnote(nodes.footnote):\n    \"\"\"Footnotes that are collected are assigned this class.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.writers.latex.collected_footnote",
+        "documentation": "Footnotes that are collected are assigned this class.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/writers/latex.py"
+          },
+          {
+            "start_node": "sphinx/writers/latex.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.writers.latex.collected_footnote"
+          }
+        ],
+        "similarity": 0.09162100106677316,
+        "end_line": 69,
+        "signature": null
+      },
+      {
+        "start_line": 222,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class seealso(nodes.Admonition, nodes.Element):\n    \"\"\"Custom \"see also\" admonition.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.seealso",
+        "documentation": "Custom \"see also\" admonition.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.seealso"
+          }
+        ],
+        "similarity": 0.08897751821929513,
+        "end_line": 223,
+        "signature": null
+      },
+      {
+        "start_line": 123,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_signature_line(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for a line in a multi-line object signatures.\n\n    It should only be used in a ``desc_signature`` with ``is_multiline`` set.\n    Set ``add_permalink = True`` for the line that should get the permalink.\n    \"\"\"\n    sphinx_line_type = ''",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_signature_line",
+        "documentation": "Node for a line in a multi-line object signatures.\n\nIt should only be used in a ``desc_signature`` with ``is_multiline`` set.\nSet ``add_permalink = True`` for the line that should get the permalink.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_signature_line"
+          }
+        ],
+        "similarity": 0.0860733396350677,
+        "end_line": 129,
+        "signature": null
+      },
+      {
+        "start_line": 262,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class hlist(nodes.Element):\n    \"\"\"Node for \"horizontal lists\", i.e. lists that should be compressed to\n    take up less vertical space.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.hlist",
+        "documentation": "Node for \"horizontal lists\", i.e. lists that should be compressed to\ntake up less vertical space.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.hlist"
+          }
+        ],
+        "similarity": 0.08551782933667326,
+        "end_line": 265,
+        "signature": null
+      },
+      {
+        "start_line": 352,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class manpage(nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for references to manpages.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.manpage",
+        "documentation": "Node for references to manpages.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.manpage"
+          }
+        ],
+        "similarity": 0.08390977490273166,
+        "end_line": 353,
+        "signature": null
+      },
+      {
+        "start_line": 296,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class tabular_col_spec(nodes.Element):\n    \"\"\"Node for specifying tabular columns, used for LaTeX output.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.tabular_col_spec",
+        "documentation": "Node for specifying tabular columns, used for LaTeX output.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.tabular_col_spec"
+          }
+        ],
+        "similarity": 0.08361331986999478,
+        "end_line": 297,
+        "signature": null
+      },
+      {
+        "start_line": 176,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_annotation(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for signature annotations (not Python 3-style annotations).\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_annotation",
+        "documentation": "Node for signature annotations (not Python 3-style annotations).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_annotation"
+          }
+        ],
+        "similarity": 0.08306678157667348,
+        "end_line": 177,
+        "signature": null
+      },
+      {
+        "start_line": 134,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_addname(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for additional name parts (module name, class name).\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_addname",
+        "documentation": "Node for additional name parts (module name, class name).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_addname"
+          }
+        ],
+        "similarity": 0.08140073109597229,
+        "end_line": 135,
+        "signature": null
+      },
+      {
+        "start_line": 214,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class versionmodified(nodes.Admonition, nodes.TextElement):\n    \"\"\"Node for version change entries.\n\n    Currently used for \"versionadded\", \"versionchanged\" and \"deprecated\"\n    directives.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.versionmodified",
+        "documentation": "Node for version change entries.\n\nCurrently used for \"versionadded\", \"versionchanged\" and \"deprecated\"\ndirectives.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.versionmodified"
+          }
+        ],
+        "similarity": 0.08084873927011887,
+        "end_line": 219,
+        "signature": null
+      },
+      {
+        "start_line": 39,
+        "file_path": "sphinx/ext/todo.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class todo_node(nodes.Admonition, nodes.Element):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.todo.todo_node",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/todo.py"
+          },
+          {
+            "start_node": "sphinx/ext/todo.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.todo.todo_node"
+          }
+        ],
+        "similarity": 0.08081069131812012,
+        "end_line": 40,
+        "signature": null
+      },
+      {
+        "start_line": 322,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class download_reference(nodes.reference):\n    \"\"\"Node for download references, similar to pending_xref.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.download_reference",
+        "documentation": "Node for download references, similar to pending_xref.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.download_reference"
+          }
+        ],
+        "similarity": 0.08029770481961833,
+        "end_line": 323,
+        "signature": null
+      },
+      {
+        "start_line": 286,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class start_of_file(nodes.Element):\n    \"\"\"Node to mark start of a new file, used in the LaTeX builder only.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.start_of_file",
+        "documentation": "Node to mark start of a new file, used in the LaTeX builder only.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.start_of_file"
+          }
+        ],
+        "similarity": 0.08022736487004023,
+        "end_line": 287,
+        "signature": null
+      },
+      {
+        "start_line": 272,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class compact_paragraph(nodes.paragraph):\n    \"\"\"Node for a compact paragraph (which never makes a <p> node).\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.compact_paragraph",
+        "documentation": "Node for a compact paragraph (which never makes a <p> node).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.compact_paragraph"
+          }
+        ],
+        "similarity": 0.08018244073012357,
+        "end_line": 273,
+        "signature": null
+      },
+      {
+        "start_line": 152,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_name(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for the main object name.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_name",
+        "documentation": "Node for the main object name.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_name"
+          }
+        ],
+        "similarity": 0.07987722741417805,
+        "end_line": 153,
+        "signature": null
+      },
+      {
+        "start_line": 21,
+        "file_path": "sphinx/deprecation.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class RemovedInSphinx40Warning(DeprecationWarning):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.deprecation.RemovedInSphinx40Warning",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/deprecation.py"
+          },
+          {
+            "start_node": "sphinx/deprecation.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.deprecation.RemovedInSphinx40Warning"
+          }
+        ],
+        "similarity": 0.07857537005394959,
+        "end_line": 22,
+        "signature": null
+      },
+      {
+        "start_line": 6732,
+        "file_path": "sphinx/domains/cpp.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CPPMemberObject(CPPObject):\n    object_type = 'member'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domains.cpp.CPPMemberObject",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/cpp.py"
+          },
+          {
+            "start_node": "sphinx/domains/cpp.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domains.cpp.CPPMemberObject"
+          }
+        ],
+        "similarity": 0.0782698068514997,
+        "end_line": 6733,
+        "signature": null
+      },
+      {
+        "start_line": 326,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class literal_emphasis(nodes.emphasis, not_smartquotable):\n    \"\"\"Node that behaves like `emphasis`, but further text processors are not\n    applied (e.g. smartypants for HTML output).\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.literal_emphasis",
+        "documentation": "Node that behaves like `emphasis`, but further text processors are not\napplied (e.g. smartypants for HTML output).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.literal_emphasis"
+          }
+        ],
+        "similarity": 0.07826294868497644,
+        "end_line": 329,
+        "signature": null
+      },
+      {
+        "start_line": 223,
+        "file_path": "sphinx/domains/javascript.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class JSConstructor(JSCallable):\n    \"\"\"Like a callable but with a different prefix.\"\"\"\n    display_prefix = 'class '\n    allow_nesting = True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domains.javascript.JSConstructor",
+        "documentation": "Like a callable but with a different prefix.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/javascript.py"
+          },
+          {
+            "start_node": "sphinx/domains/javascript.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domains.javascript.JSConstructor"
+          }
+        ],
+        "similarity": 0.07795047701696116,
+        "end_line": 226,
+        "signature": null
+      },
+      {
+        "start_line": 226,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class productionlist(nodes.Admonition, nodes.Element):\n    \"\"\"Node for grammar production lists.\n\n    Contains ``production`` nodes.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.productionlist",
+        "documentation": "Node for grammar production lists.\n\nContains ``production`` nodes.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.productionlist"
+          }
+        ],
+        "similarity": 0.07720699099146973,
+        "end_line": 230,
+        "signature": null
+      },
+      {
+        "start_line": 318,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class number_reference(nodes.reference):\n    \"\"\"Node for number references, similar to pending_xref.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.number_reference",
+        "documentation": "Node for number references, similar to pending_xref.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.number_reference"
+          }
+        ],
+        "similarity": 0.07716486505293539,
+        "end_line": 319,
+        "signature": null
+      },
+      {
+        "start_line": 25,
+        "file_path": "sphinx/deprecation.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class RemovedInSphinx50Warning(PendingDeprecationWarning):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.deprecation.RemovedInSphinx50Warning",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/deprecation.py"
+          },
+          {
+            "start_node": "sphinx/deprecation.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.deprecation.RemovedInSphinx50Warning"
+          }
+        ],
+        "similarity": 0.0760464502118958,
+        "end_line": 26,
+        "signature": null
+      },
+      {
+        "start_line": 170,
+        "file_path": "sphinx/util/docutils.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ElementLookupError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.util.docutils.ElementLookupError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/util/docutils.py"
+          },
+          {
+            "start_node": "sphinx/util/docutils.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.util.docutils.ElementLookupError"
+          }
+        ],
+        "similarity": 0.0754161273960489,
+        "end_line": 171,
+        "signature": null
+      },
+      {
+        "start_line": 332,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class literal_strong(nodes.strong, not_smartquotable):\n    \"\"\"Node that behaves like `strong`, but further text processors are not\n    applied (e.g. smartypants for HTML output).\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.literal_strong",
+        "documentation": "Node that behaves like `strong`, but further text processors are not\napplied (e.g. smartypants for HTML output).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.literal_strong"
+          }
+        ],
+        "similarity": 0.07506379872596354,
+        "end_line": 335,
+        "signature": null
+      },
+      {
+        "start_line": 43,
+        "file_path": "sphinx/ext/todo.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class todolist(nodes.General, nodes.Element):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.todo.todolist",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/todo.py"
+          },
+          {
+            "start_node": "sphinx/ext/todo.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.todo.todolist"
+          }
+        ],
+        "similarity": 0.07467850760012844,
+        "end_line": 44,
+        "signature": null
+      },
+      {
+        "start_line": 54,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class not_smartquotable:\n    \"\"\"A node which does not support smart-quotes.\"\"\"\n    support_smartquotes = False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.not_smartquotable",
+        "documentation": "A node which does not support smart-quotes.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.not_smartquotable"
+          }
+        ],
+        "similarity": 0.07423988129413796,
+        "end_line": 56,
+        "signature": null
+      },
+      {
+        "start_line": 268,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class hlistcol(nodes.Element):\n    \"\"\"Node for one column in a horizontal list.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.hlistcol",
+        "documentation": "Node for one column in a horizontal list.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.hlistcol"
+          }
+        ],
+        "similarity": 0.07367786304954956,
+        "end_line": 269,
+        "signature": null
+      },
+      {
+        "start_line": 55,
+        "file_path": "sphinx/ext/imgmath.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InvokeError(SphinxError):\n    \"\"\"errors on invoking converters.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.ext.imgmath.InvokeError",
+        "documentation": "errors on invoking converters.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/ext/imgmath.py"
+          },
+          {
+            "start_node": "sphinx/ext/imgmath.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.ext.imgmath.InvokeError"
+          }
+        ],
+        "similarity": 0.07293168406577549,
+        "end_line": 56,
+        "signature": null
+      },
+      {
+        "start_line": 72,
+        "file_path": "sphinx/writers/latex.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class UnsupportedError(SphinxError):\n    category = 'Markup is unsupported in LaTeX'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.writers.latex.UnsupportedError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/writers/latex.py"
+          },
+          {
+            "start_node": "sphinx/writers/latex.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.writers.latex.UnsupportedError"
+          }
+        ],
+        "similarity": 0.07193720233996057,
+        "end_line": 73,
+        "signature": null
+      },
+      {
+        "start_line": 197,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_sig_name(desc_sig_element):\n    \"\"\"Node for a name in a signature.\"\"\"\n    classes = [\"n\"]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_sig_name",
+        "documentation": "Node for a name in a signature.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_sig_name"
+          }
+        ],
+        "similarity": 0.07192666561795791,
+        "end_line": 199,
+        "signature": null
+      },
+      {
+        "start_line": 280,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class only(nodes.Element):\n    \"\"\"Node for \"only\" directives (conditional inclusion based on tags).\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.only",
+        "documentation": "Node for \"only\" directives (conditional inclusion based on tags).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.only"
+          }
+        ],
+        "similarity": 0.07117162130430901,
+        "end_line": 281,
+        "signature": null
+      },
+      {
+        "start_line": 207,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_sig_punctuation(desc_sig_element):\n    \"\"\"Node for a punctuation in a signature.\"\"\"\n    classes = [\"p\"]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_sig_punctuation",
+        "documentation": "Node for a punctuation in a signature.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_sig_punctuation"
+          }
+        ],
+        "similarity": 0.0709180775377849,
+        "end_line": 209,
+        "signature": null
+      },
+      {
+        "start_line": 93,
+        "file_path": "sphinx/cmd/quickstart.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ValidationError(Exception):\n    \"\"\"Raised for validation errors.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.cmd.quickstart.ValidationError",
+        "documentation": "Raised for validation errors.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/cmd/quickstart.py"
+          },
+          {
+            "start_node": "sphinx/cmd/quickstart.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sphinx.cmd.quickstart.ValidationError"
+          }
+        ],
+        "similarity": 0.07065042987780694,
+        "end_line": 94,
+        "signature": null
+      },
+      {
+        "start_line": 506,
+        "file_path": "sphinx/util/logging.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class WarningLogRecordTranslator(SphinxLogRecordTranslator):\n    \"\"\"LogRecordTranslator for WARNING level log records.\"\"\"\n    LogRecordClass = SphinxWarningLogRecord",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.util.logging.WarningLogRecordTranslator",
+        "documentation": "LogRecordTranslator for WARNING level log records.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/util/logging.py"
+          },
+          {
+            "start_node": "sphinx/util/logging.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.util.logging.WarningLogRecordTranslator"
+          }
+        ],
+        "similarity": 0.07042171257612347,
+        "end_line": 508,
+        "signature": null
+      },
+      {
+        "start_line": 164,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_parameter(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for a single parameter.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_parameter",
+        "documentation": "Node for a single parameter.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_parameter"
+          }
+        ],
+        "similarity": 0.07002011864401614,
+        "end_line": 165,
+        "signature": null
+      },
+      {
+        "start_line": 202,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_sig_operator(desc_sig_element):\n    \"\"\"Node for an operator in a signature.\"\"\"\n    classes = [\"o\"]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_sig_operator",
+        "documentation": "Node for an operator in a signature.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_sig_operator"
+          }
+        ],
+        "similarity": 0.06951599899002443,
+        "end_line": 204,
+        "signature": null
+      },
+      {
+        "start_line": 254,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class centered(nodes.Part, nodes.TextElement):\n    \"\"\"Deprecated.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.centered",
+        "documentation": "Deprecated.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.centered"
+          }
+        ],
+        "similarity": 0.0694558410363278,
+        "end_line": 255,
+        "signature": null
+      },
+      {
+        "start_line": 142,
+        "file_path": "sphinx/addnodes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class desc_type(nodes.Part, nodes.Inline, nodes.FixedTextElement):\n    \"\"\"Node for return types or object type names.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.addnodes.desc_type",
+        "documentation": "Node for return types or object type names.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/addnodes.py"
+          },
+          {
+            "start_node": "sphinx/addnodes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.addnodes.desc_type"
+          }
+        ],
+        "similarity": 0.0693780416566499,
+        "end_line": 143,
+        "signature": null
+      },
+      {
+        "start_line": 296,
+        "file_path": "sphinx/domains/python.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PyGroupedField(PyXrefMixin, GroupedField):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sphinx.domainsthon.PyGroupedField",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sphinx/domains/python.py"
+          },
+          {
+            "start_node": "sphinx/domains/python.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sphinx.domainsthon.PyGroupedField"
+          }
+        ],
+        "similarity": 0.06815719574668076,
+        "end_line": 297,
+        "signature": null
+      }
+    ],
+    "issues": [
+      {
+        "content": "**Describe the bug**\r\nautosummary: The members variable for module template contains imported members even if autosummary_imported_members is False.\r\n\r\n**To Reproduce**\r\n\r\n```\r\n# _templates/autosummary/module.rst\r\n{{ fullname | escape | underline }}\r\n\r\n.. automodule:: {{ fullname }}\r\n\r\n   .. autosummary::\r\n   {% for item in members %}\r\n      {{ item }}\r\n   {%- endfor %}\r\n\r\n```\r\n```\r\n# example.py\r\nimport os\r\n```\r\n```\r\n# index.rst\r\n.. autosummary::\r\n   :toctree: generated\r\n\r\n   example\r\n```\r\n```\r\n# conf.py\r\nautosummary_generate = True\r\nautosummary_imported_members = False\r\n```\r\n\r\nAs a result, I got following output:\r\n```\r\n# generated/example.rst\r\nexample\r\n=======\r\n\r\n.. automodule:: example\r\n\r\n   .. autosummary::\r\n\r\n      __builtins__\r\n      __cached__\r\n      __doc__\r\n      __file__\r\n      __loader__\r\n      __name__\r\n      __package__\r\n      __spec__\r\n      os\r\n```\r\n\r\n**Expected behavior**\r\nThe template variable `members` should not contain imported members when `autosummary_imported_members` is False.\r\n\r\n**Your project**\r\nNo\r\n\r\n**Screenshots**\r\nNo\r\n\r\n**Environment info**\r\n- OS: Mac\r\n- Python version: 3.8.2\r\n- Sphinx version: 3.1.0dev\r\n- Sphinx extensions:  sphinx.ext.autosummary\r\n- Extra tools: No\r\n\r\n**Additional context**\r\nNo\r\n\n",
+        "distance": 0,
+        "title": "autosummary: The members variable for module template contains imported members",
+        "name": "root",
+        "path": [],
+        "issue_id": "root",
+        "similarity": 2.0,
+        "type": "issue"
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "7685",
+        "type": "issue",
+        "content": "**Describe the bug**\r\nautosummary: The members variable for module template contains imported members even if autosummary_imported_members is False.\r\n\r\n**To Reproduce**\r\n\r\n```\r\n# _templates/autosummary/module.rst\r\n{{ fullname | escape | underline }}\r\n\r\n.. automodule:: {{ fullname }}\r\n\r\n   .. autosummary::\r\n   {% for item in members %}\r\n      {{ item }}\r\n   {%- endfor %}\r\n\r\n```\r\n```\r\n# example.py\r\nimport os\r\n```\r\n```\r\n# index.rst\r\n.. autosummary::\r\n   :toctree: generated\r\n\r\n   example\r\n```\r\n```\r\n# conf.py\r\nautosummary_generate = True\r\nautosummary_imported_members = False\r\n```\r\n\r\nAs a result, I got following output:\r\n```\r\n# generated/example.rst\r\nexample\r\n=======\r\n\r\n.. automodule:: example\r\n\r\n   .. autosummary::\r\n\r\n      __builtins__\r\n      __cached__\r\n      __doc__\r\n      __file__\r\n      __loader__\r\n      __name__\r\n      __package__\r\n      __spec__\r\n      os\r\n```\r\n\r\n**Expected behavior**\r\nThe template variable `members` should not contain imported members when `autosummary_imported_members` is False.\r\n\r\n**Your project**\r\nNo\r\n\r\n**Screenshots**\r\nNo\r\n\r\n**Environment info**\r\n- OS: Mac\r\n- Python version: 3.8.2\r\n- Sphinx version: 3.1.0dev\r\n- Sphinx extensions:  sphinx.ext.autosummary\r\n- Extra tools: No\r\n\r\n**Additional context**\r\nNo\r\n\n\n",
+        "source_code": null,
+        "distance": 0.25,
+        "title": "autosummary: The members variable for module template contains imported members",
+        "name": "issue#7685",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#7685"
+          }
+        ],
+        "similarity": 0.8749812261530422,
+        "end_line": null,
+        "signature": null
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "7686",
+        "type": "issue",
+        "content": "### Feature or Bugfix\r\n- Bugfix\r\n\r\n### Purpose\r\n- refs: #7685 \n\n",
+        "source_code": null,
+        "distance": 0.5,
+        "title": "Fix #7685: autosummary: imported members are listed unexpectedly",
+        "name": "pr#7686",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#7685"
+          },
+          {
+            "start_node": "issue#7685",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "pr#7686"
+          }
+        ],
+        "similarity": 0.5976504597686826,
+        "end_line": null,
+        "signature": null
+      }
+    ]
+  },
+  "artifact_stats": {
+    "skipped_due_to_time": 2,
+    "valid_related_items": 15
+  }
+}

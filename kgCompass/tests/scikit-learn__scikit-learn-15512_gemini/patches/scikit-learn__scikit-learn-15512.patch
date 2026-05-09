@@ -1,0 +1,21 @@
+We identified the bug in `sklearn/cluster/_affinity_propagation.py`. The `affinity_propagation` function does not properly handle the case when the algorithm fails to converge. According to the documentation, when the algorithm does not converge, it should return an empty array for `cluster_center_indices` and `-1` labels for each sample. However, the current implementation only warns in a print statement when `max_iter` is reached without convergence, and then proceeds to return cluster centers based on the final iteration’s exemplars (if any). This contradicts the documented behavior.
+
+The fix modifies the `else` clause of the main `for` loop (which executes when the loop finishes without a break, i.e., when convergence did not occur) to issue a proper `ConvergenceWarning` and return the expected non-converged results immediately, rather than falling through to the cluster‑processing logic.
+
+Additionally, we ensure that the returned cluster center indices is a proper empty array (using `np.array([], dtype=int)`) and that the number of iterations is set to `max_iter` for the non‑converged case.
+
+```python
+### sklearn/cluster/_affinity_propagation.py
+<<<<<<< SEARCH
+    else:
+        if verbose:
+            print("Did not converge")
+=======
+    else:
+        if verbose:
+            print("Did not converge")
+        warnings.warn("Affinity propagation did not converge, this model "
+                      "will not have any cluster centers.", ConvergenceWarning)
+        return (np.array([], dtype=int), np.array([-1] * n_samples), max_iter) if return_n_iter else (np.array([], dtype=int), np.array([-1] * n_samples))
+>>>>>>> REPLACE
+```

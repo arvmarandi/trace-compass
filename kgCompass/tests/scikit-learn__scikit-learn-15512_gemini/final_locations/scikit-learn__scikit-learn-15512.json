@@ -1,0 +1,933 @@
+{
+  "related_entities": {
+    "methods": [
+      {
+        "name": "sklearn.cluster._affinity_propagation.affinity_propagation",
+        "signature": "sklearn.cluster._affinity_propagation.affinity_propagation(S, preference, convergence_iter, max_iter, damping, copy, verbose, return_n_iter)",
+        "file_path": "sklearn/cluster/_affinity_propagation.py",
+        "start_line": 33,
+        "source_code": "def affinity_propagation(S, preference=None, convergence_iter=15, max_iter=200,\n                         damping=0.5, copy=True, verbose=False,\n                         return_n_iter=False):\n    \"\"\"Perform Affinity Propagation Clustering of data\n\n    Read more in the :ref:`User Guide <affinity_propagation>`.\n\n    Parameters\n    ----------\n\n    S : array-like, shape (n_samples, n_samples)\n        Matrix of similarities between points\n\n    preference : array-like, shape (n_samples,) or float, optional\n        Preferences for each point - points with larger values of\n        preferences are more likely to be chosen as exemplars. The number of\n        exemplars, i.e. of clusters, is influenced by the input preferences\n        value. If the preferences are not passed as arguments, they will be\n        set to the median of the input similarities (resulting in a moderate\n        number of clusters). For a smaller amount of clusters, this can be set\n        to the minimum value of the similarities.\n\n    convergence_iter : int, optional, default: 15\n        Number of iterations with no change in the number\n        of estimated clusters that stops the convergence.\n\n    max_iter : int, optional, default: 200\n        Maximum number of iterations\n\n    damping : float, optional, default: 0.5\n        Damping factor between 0.5 and 1.\n\n    copy : boolean, optional, default: True\n        If copy is False, the affinity matrix is modified inplace by the\n        algorithm, for memory efficiency\n\n    verbose : boolean, optional, default: False\n        The verbosity level\n\n    return_n_iter : bool, default False\n        Whether or not to return the number of iterations.\n\n    Returns\n    -------\n\n    cluster_centers_indices : array, shape (n_clusters,)\n        index of clusters centers\n\n    labels : array, shape (n_samples,)\n        cluster labels for each point\n\n    n_iter : int\n        number of iterations run. Returned only if `return_n_iter` is\n        set to True.\n\n    Notes\n    -----\n    For an example, see :ref:`examples/cluster/plot_affinity_propagation.py\n    <sphx_glr_auto_examples_cluster_plot_affinity_propagation.py>`.\n\n    When the algorithm does not converge, it returns an empty array as\n    ``cluster_center_indices`` and ``-1`` as label for each training sample.\n\n    When all training samples have equal similarities and equal preferences,\n    the assignment of cluster centers and labels depends on the preference.\n    If the preference is smaller than the similarities, a single cluster center\n    and label ``0`` for every sample will be returned. Otherwise, every\n    training sample becomes its own cluster center and is assigned a unique\n    label.\n\n    References\n    ----------\n    Brendan J. Frey and Delbert Dueck, \"Clustering by Passing Messages\n    Between Data Points\", Science Feb. 2007\n    \"\"\"\n    S = as_float_array(S, copy=copy)\n    n_samples = S.shape[0]\n\n    if S.shape[0] != S.shape[1]:\n        raise ValueError(\"S must be a square array (shape=%s)\" % repr(S.shape))\n\n    if preference is None:\n        preference = np.median(S)\n    if damping < 0.5 or damping >= 1:\n        raise ValueError('damping must be >= 0.5 and < 1')\n\n    preference = np.array(preference)\n\n    if (n_samples == 1 or\n            _equal_similarities_and_preferences(S, preference)):\n        # It makes no sense to run the algorithm in this case, so return 1 or\n        # n_samples clusters, depending on preferences\n        warnings.warn(\"All samples have mutually equal similarities. \"\n                      \"Returning arbitrary cluster center(s).\")\n        if preference.flat[0] >= S.flat[n_samples - 1]:\n            return ((np.arange(n_samples), np.arange(n_samples), 0)\n                    if return_n_iter\n                    else (np.arange(n_samples), np.arange(n_samples)))\n        else:\n            return ((np.array([0]), np.array([0] * n_samples), 0)\n                    if return_n_iter\n                    else (np.array([0]), np.array([0] * n_samples)))\n\n    random_state = np.random.RandomState(0)\n\n    # Place preference on the diagonal of S\n    S.flat[::(n_samples + 1)] = preference\n\n    A = np.zeros((n_samples, n_samples))\n    R = np.zeros((n_samples, n_samples))  # Initialize messages\n    # Intermediate results\n    tmp = np.zeros((n_samples, n_samples))\n\n    # Remove degeneracies\n    S += ((np.finfo(np.double).eps * S + np.finfo(np.double).tiny * 100) *\n          random_state.randn(n_samples, n_samples))\n\n    # Execute parallel affinity propagation updates\n    e = np.zeros((n_samples, convergence_iter))\n\n    ind = np.arange(n_samples)\n\n    for it in range(max_iter):\n        # tmp = A + S; compute responsibilities\n        np.add(A, S, tmp)\n        I = np.argmax(tmp, axis=1)\n        Y = tmp[ind, I]  # np.max(A + S, axis=1)\n        tmp[ind, I] = -np.inf\n        Y2 = np.max(tmp, axis=1)\n\n        # tmp = Rnew\n        np.subtract(S, Y[:, None], tmp)\n        tmp[ind, I] = S[ind, I] - Y2\n\n        # Damping\n        tmp *= 1 - damping\n        R *= damping\n        R += tmp\n\n        # tmp = Rp; compute availabilities\n        np.maximum(R, 0, tmp)\n        tmp.flat[::n_samples + 1] = R.flat[::n_samples + 1]\n\n        # tmp = -Anew\n        tmp -= np.sum(tmp, axis=0)\n        dA = np.diag(tmp).copy()\n        tmp.clip(0, np.inf, tmp)\n        tmp.flat[::n_samples + 1] = dA\n\n        # Damping\n        tmp *= 1 - damping\n        A *= damping\n        A -= tmp\n\n        # Check for convergence\n        E = (np.diag(A) + np.diag(R)) > 0\n        e[:, it % convergence_iter] = E\n        K = np.sum(E, axis=0)\n\n        if it >= convergence_iter:\n            se = np.sum(e, axis=1)\n            unconverged = (np.sum((se == convergence_iter) + (se == 0))\n                           != n_samples)\n            if (not unconverged and (K > 0)) or (it == max_iter):\n                if verbose:\n                    print(\"Converged after %d iterations.\" % it)\n                break\n    else:\n        if verbose:\n            print(\"Did not converge\")\n\n    I = np.flatnonzero(E)\n    K = I.size  # Identify exemplars\n\n    if K > 0:\n        c = np.argmax(S[:, I], axis=1)\n        c[I] = np.arange(K)  # Identify clusters\n        # Refine the final set of exemplars and clusters and return results\n        for k in range(K):\n            ii = np.where(c == k)[0]\n            j = np.argmax(np.sum(S[ii[:, np.newaxis], ii], axis=0))\n            I[k] = ii[j]\n\n        c = np.argmax(S[:, I], axis=1)\n        c[I] = np.arange(K)\n        labels = I[c]\n        # Reduce labels to a sorted, gapless, list\n        cluster_centers_indices = np.unique(labels)\n        labels = np.searchsorted(cluster_centers_indices, labels)\n    else:\n        warnings.warn(\"Affinity propagation did not converge, this model \"\n                      \"will not have any cluster centers.\", ConvergenceWarning)\n        labels = np.array([-1] * n_samples)\n        cluster_centers_indices = []\n\n    if return_n_iter:\n        return cluster_centers_indices, labels, it + 1\n    else:\n        return cluster_centers_indices, labels",
+        "end_line": 231,
+        "doc_string": "Perform Affinity Propagation Clustering of data\n\nRead more in the :ref:`User Guide <affinity_propagation>`.\n\nParameters\n----------\n\nS : array-like, shape (n_samples, n_samples)\n    Matrix of similarities between points\n\npreference : array-like, shape (n_samples,) or float, optional\n    Preferences for each point - points with larger values of\n    preferences are more likely to be chosen as exemplars. The number of\n    exemplars, i.e. of clusters, is influenced by the input preferences\n    value. If the preferences are not passed as arguments, they will be\n    set to the median of the input similarities (resulting in a moderate\n    number of clusters). For a smaller amount of clusters, this can be set\n    to the minimum value of the similarities.\n\nconvergence_iter : int, optional, default: 15\n    Number of iterations with no change in the number\n    of estimated clusters that stops the convergence.\n\nmax_iter : int, optional, default: 200\n    Maximum number of iterations\n\ndamping : float, optional, default: 0.5\n    Damping factor between 0.5 and 1.\n\ncopy : boolean, optional, default: True\n    If copy is False, the affinity matrix is modified inplace by the\n    algorithm, for memory efficiency\n\nverbose : boolean, optional, default: False\n    The verbosity level\n\nreturn_n_iter : bool, default False\n    Whether or not to return the number of iterations.\n\nReturns\n-------\n\ncluster_centers_indices : array, shape (n_clusters,)\n    index of clusters centers\n\nlabels : array, shape (n_samples,)\n    cluster labels for each point\n\nn_iter : int\n    number of iterations run. Returned only if `return_n_iter` is\n    set to True.\n\nNotes\n-----\nFor an example, see :ref:`examples/cluster/plot_affinity_propagation.py\n<sphx_glr_auto_examples_cluster_plot_affinity_propagation.py>`.\n\nWhen the algorithm does not converge, it returns an empty array as\n``cluster_center_indices`` and ``-1`` as label for each training sample.\n\nWhen all training samples have equal similarities and equal preferences,\nthe assignment of cluster centers and labels depends on the preference.\nIf the preference is smaller than the similarities, a single cluster center\nand label ``0`` for every sample will be returned. Otherwise, every\ntraining sample becomes its own cluster center and is assigned a unique\nlabel.\n\nReferences\n----------\nBrendan J. Frey and Delbert Dueck, \"Clustering by Passing Messages\nBetween Data Points\", Science Feb. 2007",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "sklearn.cluster._affinity_propagation.affinity_propagation"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.fit",
+        "file_path": "sklearn/cluster/_affinity_propagation.py",
+        "start_line": 352,
+        "end_line": 394,
+        "source_code": "    def fit(self, X, y=None):\n        \"\"\"Fit the clustering from features, or affinity matrix.\n\n        Parameters\n        ----------\n        X : array-like or sparse matrix, shape (n_samples, n_features), or \\\n            array-like, shape (n_samples, n_samples)\n            Training instances to cluster, or similarities / affinities between\n            instances if ``affinity='precomputed'``. If a sparse feature matrix\n            is provided, it will be converted into a sparse ``csr_matrix``.\n\n        y : Ignored\n            Not used, present here for API consistency by convention.\n\n        Returns\n        -------\n        self\n\n        \"\"\"\n        if self.affinity == \"precomputed\":\n            accept_sparse = False\n        else:\n            accept_sparse = 'csr'\n        X = check_array(X, accept_sparse=accept_sparse)\n        if self.affinity == \"precomputed\":\n            self.affinity_matrix_ = X\n        elif self.affinity == \"euclidean\":\n            self.affinity_matrix_ = -euclidean_distances(X, squared=True)\n        else:\n            raise ValueError(\"Affinity must be 'precomputed' or \"\n                             \"'euclidean'. Got %s instead\"\n                             % str(self.affinity))\n\n        self.cluster_centers_indices_, self.labels_, self.n_iter_ = \\\n            affinity_propagation(\n                self.affinity_matrix_, self.preference, max_iter=self.max_iter,\n                convergence_iter=self.convergence_iter, damping=self.damping,\n                copy=self.copy, verbose=self.verbose, return_n_iter=True)\n\n        if self.affinity != \"precomputed\":\n            self.cluster_centers_ = X[self.cluster_centers_indices_].copy()\n\n        return self",
+        "signature": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.fit(self, X, y)",
+        "doc_string": "Fit the clustering from features, or affinity matrix.\n\nParameters\n----------\nX : array-like or sparse matrix, shape (n_samples, n_features), or             array-like, shape (n_samples, n_samples)\n    Training instances to cluster, or similarities / affinities between\n    instances if ``affinity='precomputed'``. If a sparse feature matrix\n    is provided, it will be converted into a sparse ``csr_matrix``.\n\ny : Ignored\n    Not used, present here for API consistency by convention.\n\nReturns\n-------\nself",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.predict",
+        "file_path": "sklearn/cluster/_affinity_propagation.py",
+        "start_line": 396,
+        "end_line": 421,
+        "source_code": "    def predict(self, X):\n        \"\"\"Predict the closest cluster each sample in X belongs to.\n\n        Parameters\n        ----------\n        X : array-like or sparse matrix, shape (n_samples, n_features)\n            New data to predict. If a sparse matrix is provided, it will be\n            converted into a sparse ``csr_matrix``.\n\n        Returns\n        -------\n        labels : ndarray, shape (n_samples,)\n            Cluster labels.\n        \"\"\"\n        check_is_fitted(self)\n        if not hasattr(self, \"cluster_centers_\"):\n            raise ValueError(\"Predict method is not supported when \"\n                             \"affinity='precomputed'.\")\n\n        if self.cluster_centers_.shape[0] > 0:\n            return pairwise_distances_argmin(X, self.cluster_centers_)\n        else:\n            warnings.warn(\"This model does not have any cluster centers \"\n                          \"because affinity propagation did not converge. \"\n                          \"Labeling every sample as '-1'.\", ConvergenceWarning)\n            return np.array([-1] * X.shape[0])",
+        "signature": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.predict(self, X)",
+        "doc_string": "Predict the closest cluster each sample in X belongs to.\n\nParameters\n----------\nX : array-like or sparse matrix, shape (n_samples, n_features)\n    New data to predict. If a sparse matrix is provided, it will be\n    converted into a sparse ``csr_matrix``.\n\nReturns\n-------\nlabels : ndarray, shape (n_samples,)\n    Cluster labels.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.predict"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.cluster._k_means.KMeans.fit",
+        "file_path": "sklearn/cluster/_k_means.py",
+        "start_line": 820,
+        "end_line": 982,
+        "source_code": "    def fit(self, X, y=None, sample_weight=None):\n        \"\"\"Compute k-means clustering.\n\n        Parameters\n        ----------\n        X : array-like or sparse matrix, shape=(n_samples, n_features)\n            Training instances to cluster. It must be noted that the data\n            will be converted to C ordering, which will cause a memory\n            copy if the given data is not C-contiguous.\n\n        y : Ignored\n            Not used, present here for API consistency by convention.\n\n        sample_weight : array-like, shape (n_samples,), optional\n            The weights for each observation in X. If None, all observations\n            are assigned equal weight (default: None).\n\n        Returns\n        -------\n        self\n            Fitted estimator.\n        \"\"\"\n        random_state = check_random_state(self.random_state)\n\n        n_init = self.n_init\n        if n_init <= 0:\n            raise ValueError(\"Invalid number of initializations.\"\n                             \" n_init=%d must be bigger than zero.\" % n_init)\n\n        if self.max_iter <= 0:\n            raise ValueError(\n                'Number of iterations should be a positive number,'\n                ' got %d instead' % self.max_iter\n            )\n\n        # avoid forcing order when copy_x=False\n        order = \"C\" if self.copy_x else None\n        X = check_array(X, accept_sparse='csr', dtype=[np.float64, np.float32],\n                        order=order, copy=self.copy_x)\n        # verify that the number of samples given is larger than k\n        if _num_samples(X) < self.n_clusters:\n            raise ValueError(\"n_samples=%d should be >= n_clusters=%d\" % (\n                _num_samples(X), self.n_clusters))\n\n        tol = _tolerance(X, self.tol)\n\n        # If the distances are precomputed every job will create a matrix of\n        # shape (n_clusters, n_samples). To stop KMeans from eating up memory\n        # we only activate this if the created matrix is guaranteed to be\n        # under 100MB. 12 million entries consume a little under 100MB if they\n        # are of type double.\n        precompute_distances = self.precompute_distances\n        if precompute_distances == 'auto':\n            n_samples = X.shape[0]\n            precompute_distances = (self.n_clusters * n_samples) < 12e6\n        elif isinstance(precompute_distances, bool):\n            pass\n        else:\n            raise ValueError(\n                \"precompute_distances should be 'auto' or True/False\"\n                \", but a value of %r was passed\" %\n                precompute_distances\n            )\n\n        # Validate init array\n        init = self.init\n        if hasattr(init, '__array__'):\n            init = check_array(init, dtype=X.dtype.type, copy=True)\n            _validate_center_shape(X, self.n_clusters, init)\n\n            if n_init != 1:\n                warnings.warn(\n                    'Explicit initial center position passed: '\n                    'performing only one init in k-means instead of n_init=%d'\n                    % n_init, RuntimeWarning, stacklevel=2)\n                n_init = 1\n\n        # subtract of mean of x for more accurate distance computations\n        if not sp.issparse(X):\n            X_mean = X.mean(axis=0)\n            # The copy was already done above\n            X -= X_mean\n\n            if hasattr(init, '__array__'):\n                init -= X_mean\n\n        # precompute squared norms of data points\n        x_squared_norms = row_norms(X, squared=True)\n\n        best_labels, best_inertia, best_centers = None, None, None\n        algorithm = self.algorithm\n        if self.n_clusters == 1:\n            # elkan doesn't make sense for a single cluster, full will produce\n            # the right result.\n            algorithm = \"full\"\n        if algorithm == \"auto\":\n            algorithm = \"full\" if sp.issparse(X) else 'elkan'\n        if algorithm == \"full\":\n            kmeans_single = _kmeans_single_lloyd\n        elif algorithm == \"elkan\":\n            kmeans_single = _kmeans_single_elkan\n        else:\n            raise ValueError(\"Algorithm must be 'auto', 'full' or 'elkan', got\"\n                             \" %s\" % str(algorithm))\n\n        seeds = random_state.randint(np.iinfo(np.int32).max, size=n_init)\n        if effective_n_jobs(self.n_jobs) == 1:\n            # For a single thread, less memory is needed if we just store one\n            # set of the best results (as opposed to one set per run per\n            # thread).\n            for seed in seeds:\n                # run a k-means once\n                labels, inertia, centers, n_iter_ = kmeans_single(\n                    X, sample_weight, self.n_clusters,\n                    max_iter=self.max_iter, init=init, verbose=self.verbose,\n                    precompute_distances=precompute_distances, tol=tol,\n                    x_squared_norms=x_squared_norms, random_state=seed)\n                # determine if these results are the best so far\n                if best_inertia is None or inertia < best_inertia:\n                    best_labels = labels.copy()\n                    best_centers = centers.copy()\n                    best_inertia = inertia\n                    best_n_iter = n_iter_\n        else:\n            # parallelisation of k-means runs\n            results = Parallel(n_jobs=self.n_jobs, verbose=0)(\n                delayed(kmeans_single)(\n                    X, sample_weight, self.n_clusters,\n                    max_iter=self.max_iter, init=init,\n                    verbose=self.verbose, tol=tol,\n                    precompute_distances=precompute_distances,\n                    x_squared_norms=x_squared_norms,\n                    # Change seed to ensure variety\n                    random_state=seed\n                )\n                for seed in seeds)\n            # Get results with the lowest inertia\n            labels, inertia, centers, n_iters = zip(*results)\n            best = np.argmin(inertia)\n            best_labels = labels[best]\n            best_inertia = inertia[best]\n            best_centers = centers[best]\n            best_n_iter = n_iters[best]\n\n        if not sp.issparse(X):\n            if not self.copy_x:\n                X += X_mean\n            best_centers += X_mean\n\n        distinct_clusters = len(set(best_labels))\n        if distinct_clusters < self.n_clusters:\n            warnings.warn(\n                \"Number of distinct clusters ({}) found smaller than \"\n                \"n_clusters ({}). Possibly due to duplicate points \"\n                \"in X.\".format(distinct_clusters, self.n_clusters),\n                ConvergenceWarning, stacklevel=2\n            )\n\n        self.cluster_centers_ = best_centers\n        self.labels_ = best_labels\n        self.inertia_ = best_inertia\n        self.n_iter_ = best_n_iter\n        return self",
+        "signature": "scikit-learn.sklearn.cluster._k_means.KMeans.fit(self, X, y, sample_weight)",
+        "doc_string": "Compute k-means clustering.\n\nParameters\n----------\nX : array-like or sparse matrix, shape=(n_samples, n_features)\n    Training instances to cluster. It must be noted that the data\n    will be converted to C ordering, which will cause a memory\n    copy if the given data is not C-contiguous.\n\ny : Ignored\n    Not used, present here for API consistency by convention.\n\nsample_weight : array-like, shape (n_samples,), optional\n    The weights for each observation in X. If None, all observations\n    are assigned equal weight (default: None).\n\nReturns\n-------\nself\n    Fitted estimator.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.cluster._k_means.KMeans.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.mixture._base.BaseMixture.fit_predict",
+        "file_path": "sklearn/mixture/_base.py",
+        "start_line": 195,
+        "end_line": 278,
+        "source_code": "    def fit_predict(self, X, y=None):\n        \"\"\"Estimate model parameters using X and predict the labels for X.\n\n        The method fits the model n_init times and sets the parameters with\n        which the model has the largest likelihood or lower bound. Within each\n        trial, the method iterates between E-step and M-step for `max_iter`\n        times until the change of likelihood or lower bound is less than\n        `tol`, otherwise, a :class:`~sklearn.exceptions.ConvergenceWarning` is\n        raised. After fitting, it predicts the most probable label for the\n        input data points.\n\n        .. versionadded:: 0.20\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            List of n_features-dimensional data points. Each row\n            corresponds to a single data point.\n\n        Returns\n        -------\n        labels : array, shape (n_samples,)\n            Component labels.\n        \"\"\"\n        X = _check_X(X, self.n_components, ensure_min_samples=2)\n        self._check_initial_parameters(X)\n\n        # if we enable warm_start, we will have a unique initialisation\n        do_init = not(self.warm_start and hasattr(self, 'converged_'))\n        n_init = self.n_init if do_init else 1\n\n        max_lower_bound = -np.infty\n        self.converged_ = False\n\n        random_state = check_random_state(self.random_state)\n\n        n_samples, _ = X.shape\n        for init in range(n_init):\n            self._print_verbose_msg_init_beg(init)\n\n            if do_init:\n                self._initialize_parameters(X, random_state)\n\n            lower_bound = (-np.infty if do_init else self.lower_bound_)\n\n            for n_iter in range(1, self.max_iter + 1):\n                prev_lower_bound = lower_bound\n\n                log_prob_norm, log_resp = self._e_step(X)\n                self._m_step(X, log_resp)\n                lower_bound = self._compute_lower_bound(\n                    log_resp, log_prob_norm)\n\n                change = lower_bound - prev_lower_bound\n                self._print_verbose_msg_iter_end(n_iter, change)\n\n                if abs(change) < self.tol:\n                    self.converged_ = True\n                    break\n\n            self._print_verbose_msg_init_end(lower_bound)\n\n            if lower_bound > max_lower_bound:\n                max_lower_bound = lower_bound\n                best_params = self._get_parameters()\n                best_n_iter = n_iter\n\n        if not self.converged_:\n            warnings.warn('Initialization %d did not converge. '\n                          'Try different init parameters, '\n                          'or increase max_iter, tol '\n                          'or check for degenerate data.'\n                          % (init + 1), ConvergenceWarning)\n\n        self._set_parameters(best_params)\n        self.n_iter_ = best_n_iter\n        self.lower_bound_ = max_lower_bound\n\n        # Always do a final e-step to guarantee that the labels returned by\n        # fit_predict(X) are always consistent with fit(X).predict(X)\n        # for any value of max_iter and tol (and any random_state).\n        _, log_resp = self._e_step(X)\n\n        return log_resp.argmax(axis=1)",
+        "signature": "scikit-learn.sklearn.mixture._base.BaseMixture.fit_predict(self, X, y)",
+        "doc_string": "Estimate model parameters using X and predict the labels for X.\n\nThe method fits the model n_init times and sets the parameters with\nwhich the model has the largest likelihood or lower bound. Within each\ntrial, the method iterates between E-step and M-step for `max_iter`\ntimes until the change of likelihood or lower bound is less than\n`tol`, otherwise, a :class:`~sklearn.exceptions.ConvergenceWarning` is\nraised. After fitting, it predicts the most probable label for the\ninput data points.\n\n.. versionadded:: 0.20\n\nParameters\n----------\nX : array-like, shape (n_samples, n_features)\n    List of n_features-dimensional data points. Each row\n    corresponds to a single data point.\n\nReturns\n-------\nlabels : array, shape (n_samples,)\n    Component labels.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.mixture._base.BaseMixture.fit_predict"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.__init__",
+        "file_path": "sklearn/cluster/_affinity_propagation.py",
+        "start_line": 336,
+        "end_line": 346,
+        "source_code": "    def __init__(self, damping=.5, max_iter=200, convergence_iter=15,\n                 copy=True, preference=None, affinity='euclidean',\n                 verbose=False):\n\n        self.damping = damping\n        self.max_iter = max_iter\n        self.convergence_iter = convergence_iter\n        self.copy = copy\n        self.verbose = verbose\n        self.preference = preference\n        self.affinity = affinity",
+        "signature": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.__init__(self, damping, max_iter, convergence_iter, copy, preference, affinity, verbose)",
+        "doc_string": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.cluster._affinity_propagation.AffinityPropagation.__init__"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.semi_supervised._label_propagation.BaseLabelPropagation.fit",
+        "file_path": "sklearn/semi_supervised/_label_propagation.py",
+        "start_line": 203,
+        "end_line": 298,
+        "source_code": "    def fit(self, X, y):\n        \"\"\"Fit a semi-supervised label propagation model based\n\n        All the input data is provided matrix X (labeled and unlabeled)\n        and corresponding label matrix y with a dedicated marker value for\n        unlabeled samples.\n\n        Parameters\n        ----------\n        X : array-like of shape (n_samples, n_features)\n            A {n_samples by n_samples} size matrix will be created from this\n\n        y : array_like, shape = [n_samples]\n            n_labeled_samples (unlabeled points are marked as -1)\n            All unlabeled samples will be transductively assigned labels\n\n        Returns\n        -------\n        self : returns an instance of self.\n        \"\"\"\n        X, y = check_X_y(X, y)\n        self.X_ = X\n        check_classification_targets(y)\n\n        # actual graph construction (implementations should override this)\n        graph_matrix = self._build_graph()\n\n        # label construction\n        # construct a categorical distribution for classification only\n        classes = np.unique(y)\n        classes = (classes[classes != -1])\n        self.classes_ = classes\n\n        n_samples, n_classes = len(y), len(classes)\n\n        alpha = self.alpha\n        if self._variant == 'spreading' and \\\n                (alpha is None or alpha <= 0.0 or alpha >= 1.0):\n            raise ValueError('alpha=%s is invalid: it must be inside '\n                             'the open interval (0, 1)' % alpha)\n        y = np.asarray(y)\n        unlabeled = y == -1\n\n        # initialize distributions\n        self.label_distributions_ = np.zeros((n_samples, n_classes))\n        for label in classes:\n            self.label_distributions_[y == label, classes == label] = 1\n\n        y_static = np.copy(self.label_distributions_)\n        if self._variant == 'propagation':\n            # LabelPropagation\n            y_static[unlabeled] = 0\n        else:\n            # LabelSpreading\n            y_static *= 1 - alpha\n\n        l_previous = np.zeros((self.X_.shape[0], n_classes))\n\n        unlabeled = unlabeled[:, np.newaxis]\n        if sparse.isspmatrix(graph_matrix):\n            graph_matrix = graph_matrix.tocsr()\n\n        for self.n_iter_ in range(self.max_iter):\n            if np.abs(self.label_distributions_ - l_previous).sum() < self.tol:\n                break\n\n            l_previous = self.label_distributions_\n            self.label_distributions_ = safe_sparse_dot(\n                graph_matrix, self.label_distributions_)\n\n            if self._variant == 'propagation':\n                normalizer = np.sum(\n                    self.label_distributions_, axis=1)[:, np.newaxis]\n                self.label_distributions_ /= normalizer\n                self.label_distributions_ = np.where(unlabeled,\n                                                     self.label_distributions_,\n                                                     y_static)\n            else:\n                # clamp\n                self.label_distributions_ = np.multiply(\n                    alpha, self.label_distributions_) + y_static\n        else:\n            warnings.warn(\n                'max_iter=%d was reached without convergence.' % self.max_iter,\n                category=ConvergenceWarning\n            )\n            self.n_iter_ += 1\n\n        normalizer = np.sum(self.label_distributions_, axis=1)[:, np.newaxis]\n        self.label_distributions_ /= normalizer\n\n        # set the transduction item\n        transduction = self.classes_[np.argmax(self.label_distributions_,\n                                               axis=1)]\n        self.transduction_ = transduction.ravel()\n        return self",
+        "signature": "scikit-learn.sklearn.semi_supervised._label_propagation.BaseLabelPropagation.fit(self, X, y)",
+        "doc_string": "Fit a semi-supervised label propagation model based\n\nAll the input data is provided matrix X (labeled and unlabeled)\nand corresponding label matrix y with a dedicated marker value for\nunlabeled samples.\n\nParameters\n----------\nX : array-like of shape (n_samples, n_features)\n    A {n_samples by n_samples} size matrix will be created from this\n\ny : array_like, shape = [n_samples]\n    n_labeled_samples (unlabeled points are marked as -1)\n    All unlabeled samples will be transductively assigned labels\n\nReturns\n-------\nself : returns an instance of self.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.semi_supervised._label_propagation.BaseLabelPropagation.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.neighbors._nca.NeighborhoodComponentsAnalysis.fit",
+        "file_path": "sklearn/neighbors/_nca.py",
+        "start_line": 174,
+        "end_line": 240,
+        "source_code": "    def fit(self, X, y):\n        \"\"\"Fit the model according to the given training data.\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            The training samples.\n\n        y : array-like, shape (n_samples,)\n            The corresponding training labels.\n\n        Returns\n        -------\n        self : object\n            returns a trained NeighborhoodComponentsAnalysis model.\n        \"\"\"\n\n        # Verify inputs X and y and NCA parameters, and transform a copy if\n        # needed\n        X, y, init = self._validate_params(X, y)\n\n        # Initialize the random generator\n        self.random_state_ = check_random_state(self.random_state)\n\n        # Measure the total training time\n        t_train = time.time()\n\n        # Compute a mask that stays fixed during optimization:\n        same_class_mask = y[:, np.newaxis] == y[np.newaxis, :]\n        # (n_samples, n_samples)\n\n        # Initialize the transformation\n        transformation = self._initialize(X, y, init)\n\n        # Create a dictionary of parameters to be passed to the optimizer\n        disp = self.verbose - 2 if self.verbose > 1 else -1\n        optimizer_params = {'method': 'L-BFGS-B',\n                            'fun': self._loss_grad_lbfgs,\n                            'args': (X, same_class_mask, -1.0),\n                            'jac': True,\n                            'x0': transformation,\n                            'tol': self.tol,\n                            'options': dict(maxiter=self.max_iter, disp=disp),\n                            'callback': self._callback\n                            }\n\n        # Call the optimizer\n        self.n_iter_ = 0\n        opt_result = minimize(**optimizer_params)\n\n        # Reshape the solution found by the optimizer\n        self.components_ = opt_result.x.reshape(-1, X.shape[1])\n\n        # Stop timer\n        t_train = time.time() - t_train\n        if self.verbose:\n            cls_name = self.__class__.__name__\n\n            # Warn the user if the algorithm did not converge\n            if not opt_result.success:\n                warn('[{}] NCA did not converge: {}'.format(\n                    cls_name, opt_result.message),\n                     ConvergenceWarning)\n\n            print('[{}] Training took {:8.2f}s.'.format(cls_name, t_train))\n\n        return self",
+        "signature": "scikit-learn.sklearn.neighbors._nca.NeighborhoodComponentsAnalysis.fit(self, X, y)",
+        "doc_string": "Fit the model according to the given training data.\n\nParameters\n----------\nX : array-like, shape (n_samples, n_features)\n    The training samples.\n\ny : array-like, shape (n_samples,)\n    The corresponding training labels.\n\nReturns\n-------\nself : object\n    returns a trained NeighborhoodComponentsAnalysis model.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.neighbors._nca.NeighborhoodComponentsAnalysis.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.decomposition._online_lda.LatentDirichletAllocation.fit",
+        "file_path": "sklearn/decomposition/_online_lda.py",
+        "start_line": 527,
+        "end_line": 596,
+        "source_code": "    def fit(self, X, y=None):\n        \"\"\"Learn model for the data X with variational Bayes method.\n\n        When `learning_method` is 'online', use mini-batch update.\n        Otherwise, use batch update.\n\n        Parameters\n        ----------\n        X : array-like or sparse matrix, shape=(n_samples, n_features)\n            Document word matrix.\n\n        y : Ignored\n\n        Returns\n        -------\n        self\n        \"\"\"\n        self._check_params()\n        X = self._check_non_neg_array(X, \"LatentDirichletAllocation.fit\")\n        n_samples, n_features = X.shape\n        max_iter = self.max_iter\n        evaluate_every = self.evaluate_every\n        learning_method = self.learning_method\n\n        batch_size = self.batch_size\n\n        # initialize parameters\n        self._init_latent_vars(n_features)\n        # change to perplexity later\n        last_bound = None\n        n_jobs = effective_n_jobs(self.n_jobs)\n        with Parallel(n_jobs=n_jobs,\n                      verbose=max(0, self.verbose - 1)) as parallel:\n            for i in range(max_iter):\n                if learning_method == 'online':\n                    for idx_slice in gen_batches(n_samples, batch_size):\n                        self._em_step(X[idx_slice, :], total_samples=n_samples,\n                                      batch_update=False, parallel=parallel)\n                else:\n                    # batch update\n                    self._em_step(X, total_samples=n_samples,\n                                  batch_update=True, parallel=parallel)\n\n                # check perplexity\n                if evaluate_every > 0 and (i + 1) % evaluate_every == 0:\n                    doc_topics_distr, _ = self._e_step(X, cal_sstats=False,\n                                                       random_init=False,\n                                                       parallel=parallel)\n                    bound = self._perplexity_precomp_distr(X, doc_topics_distr,\n                                                           sub_sampling=False)\n                    if self.verbose:\n                        print('iteration: %d of max_iter: %d, perplexity: %.4f'\n                              % (i + 1, max_iter, bound))\n\n                    if last_bound and abs(last_bound - bound) < self.perp_tol:\n                        break\n                    last_bound = bound\n\n                elif self.verbose:\n                    print('iteration: %d of max_iter: %d' % (i + 1, max_iter))\n                self.n_iter_ += 1\n\n        # calculate final perplexity value on train set\n        doc_topics_distr, _ = self._e_step(X, cal_sstats=False,\n                                           random_init=False,\n                                           parallel=parallel)\n        self.bound_ = self._perplexity_precomp_distr(X, doc_topics_distr,\n                                                     sub_sampling=False)\n\n        return self",
+        "signature": "scikit-learn.sklearn.decomposition._online_lda.LatentDirichletAllocation.fit(self, X, y)",
+        "doc_string": "Learn model for the data X with variational Bayes method.\n\nWhen `learning_method` is 'online', use mini-batch update.\nOtherwise, use batch update.\n\nParameters\n----------\nX : array-like or sparse matrix, shape=(n_samples, n_features)\n    Document word matrix.\n\ny : Ignored\n\nReturns\n-------\nself",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.decomposition._online_lda.LatentDirichletAllocation.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "scikit-learn.sklearn.cluster._mean_shift.MeanShift.fit",
+        "file_path": "sklearn/cluster/_mean_shift.py",
+        "start_line": 359,
+        "end_line": 443,
+        "source_code": "    def fit(self, X, y=None):\n        \"\"\"Perform clustering.\n\n        Parameters\n        ----------\n        X : array-like of shape (n_samples, n_features)\n            Samples to cluster.\n\n        y : Ignored\n\n        \"\"\"\n        X = check_array(X)\n        bandwidth = self.bandwidth\n        if bandwidth is None:\n            bandwidth = estimate_bandwidth(X, n_jobs=self.n_jobs)\n        elif bandwidth <= 0:\n            raise ValueError(\"bandwidth needs to be greater than zero or None,\"\n                             \" got %f\" % bandwidth)\n\n        seeds = self.seeds\n        if seeds is None:\n            if self.bin_seeding:\n                seeds = get_bin_seeds(X, bandwidth, self.min_bin_freq)\n            else:\n                seeds = X\n        n_samples, n_features = X.shape\n        center_intensity_dict = {}\n\n        # We use n_jobs=1 because this will be used in nested calls under\n        # parallel calls to _mean_shift_single_seed so there is no need for\n        # for further parallelism.\n        nbrs = NearestNeighbors(radius=bandwidth, n_jobs=1).fit(X)\n\n        # execute iterations on all seeds in parallel\n        all_res = Parallel(n_jobs=self.n_jobs)(\n            delayed(_mean_shift_single_seed)\n            (seed, X, nbrs, self.max_iter) for seed in seeds)\n        # copy results in a dictionary\n        for i in range(len(seeds)):\n            if all_res[i][1]:  # i.e. len(points_within) > 0\n                center_intensity_dict[all_res[i][0]] = all_res[i][1]\n\n        self.n_iter_ = max([x[2] for x in all_res])\n\n        if not center_intensity_dict:\n            # nothing near seeds\n            raise ValueError(\"No point was within bandwidth=%f of any seed.\"\n                             \" Try a different seeding strategy \\\n                             or increase the bandwidth.\"\n                             % bandwidth)\n\n        # POST PROCESSING: remove near duplicate points\n        # If the distance between two kernels is less than the bandwidth,\n        # then we have to remove one because it is a duplicate. Remove the\n        # one with fewer points.\n\n        sorted_by_intensity = sorted(center_intensity_dict.items(),\n                                     key=lambda tup: (tup[1], tup[0]),\n                                     reverse=True)\n        sorted_centers = np.array([tup[0] for tup in sorted_by_intensity])\n        unique = np.ones(len(sorted_centers), dtype=np.bool)\n        nbrs = NearestNeighbors(radius=bandwidth,\n                                n_jobs=self.n_jobs).fit(sorted_centers)\n        for i, center in enumerate(sorted_centers):\n            if unique[i]:\n                neighbor_idxs = nbrs.radius_neighbors([center],\n                                                      return_distance=False)[0]\n                unique[neighbor_idxs] = 0\n                unique[i] = 1  # leave the current point as unique\n        cluster_centers = sorted_centers[unique]\n\n        # ASSIGN LABELS: a point belongs to the cluster that it is closest to\n        nbrs = NearestNeighbors(n_neighbors=1,\n                                n_jobs=self.n_jobs).fit(cluster_centers)\n        labels = np.zeros(n_samples, dtype=np.int)\n        distances, idxs = nbrs.kneighbors(X)\n        if self.cluster_all:\n            labels = idxs.flatten()\n        else:\n            labels.fill(-1)\n            bool_selector = distances.flatten() <= bandwidth\n            labels[bool_selector] = idxs.flatten()[bool_selector]\n\n        self.cluster_centers_, self.labels_ = cluster_centers, labels\n        return self",
+        "signature": "scikit-learn.sklearn.cluster._mean_shift.MeanShift.fit(self, X, y)",
+        "doc_string": "Perform clustering.\n\nParameters\n----------\nX : array-like of shape (n_samples, n_features)\n    Samples to cluster.\n\ny : Ignored",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "scikit-learn.sklearn.cluster._mean_shift.MeanShift.fit"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      }
+    ],
+    "classes": [
+      {
+        "start_line": 1586,
+        "file_path": "sklearn/linear_model/_ridge.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class RidgeCV(MultiOutputMixin, RegressorMixin, _BaseRidgeCV):\n    \"\"\"Ridge regression with built-in cross-validation.\n\n    See glossary entry for :term:`cross-validation estimator`.\n\n    By default, it performs Generalized Cross-Validation, which is a form of\n    efficient Leave-One-Out cross-validation.\n\n    Read more in the :ref:`User Guide <ridge_regression>`.\n\n    Parameters\n    ----------\n    alphas : numpy array of shape (n_alphas,), default=(0.1, 1.0, 10.0)\n        Array of alpha values to try.\n        Regularization strength; must be a positive float. Regularization\n        improves the conditioning of the problem and reduces the variance of\n        the estimates. Larger values specify stronger regularization.\n        Alpha corresponds to ``C^-1`` in other linear models such as\n        LogisticRegression or LinearSVC.\n        If using generalized cross-validation, alphas must be positive.\n\n    fit_intercept : bool, default=True\n        Whether to calculate the intercept for this model. If set\n        to false, no intercept will be used in calculations\n        (i.e. data is expected to be centered).\n\n    normalize : bool, default=False\n        This parameter is ignored when ``fit_intercept`` is set to False.\n        If True, the regressors X will be normalized before regression by\n        subtracting the mean and dividing by the l2-norm.\n        If you wish to standardize, please use\n        :class:`sklearn.preprocessing.StandardScaler` before calling ``fit``\n        on an estimator with ``normalize=False``.\n\n    scoring : string, callable or None, default=None\n        A string (see model evaluation documentation) or\n        a scorer callable object / function with signature\n        ``scorer(estimator, X, y)``.\n        If None, the negative mean squared error if cv is 'auto' or None\n        (i.e. when using generalized cross-validation), and r2 score otherwise.\n\n    cv : int, cross-validation generator or an iterable, optional\n        Determines the cross-validation splitting strategy.\n        Possible inputs for cv are:\n\n        - None, to use the efficient Leave-One-Out cross-validation\n          (also known as Generalized Cross-Validation).\n        - integer, to specify the number of folds.\n        - :term:`CV splitter`,\n        - An iterable yielding (train, test) splits as arrays of indices.\n\n        For integer/None inputs, if ``y`` is binary or multiclass,\n        :class:`sklearn.model_selection.StratifiedKFold` is used, else,\n        :class:`sklearn.model_selection.KFold` is used.\n\n        Refer :ref:`User Guide <cross_validation>` for the various\n        cross-validation strategies that can be used here.\n\n    gcv_mode : {None, 'auto', 'svd', eigen'}, optional\n        Flag indicating which strategy to use when performing\n        Generalized Cross-Validation. Options are::\n\n            'auto' : use 'svd' if n_samples > n_features, otherwise use 'eigen'\n            'svd' : force use of singular value decomposition of X when X is\n                dense, eigenvalue decomposition of X^T.X when X is sparse.\n            'eigen' : force computation via eigendecomposition of X.X^T\n\n        The 'auto' mode is the default and is intended to pick the cheaper\n        option of the two depending on the shape of the training data.\n\n    store_cv_values : boolean, default=False\n        Flag indicating if the cross-validation values corresponding to\n        each alpha should be stored in the ``cv_values_`` attribute (see\n        below). This flag is only compatible with ``cv=None`` (i.e. using\n        Generalized Cross-Validation).\n\n    Attributes\n    ----------\n    cv_values_ : array, shape = [n_samples, n_alphas] or \\\n        shape = [n_samples, n_targets, n_alphas], optional\n        Cross-validation values for each alpha (if ``store_cv_values=True``\\\n        and ``cv=None``). After ``fit()`` has been called, this attribute \\\n        will contain the mean squared errors (by default) or the values \\\n        of the ``{loss,score}_func`` function (if provided in the constructor).\n\n    coef_ : array, shape = [n_features] or [n_targets, n_features]\n        Weight vector(s).\n\n    intercept_ : float | array, shape = (n_targets,)\n        Independent term in decision function. Set to 0.0 if\n        ``fit_intercept = False``.\n\n    alpha_ : float\n        Estimated regularization parameter.\n\n    Examples\n    --------\n    >>> from sklearn.datasets import load_diabetes\n    >>> from sklearn.linear_model import RidgeCV\n    >>> X, y = load_diabetes(return_X_y=True)\n    >>> clf = RidgeCV(alphas=[1e-3, 1e-2, 1e-1, 1]).fit(X, y)\n    >>> clf.score(X, y)\n    0.5166...\n\n    See also\n    --------\n    Ridge : Ridge regression\n    RidgeClassifier : Ridge classifier\n    RidgeClassifierCV : Ridge classifier with built-in cross validation\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.linear_model._ridge.RidgeCV",
+        "documentation": "Ridge regression with built-in cross-validation.\n\nSee glossary entry for :term:`cross-validation estimator`.\n\nBy default, it performs Generalized Cross-Validation, which is a form of\nefficient Leave-One-Out cross-validation.\n\nRead more in the :ref:`User Guide <ridge_regression>`.\n\nParameters\n----------\nalphas : numpy array of shape (n_alphas,), default=(0.1, 1.0, 10.0)\n    Array of alpha values to try.\n    Regularization strength; must be a positive float. Regularization\n    improves the conditioning of the problem and reduces the variance of\n    the estimates. Larger values specify stronger regularization.\n    Alpha corresponds to ``C^-1`` in other linear models such as\n    LogisticRegression or LinearSVC.\n    If using generalized cross-validation, alphas must be positive.\n\nfit_intercept : bool, default=True\n    Whether to calculate the intercept for this model. If set\n    to false, no intercept will be used in calculations\n    (i.e. data is expected to be centered).\n\nnormalize : bool, default=False\n    This parameter is ignored when ``fit_intercept`` is set to False.\n    If True, the regressors X will be normalized before regression by\n    subtracting the mean and dividing by the l2-norm.\n    If you wish to standardize, please use\n    :class:`sklearn.preprocessing.StandardScaler` before calling ``fit``\n    on an estimator with ``normalize=False``.\n\nscoring : string, callable or None, default=None\n    A string (see model evaluation documentation) or\n    a scorer callable object / function with signature\n    ``scorer(estimator, X, y)``.\n    If None, the negative mean squared error if cv is 'auto' or None\n    (i.e. when using generalized cross-validation), and r2 score otherwise.\n\ncv : int, cross-validation generator or an iterable, optional\n    Determines the cross-validation splitting strategy.\n    Possible inputs for cv are:\n\n    - None, to use the efficient Leave-One-Out cross-validation\n      (also known as Generalized Cross-Validation).\n    - integer, to specify the number of folds.\n    - :term:`CV splitter`,\n    - An iterable yielding (train, test) splits as arrays of indices.\n\n    For integer/None inputs, if ``y`` is binary or multiclass,\n    :class:`sklearn.model_selection.StratifiedKFold` is used, else,\n    :class:`sklearn.model_selection.KFold` is used.\n\n    Refer :ref:`User Guide <cross_validation>` for the various\n    cross-validation strategies that can be used here.\n\ngcv_mode : {None, 'auto', 'svd', eigen'}, optional\n    Flag indicating which strategy to use when performing\n    Generalized Cross-Validation. Options are::\n\n        'auto' : use 'svd' if n_samples > n_features, otherwise use 'eigen'\n        'svd' : force use of singular value decomposition of X when X is\n            dense, eigenvalue decomposition of X^T.X when X is sparse.\n        'eigen' : force computation via eigendecomposition of X.X^T\n\n    The 'auto' mode is the default and is intended to pick the cheaper\n    option of the two depending on the shape of the training data.\n\nstore_cv_values : boolean, default=False\n    Flag indicating if the cross-validation values corresponding to\n    each alpha should be stored in the ``cv_values_`` attribute (see\n    below). This flag is only compatible with ``cv=None`` (i.e. using\n    Generalized Cross-Validation).\n\nAttributes\n----------\ncv_values_ : array, shape = [n_samples, n_alphas] or         shape = [n_samples, n_targets, n_alphas], optional\n    Cross-validation values for each alpha (if ``store_cv_values=True``        and ``cv=None``). After ``fit()`` has been called, this attribute         will contain the mean squared errors (by default) or the values         of the ``{loss,score}_func`` function (if provided in the constructor).\n\ncoef_ : array, shape = [n_features] or [n_targets, n_features]\n    Weight vector(s).\n\nintercept_ : float | array, shape = (n_targets,)\n    Independent term in decision function. Set to 0.0 if\n    ``fit_intercept = False``.\n\nalpha_ : float\n    Estimated regularization parameter.\n\nExamples\n--------\n>>> from sklearn.datasets import load_diabetes\n>>> from sklearn.linear_model import RidgeCV\n>>> X, y = load_diabetes(return_X_y=True)\n>>> clf = RidgeCV(alphas=[1e-3, 1e-2, 1e-1, 1]).fit(X, y)\n>>> clf.score(X, y)\n0.5166...\n\nSee also\n--------\nRidge : Ridge regression\nRidgeClassifier : Ridge classifier\nRidgeClassifierCV : Ridge classifier with built-in cross validation",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/linear_model/_ridge.py"
+          },
+          {
+            "start_node": "sklearn/linear_model/_ridge.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.linear_model._ridge.RidgeCV"
+          }
+        ],
+        "similarity": 0.10929109027841942,
+        "end_line": 1696,
+        "signature": null
+      },
+      {
+        "start_line": 248,
+        "file_path": "sklearn/utils/fixes.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class loguniform(scipy.stats.reciprocal):\n    \"\"\"A class supporting log-uniform random variables.\n\n    Parameters\n    ----------\n    low : float\n        The minimum value\n    high : float\n        The maximum value\n\n    Methods\n    -------\n    rvs(self, size=None, random_state=None)\n        Generate log-uniform random variables\n\n    The most useful method for Scikit-learn usage is highlighted here.\n    For a full list, see\n    `scipy.stats.reciprocal\n    <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.reciprocal.html>`_.\n    This list includes all functions of ``scipy.stats`` continuous\n    distributions such as ``pdf``.\n\n    Notes\n    -----\n    This class generates values between ``low`` and ``high`` or\n\n        low <= loguniform(low, high).rvs() <= high\n\n    The logarithmic probability density function (PDF) is uniform. When\n    ``x`` is a uniformly distributed random variable between 0 and 1, ``10**x``\n    are random variales that are equally likely to be returned.\n\n    This class is an alias to ``scipy.stats.reciprocal``, which uses the\n    reciprocal distribution:\n    https://en.wikipedia.org/wiki/Reciprocal_distribution\n\n    Examples\n    --------\n\n    >>> from sklearn.utils.fixes import loguniform\n    >>> rv = loguniform(1e-3, 1e1)\n    >>> rvs = rv.rvs(random_state=42, size=1000)\n    >>> rvs.min()  # doctest: +SKIP\n    0.0010435856341129003\n    >>> rvs.max()  # doctest: +SKIP\n    9.97403052786026\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.utils.fixes.loguniform",
+        "documentation": "A class supporting log-uniform random variables.\n\nParameters\n----------\nlow : float\n    The minimum value\nhigh : float\n    The maximum value\n\nMethods\n-------\nrvs(self, size=None, random_state=None)\n    Generate log-uniform random variables\n\nThe most useful method for Scikit-learn usage is highlighted here.\nFor a full list, see\n`scipy.stats.reciprocal\n<https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.reciprocal.html>`_.\nThis list includes all functions of ``scipy.stats`` continuous\ndistributions such as ``pdf``.\n\nNotes\n-----\nThis class generates values between ``low`` and ``high`` or\n\n    low <= loguniform(low, high).rvs() <= high\n\nThe logarithmic probability density function (PDF) is uniform. When\n``x`` is a uniformly distributed random variable between 0 and 1, ``10**x``\nare random variales that are equally likely to be returned.\n\nThis class is an alias to ``scipy.stats.reciprocal``, which uses the\nreciprocal distribution:\nhttps://en.wikipedia.org/wiki/Reciprocal_distribution\n\nExamples\n--------\n\n>>> from sklearn.utils.fixes import loguniform\n>>> rv = loguniform(1e-3, 1e1)\n>>> rvs = rv.rvs(random_state=42, size=1000)\n>>> rvs.min()  # doctest: +SKIP\n0.0010435856341129003\n>>> rvs.max()  # doctest: +SKIP\n9.97403052786026",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/utils/fixes.py"
+          },
+          {
+            "start_node": "sklearn/utils/fixes.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.utils.fixes.loguniform"
+          }
+        ],
+        "similarity": 0.09503296967379131,
+        "end_line": 294,
+        "signature": null
+      },
+      {
+        "start_line": 383,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadNumericalValue(ArffException):\n    '''Error raised when and invalid numerical value is used in some data\n    instance.'''\n    message = 'Invalid numerical value, at line %d.'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.BadNumericalValue",
+        "documentation": "Error raised when and invalid numerical value is used in some data\ninstance.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.BadNumericalValue"
+          }
+        ],
+        "similarity": 0.0817712212936218,
+        "end_line": 386,
+        "signature": null
+      },
+      {
+        "start_line": 62,
+        "file_path": "sklearn/utils/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Parallel(_joblib.Parallel):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.utils.__init__.Parallel",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/utils/__init__.py"
+          },
+          {
+            "start_node": "sklearn/utils/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.utils.__init__.Parallel"
+          }
+        ],
+        "similarity": 0.0666376640263217,
+        "end_line": 63,
+        "signature": null
+      },
+      {
+        "start_line": 346,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadAttributeType(ArffException):\n    '''Error raised when some invalid type is provided into the attribute\n    declaration.'''\n    message = 'Bad @ATTRIBUTE type, at line %d.'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.BadAttributeType",
+        "documentation": "Error raised when some invalid type is provided into the attribute\ndeclaration.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.BadAttributeType"
+          }
+        ],
+        "similarity": 0.06615740313956221,
+        "end_line": 349,
+        "signature": null
+      },
+      {
+        "start_line": 333,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadAttributeFormat(ArffException):\n    '''Error raised when some attribute declaration is in an invalid format.'''\n    message = 'Bad @ATTRIBUTE format, at line %d.'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.BadAttributeFormat",
+        "documentation": "Error raised when some attribute declaration is in an invalid format.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.BadAttributeFormat"
+          }
+        ],
+        "similarity": 0.06578503915049329,
+        "end_line": 335,
+        "signature": null
+      },
+      {
+        "start_line": 329,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadRelationFormat(ArffException):\n    '''Error raised when the relation declaration is in an invalid format.'''\n    message = 'Bad @RELATION format, at line %d.'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.BadRelationFormat",
+        "documentation": "Error raised when the relation declaration is in an invalid format.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.BadRelationFormat"
+          }
+        ],
+        "similarity": 0.06297794125578114,
+        "end_line": 331,
+        "signature": null
+      },
+      {
+        "start_line": 388,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BadStringValue(ArffException):\n    '''Error raise when a string contains space but is not quoted.'''\n    message = 'Invalid string value at line %d.'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.BadStringValue",
+        "documentation": "Error raise when a string contains space but is not quoted.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.BadStringValue"
+          }
+        ],
+        "similarity": 0.057827209585535125,
+        "end_line": 390,
+        "signature": null
+      },
+      {
+        "start_line": 332,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib(types.ModuleType):\n    \"\"\"Create a six.moves.urllib namespace that resembles the Python 3 namespace\"\"\"\n    parse = sys.modules[__name__ + \".moves.urllib_parse\"]\n    error = sys.modules[__name__ + \".moves.urllib_error\"]\n    request = sys.modules[__name__ + \".moves.urllib_request\"]\n    response = sys.modules[__name__ + \".moves.urllib_response\"]\n    robotparser = sys.modules[__name__ + \".moves.urllib_robotparser\"]",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib",
+        "documentation": "Create a six.moves.urllib namespace that resembles the Python 3 namespace",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib"
+          }
+        ],
+        "similarity": 0.057493020515839835,
+        "end_line": 338,
+        "signature": null
+      },
+      {
+        "start_line": 236,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib_error(types.ModuleType):\n    \"\"\"Lazy loading of moved objects in six.moves.urllib_error\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib_error",
+        "documentation": "Lazy loading of moved objects in six.moves.urllib_error",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib_error"
+          }
+        ],
+        "similarity": 0.05428336869785299,
+        "end_line": 237,
+        "signature": null
+      },
+      {
+        "start_line": 521,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Data(_DataListMixin, DenseGeneratorData):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.Data",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.Data"
+          }
+        ],
+        "similarity": 0.052332203759459246,
+        "end_line": 522,
+        "signature": null
+      },
+      {
+        "start_line": 612,
+        "file_path": "sklearn/base.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class MetaEstimatorMixin:\n    _required_parameters = [\"estimator\"]\n    \"\"\"Mixin class for all meta estimators in scikit-learn.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.base.MetaEstimatorMixin",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/base.py"
+          },
+          {
+            "start_node": "sklearn/base.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.base.MetaEstimatorMixin"
+          }
+        ],
+        "similarity": 0.05227847091065582,
+        "end_line": 614,
+        "signature": null
+      },
+      {
+        "start_line": 556,
+        "file_path": "sklearn/utils/estimator_checks.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NotAnArray(_NotAnArray):\n    # TODO: remove in 0.24\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.utils.estimator_checks.NotAnArray",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/utils/estimator_checks.py"
+          },
+          {
+            "start_node": "sklearn/utils/estimator_checks.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sklearn.utils.estimator_checks.NotAnArray"
+          }
+        ],
+        "similarity": 0.050949248846648296,
+        "end_line": 558,
+        "signature": null
+      },
+      {
+        "start_line": 222,
+        "file_path": "sklearn/ensemble/_gb.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ScaledLogOddsEstimator(LogOddsEstimator):\n    \"\"\"Log odds ratio scaled by 0.5 -- for exponential loss. \"\"\"\n    scale = 0.5",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.ensemble._gb.ScaledLogOddsEstimator",
+        "documentation": "Log odds ratio scaled by 0.5 -- for exponential loss. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/ensemble/_gb.py"
+          },
+          {
+            "start_node": "sklearn/ensemble/_gb.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.ensemble._gb.ScaledLogOddsEstimator"
+          }
+        ],
+        "similarity": 0.050324322604586254,
+        "end_line": 224,
+        "signature": null
+      },
+      {
+        "start_line": 299,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib_response(types.ModuleType):\n    \"\"\"Lazy loading of moved objects in six.moves.urllib_response\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib_response",
+        "documentation": "Lazy loading of moved objects in six.moves.urllib_response",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib_response"
+          }
+        ],
+        "similarity": 0.05026710077821955,
+        "end_line": 300,
+        "signature": null
+      },
+      {
+        "start_line": 57,
+        "file_path": "sklearn/utils/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Memory(_joblib.Memory):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.utils.__init__.Memory",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/utils/__init__.py"
+          },
+          {
+            "start_node": "sklearn/utils/__init__.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sklearn.utils.__init__.Memory"
+          }
+        ],
+        "similarity": 0.048974140652450496,
+        "end_line": 58,
+        "signature": null
+      },
+      {
+        "start_line": 140,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _MovedItems(types.ModuleType):\n    \"\"\"Lazy loading of moved objects\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six._MovedItems",
+        "documentation": "Lazy loading of moved objects",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six._MovedItems"
+          }
+        ],
+        "similarity": 0.04749693483689581,
+        "end_line": 141,
+        "signature": null
+      },
+      {
+        "start_line": 82,
+        "file_path": "sklearn/utils/_pprint.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class KeyValTupleParam(KeyValTuple):\n    \"\"\"Dummy class for correctly rendering key-value tuples from parameters.\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.utils._pprint.KeyValTupleParam",
+        "documentation": "Dummy class for correctly rendering key-value tuples from parameters.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/utils/_pprint.py"
+          },
+          {
+            "start_node": "sklearn/utils/_pprint.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sklearn.utils._pprint.KeyValTupleParam"
+          }
+        ],
+        "similarity": 0.04615124971799226,
+        "end_line": 84,
+        "signature": null
+      },
+      {
+        "start_line": 253,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib_request(types.ModuleType):\n    \"\"\"Lazy loading of moved objects in six.moves.urllib_request\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib_request",
+        "documentation": "Lazy loading of moved objects in six.moves.urllib_request",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib_request"
+          }
+        ],
+        "similarity": 0.045099294791693105,
+        "end_line": 254,
+        "signature": null
+      },
+      {
+        "start_line": 630,
+        "file_path": "sklearn/externals/_arff.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class LODData(_DataListMixin, LODGeneratorData):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals._arff.LODData",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/_arff.py"
+          },
+          {
+            "start_node": "sklearn/externals/_arff.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals._arff.LODData"
+          }
+        ],
+        "similarity": 0.044931378448701834,
+        "end_line": 631,
+        "signature": null
+      },
+      {
+        "start_line": 317,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib_robotparser(types.ModuleType):\n    \"\"\"Lazy loading of moved objects in six.moves.urllib_robotparser\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib_robotparser",
+        "documentation": "Lazy loading of moved objects in six.moves.urllib_robotparser",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib_robotparser"
+          }
+        ],
+        "similarity": 0.04487105865198563,
+        "end_line": 318,
+        "signature": null
+      },
+      {
+        "start_line": 208,
+        "file_path": "sklearn/externals/six.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Module_six_moves_urllib_parse(types.ModuleType):\n    \"\"\"Lazy loading of moved objects in six.moves.urllib_parse\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.externals.six.Module_six_moves_urllib_parse",
+        "documentation": "Lazy loading of moved objects in six.moves.urllib_parse",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/externals/six.py"
+          },
+          {
+            "start_node": "sklearn/externals/six.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.externals.six.Module_six_moves_urllib_parse"
+          }
+        ],
+        "similarity": 0.04437958110294907,
+        "end_line": 209,
+        "signature": null
+      },
+      {
+        "start_line": 505,
+        "file_path": "sklearn/feature_extraction/text.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class VectorizerMixin(_VectorizerMixin):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sklearn.feature_extraction.text.VectorizerMixin",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sklearn/feature_extraction/text.py"
+          },
+          {
+            "start_node": "sklearn/feature_extraction/text.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sklearn.feature_extraction.text.VectorizerMixin"
+          }
+        ],
+        "similarity": 0.03880809571986332,
+        "end_line": 506,
+        "signature": null
+      }
+    ],
+    "issues": [
+      {
+        "content": "The affinity propagation Documentation states: \r\n\"When the algorithm does not converge, it returns an empty array as cluster_center_indices and -1 as label for each training sample.\"\r\n\r\nExample:\r\n```python\r\nfrom sklearn.cluster import AffinityPropagation\r\nimport pandas as pd\r\n\r\ndata = pd.DataFrame([[1,0,0,0,0,0],[0,1,1,1,0,0],[0,0,1,0,0,1]])\r\naf = AffinityPropagation(affinity='euclidean', verbose=True, copy=False, max_iter=2).fit(data)\r\n\r\nprint(af.cluster_centers_indices_)\r\nprint(af.labels_)\r\n\r\n```\r\nI would expect that the clustering here (which does not converge) prints first an empty List and then [-1,-1,-1], however, I get [2] as cluster center and [0,0,0] as cluster labels. \r\nThe only way I currently know if the clustering fails is if I use the verbose option, however that is very unhandy. A hacky solution is to check if max_iter == n_iter_ but it could have converged exactly 15 iterations before max_iter (although unlikely).\r\nI am not sure if this is intended behavior and the documentation is wrong?\r\n\r\nFor my use-case within a bigger script, I would prefer to get back -1 values or have a property to check if it has converged, as otherwise, a user might not be aware that the clustering never converged.\r\n\r\n\r\n#### Versions\r\nSystem:\r\n    python: 3.6.7 | packaged by conda-forge | (default, Nov 21 2018, 02:32:25)  [GCC 4.8.2 20140120 (Red Hat 4.8.2-15)]\r\nexecutable: /home/jenniferh/Programs/anaconda3/envs/TF_RDKit_1_19/bin/python\r\n   machine: Linux-4.15.0-52-generic-x86_64-with-debian-stretch-sid\r\nBLAS:\r\n    macros: SCIPY_MKL_H=None, HAVE_CBLAS=None\r\n  lib_dirs: /home/jenniferh/Programs/anaconda3/envs/TF_RDKit_1_19/lib\r\ncblas_libs: mkl_rt, pthread\r\nPython deps:\r\n    pip: 18.1\r\n   setuptools: 40.6.3\r\n   sklearn: 0.20.3\r\n   numpy: 1.15.4\r\n   scipy: 1.2.0\r\n   Cython: 0.29.2\r\n   pandas: 0.23.4\r\n\r\n\n",
+        "distance": 0,
+        "title": "Return values of non converged affinity propagation clustering",
+        "name": "root",
+        "path": [],
+        "issue_id": "root",
+        "similarity": 2.0,
+        "type": "issue"
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "15464",
+        "type": "issue",
+        "content": "<!--\r\nIf your issue is a usage question, submit it here instead:\r\n- StackOverflow with the scikit-learn tag: https://stackoverflow.com/questions/tagged/scikit-learn\r\n- Mailing List: https://mail.python.org/mailman/listinfo/scikit-learn\r\nFor more information, see User Questions: http://scikit-learn.org/stable/support.html#user-questions\r\n-->\r\n\r\n<!-- Instructions For Filing a Bug: https://github.com/scikit-learn/scikit-learn/blob/master/CONTRIBUTING.md#filing-bugs -->\r\n\r\n#### Description\r\nDocTest failure on osx when testing master.\r\n\r\n```pytb\r\n______________________________________________________________________________\r\n___________ [doctest] sklearn.cluster._bicluster.SpectralCoclustering \r\n______________________________________________________________________________\r\n____________\r\n253         The bicluster label of each column.\r\n254 \r\n255     Examples\r\n256     --------\r\n257     >>> from sklearn.cluster import SpectralCoclustering\r\n258     >>> import numpy as np\r\n259     >>> X = np.array([[1, 1], [2, 1], [1, 0],\r\n260     ...               [4, 7], [3, 5], [3, 6]])\r\n261     >>> clustering = SpectralCoclustering(n_clusters=2, random_state=0).fit(X)\r\n262     >>> clustering.row_labels_\r\nExpected:\r\n    array([0, 1, 1, 0, 0, 0], dtype=int32)\r\nGot:\r\n    array([0, 0, 1, 0, 0, 0], dtype=int32)\r\n```\r\n#### Steps/Code to Reproduce\r\npytest sklearn\r\n<!--\r\nExample:\r\n```python\r\nfrom sklearn.feature_extraction.text import CountVectorizer\r\nfrom sklearn.decomposition import LatentDirichletAllocation\r\n\r\ndocs = [\"Help I have a bug\" for i in range(1000)]\r\n\r\nvectorizer = CountVectorizer(input=docs, analyzer='word')\r\nlda_features = vectorizer.fit_transform(docs)\r\n\r\nlda_model = LatentDirichletAllocation(\r\n    n_topics=10,\r\n    learning_method='online',\r\n    evaluate_every=10,\r\n    n_jobs=4,\r\n)\r\nmodel = lda_model.fit(lda_features)\r\n```\r\nIf the code is too long, feel free to put it in a public gist and link\r\nit in the issue: https://gist.github.com\r\n-->\r\n\r\n#### Expected Results\r\n<!-- Example: No error is thrown. Please paste or describe the expected results.-->\r\n\r\n#### Actual Results\r\n<!-- Please paste or specifically describe the actual output or traceback. -->\r\n\r\n#### Versions\r\n<!--\r\nPlease run the following snippet and paste the output below.\r\nFor scikit-learn >= 0.20:\r\nimport sklearn; sklearn.show_versions()\r\nFor scikit-learn < 0.20:\r\nimport platform; print(platform.platform())\r\nimport sys; print(\"Python\", sys.version)\r\nimport numpy; print(\"NumPy\", numpy.__version__)\r\nimport scipy; print(\"SciPy\", scipy.__version__)\r\nimport sklearn; print(\"Scikit-Learn\", sklearn.__version__)\r\n-->\r\nSystem:\r\n    python: 3.7.5 (default, Oct 25 2019, 10:52:18)  [Clang 4.0.1 (tags/RELEASE_401/final)]\r\nexecutable: /anaconda3/envs/sklearndev/bin/python\r\n   machine: Darwin-18.7.0-x86_64-i386-64bit\r\n\r\nPython deps:\r\n       pip: 19.3.1\r\nsetuptools: 41.6.0.post20191030\r\n   sklearn: 0.22.dev0\r\n     numpy: 1.16.2\r\n     scipy: 1.3.1\r\n    Cython: 0.29.13\r\n    pandas: None\r\nmatplotlib: 3.1.1\r\n    joblib: 0.14.0\r\n\r\n<!-- Thanks for contributing! -->\r\n\n\n\nComment by TomDLT:\nCannot reproduce on my machine:\r\n```\r\nSystem:\r\n    python: 3.7.5 (default, Oct 25 2019, 15:51:11)  [GCC 7.3.0]\r\nexecutable: /home/tom/miniconda3/bin/python\r\n   machine: Linux-4.15.0-66-generic-x86_64-with-debian-buster-sid\r\n\r\nPython deps:\r\n       pip: 19.3.1\r\nsetuptools: 41.6.0.post20191030\r\n   sklearn: 0.22.dev0\r\n     numpy: 1.17.2\r\n     scipy: 1.3.1\r\n    Cython: 0.29.14\r\n    pandas: None\r\nmatplotlib: 3.1.1\r\n    joblib: 0.14.0\r\n```\n\nComment by lakrish:\nJust updated numpy and Cython, still get the error.\r\n```\r\nSystem:\r\n    python: 3.7.5 (default, Oct 25 2019, 10:52:18)  [Clang 4.0.1 (tags/RELEASE_401/final)]\r\nexecutable: /anaconda3/envs/sklearndev/bin/python\r\n   machine: Darwin-18.7.0-x86_64-i386-64bit\r\n\r\nPython deps:\r\n       pip: 19.3.1\r\nsetuptools: 41.6.0.post20191030\r\n   sklearn: 0.22.dev0\r\n     numpy: 1.17.2\r\n     scipy: 1.3.1\r\n    Cython: 0.29.14\r\n    pandas: None\r\nmatplotlib: 3.1.1\r\n    joblib: 0.14.0\r\n```\r\n\r\nCould this be a Clang vs GCC issue? Also, see some strangeness reported with Spectral Clustering in this issue  https://github.com/scikit-learn/scikit-learn/issues/15439",
+        "source_code": null,
+        "distance": 0.25,
+        "title": "Failure of doctest for sklearn.cluster._bicluster.SpectralCoclustering on osx.",
+        "name": "issue#15464",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#15464"
+          }
+        ],
+        "similarity": 0.45531915872422657,
+        "end_line": null,
+        "signature": null
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "15439",
+        "type": "issue",
+        "content": "Hello\r\n\r\nI have generated random points on circumference of a circle with radius 1 and 2.5 respectively, 100 points each. After apply Spectral clustering points on each circle has different labels.\r\n\r\nCode used\r\n```\r\nclustering=SpectralClustering(n_clusters=2,affinity='rbf',eigen_solver='arpack',random_state=1).fit(data)\r\ndata['labels']=clustering.labels_\r\nplt.scatter(data['x'],data['y'],c=data['labels'])\r\n```\r\nBelow images represents the data before and after the spectral clustering.\r\n![spec](https://user-images.githubusercontent.com/22866208/68066252-4865e780-fd5b-11e9-8bc1-476c66b6bb6d.PNG)\r\n![spec_out](https://user-images.githubusercontent.com/22866208/68066253-48fe7e00-fd5b-11e9-8bf4-cc6f3fae5501.PNG)\r\n\r\nAny suggestion will be helpful.\n\n\nComment by jnothman:\nIt looks like it is inclining towards detecting a separate cluster around the origin.... I'm not sure but scaling your data might help for rbf kernel",
+        "source_code": null,
+        "distance": 0.5,
+        "title": "Spectral clustering returns mismatched labels",
+        "name": "issue#15439",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#15464"
+          },
+          {
+            "start_node": "issue#15464",
+            "description": "referenced by issue",
+            "type": "RELATED",
+            "end_node": "issue#15439"
+          }
+        ],
+        "similarity": 0.3501835947178056,
+        "end_line": null,
+        "signature": null
+      }
+    ]
+  },
+  "artifact_stats": {
+    "skipped_due_to_time": 15,
+    "valid_related_items": 31
+  }
+}

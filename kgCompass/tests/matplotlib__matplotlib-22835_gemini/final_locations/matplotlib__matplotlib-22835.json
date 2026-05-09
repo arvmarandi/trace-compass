@@ -1,0 +1,1554 @@
+{
+  "related_entities": {
+    "methods": [
+      {
+        "name": "matplotlib.artist.Artist.format_cursor_data",
+        "file_path": "lib/matplotlib/artist.py",
+        "start_line": 1277,
+        "end_line": 1321,
+        "source_code": "    def format_cursor_data(self, data):\n        \"\"\"\n        Return a string representation of *data*.\n\n        .. note::\n            This method is intended to be overridden by artist subclasses.\n            As an end-user of Matplotlib you will most likely not call this\n            method yourself.\n\n        The default implementation converts ints and floats and arrays of ints\n        and floats into a comma-separated string enclosed in square brackets,\n        unless the artist has an associated colorbar, in which case scalar\n        values are formatted using the colorbar's formatter.\n\n        See Also\n        --------\n        get_cursor_data\n        \"\"\"\n        if np.ndim(data) == 0 and isinstance(self, ScalarMappable):\n            # This block logically belongs to ScalarMappable, but can't be\n            # implemented in it because most ScalarMappable subclasses inherit\n            # from Artist first and from ScalarMappable second, so\n            # Artist.format_cursor_data would always have precedence over\n            # ScalarMappable.format_cursor_data.\n            n = self.cmap.N\n            if np.ma.getmask(data):\n                return \"[]\"\n            normed = self.norm(data)\n            if np.isfinite(normed):\n                # Midpoints of neighboring color intervals.\n                neighbors = self.norm.inverse(\n                    (int(self.norm(data) * n) + np.array([0, 1])) / n)\n                delta = abs(neighbors - data).max()\n                g_sig_digits = cbook._g_sig_digits(data, delta)\n            else:\n                g_sig_digits = 3  # Consistent with default below.\n            return \"[{:-#.{}g}]\".format(data, g_sig_digits)\n        else:\n            try:\n                data[0]\n            except (TypeError, IndexError):\n                data = [data]\n            data_str = ', '.join('{:0.3g}'.format(item) for item in data\n                                 if isinstance(item, Number))\n            return \"[\" + data_str + \"]\"",
+        "signature": "matplotlib.artist.Artist.format_cursor_data(self, data)",
+        "doc_string": "Return a string representation of *data*.\n\n.. note::\n    This method is intended to be overridden by artist subclasses.\n    As an end-user of Matplotlib you will most likely not call this\n    method yourself.\n\nThe default implementation converts ints and floats and arrays of ints\nand floats into a comma-separated string enclosed in square brackets,\nunless the artist has an associated colorbar, in which case scalar\nvalues are formatted using the colorbar's formatter.\n\nSee Also\n--------\nget_cursor_data",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "matplotlib.artist.Artist.format_cursor_data"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "matplotlib.colors.BoundaryNorm.inverse",
+        "file_path": "lib/matplotlib/colors.py",
+        "start_line": 1904,
+        "end_line": 1912,
+        "source_code": "    def inverse(self, value):\n        \"\"\"\n        Raises\n        ------\n        ValueError\n            BoundaryNorm is not invertible, so calling this method will always\n            raise an error\n        \"\"\"\n        raise ValueError(\"BoundaryNorm is not invertible\")",
+        "signature": "matplotlib.colors.BoundaryNorm.inverse(self, value)",
+        "doc_string": "Raises\n------\nValueError\n    BoundaryNorm is not invertible, so calling this method will always\n    raise an error",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "matplotlib.colors.BoundaryNorm.inverse"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "matplotlib.colors.BoundaryNorm.__init__",
+        "file_path": "lib/matplotlib/colors.py",
+        "start_line": 1799,
+        "end_line": 1860,
+        "source_code": "    def __init__(self, boundaries, ncolors, clip=False, *, extend='neither'):\n        \"\"\"\n        Parameters\n        ----------\n        boundaries : array-like\n            Monotonically increasing sequence of at least 2 bin edges:  data\n            falling in the n-th bin will be mapped to the n-th color.\n\n        ncolors : int\n            Number of colors in the colormap to be used.\n\n        clip : bool, optional\n            If clip is ``True``, out of range values are mapped to 0 if they\n            are below ``boundaries[0]`` or mapped to ``ncolors - 1`` if they\n            are above ``boundaries[-1]``.\n\n            If clip is ``False``, out of range values are mapped to -1 if\n            they are below ``boundaries[0]`` or mapped to *ncolors* if they are\n            above ``boundaries[-1]``. These are then converted to valid indices\n            by `Colormap.__call__`.\n\n        extend : {'neither', 'both', 'min', 'max'}, default: 'neither'\n            Extend the number of bins to include one or both of the\n            regions beyond the boundaries.  For example, if ``extend``\n            is 'min', then the color to which the region between the first\n            pair of boundaries is mapped will be distinct from the first\n            color in the colormap, and by default a\n            `~matplotlib.colorbar.Colorbar` will be drawn with\n            the triangle extension on the left or lower end.\n\n        Notes\n        -----\n        If there are fewer bins (including extensions) than colors, then the\n        color index is chosen by linearly interpolating the ``[0, nbins - 1]``\n        range onto the ``[0, ncolors - 1]`` range, effectively skipping some\n        colors in the middle of the colormap.\n        \"\"\"\n        if clip and extend != 'neither':\n            raise ValueError(\"'clip=True' is not compatible with 'extend'\")\n        super().__init__(vmin=boundaries[0], vmax=boundaries[-1], clip=clip)\n        self.boundaries = np.asarray(boundaries)\n        self.N = len(self.boundaries)\n        if self.N < 2:\n            raise ValueError(\"You must provide at least 2 boundaries \"\n                             f\"(1 region) but you passed in {boundaries!r}\")\n        self.Ncmap = ncolors\n        self.extend = extend\n\n        self._scale = None  # don't use the default scale.\n\n        self._n_regions = self.N - 1  # number of colors needed\n        self._offset = 0\n        if extend in ('min', 'both'):\n            self._n_regions += 1\n            self._offset = 1\n        if extend in ('max', 'both'):\n            self._n_regions += 1\n        if self._n_regions > self.Ncmap:\n            raise ValueError(f\"There are {self._n_regions} color bins \"\n                             \"including extensions, but ncolors = \"\n                             f\"{ncolors}; ncolors must equal or exceed the \"\n                             \"number of bins\")",
+        "signature": "matplotlib.colors.BoundaryNorm.__init__(self, boundaries, ncolors, clip)",
+        "doc_string": "Parameters\n----------\nboundaries : array-like\n    Monotonically increasing sequence of at least 2 bin edges:  data\n    falling in the n-th bin will be mapped to the n-th color.\n\nncolors : int\n    Number of colors in the colormap to be used.\n\nclip : bool, optional\n    If clip is ``True``, out of range values are mapped to 0 if they\n    are below ``boundaries[0]`` or mapped to ``ncolors - 1`` if they\n    are above ``boundaries[-1]``.\n\n    If clip is ``False``, out of range values are mapped to -1 if\n    they are below ``boundaries[0]`` or mapped to *ncolors* if they are\n    above ``boundaries[-1]``. These are then converted to valid indices\n    by `Colormap.__call__`.\n\nextend : {'neither', 'both', 'min', 'max'}, default: 'neither'\n    Extend the number of bins to include one or both of the\n    regions beyond the boundaries.  For example, if ``extend``\n    is 'min', then the color to which the region between the first\n    pair of boundaries is mapped will be distinct from the first\n    color in the colormap, and by default a\n    `~matplotlib.colorbar.Colorbar` will be drawn with\n    the triangle extension on the left or lower end.\n\nNotes\n-----\nIf there are fewer bins (including extensions) than colors, then the\ncolor index is chosen by linearly interpolating the ``[0, nbins - 1]``\nrange onto the ``[0, ncolors - 1]`` range, effectively skipping some\ncolors in the middle of the colormap.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "matplotlib.colors.BoundaryNorm.__init__"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      }
+    ],
+    "classes": [
+      {
+        "start_line": 1631,
+        "file_path": "lib/matplotlib/colors.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FuncNorm(Normalize):\n    \"\"\"\n    Arbitrary normalization using functions for the forward and inverse.\n\n    Parameters\n    ----------\n    functions : (callable, callable)\n        two-tuple of the forward and inverse functions for the normalization.\n        The forward function must be monotonic.\n\n        Both functions must have the signature ::\n\n           def forward(values: array-like) -> array-like\n\n    vmin, vmax : float or None\n        If *vmin* and/or *vmax* is not given, they are initialized from the\n        minimum and maximum value, respectively, of the first input\n        processed; i.e., ``__call__(A)`` calls ``autoscale_None(A)``.\n\n    clip : bool, default: False\n        If ``True`` values falling outside the range ``[vmin, vmax]``,\n        are mapped to 0 or 1, whichever is closer, and masked values are\n        set to 1.  If ``False`` masked values remain masked.\n\n        Clipping silently defeats the purpose of setting the over, under,\n        and masked colors in a colormap, so it is likely to lead to\n        surprises; therefore the default is ``clip=False``.\n    \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.colors.FuncNorm",
+        "documentation": "Arbitrary normalization using functions for the forward and inverse.\n\nParameters\n----------\nfunctions : (callable, callable)\n    two-tuple of the forward and inverse functions for the normalization.\n    The forward function must be monotonic.\n\n    Both functions must have the signature ::\n\n       def forward(values: array-like) -> array-like\n\nvmin, vmax : float or None\n    If *vmin* and/or *vmax* is not given, they are initialized from the\n    minimum and maximum value, respectively, of the first input\n    processed; i.e., ``__call__(A)`` calls ``autoscale_None(A)``.\n\nclip : bool, default: False\n    If ``True`` values falling outside the range ``[vmin, vmax]``,\n    are mapped to 0 or 1, whichever is closer, and masked values are\n    set to 1.  If ``False`` masked values remain masked.\n\n    Clipping silently defeats the purpose of setting the over, under,\n    and masked colors in a colormap, so it is likely to lead to\n    surprises; therefore the default is ``clip=False``.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/colors.py"
+          },
+          {
+            "start_node": "lib/matplotlib/colors.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.colors.FuncNorm"
+          }
+        ],
+        "similarity": 0.12993504350475546,
+        "end_line": 1658,
+        "signature": null
+      },
+      {
+        "start_line": 195,
+        "file_path": "lib/mpl_toolkits/axisartist/axislines.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AxisArtistHelperRectlinear:\n\n    class Fixed(AxisArtistHelper.Fixed):\n\n        def __init__(self, axes, loc, nth_coord=None):\n            \"\"\"\n            nth_coord = along which coordinate value varies\n            in 2D, nth_coord = 0 ->  x axis, nth_coord = 1 -> y axis\n            \"\"\"\n            super().__init__(loc, nth_coord)\n            self.axis = [axes.xaxis, axes.yaxis][self.nth_coord]\n\n        # TICK\n\n        def get_tick_iterators(self, axes):\n            \"\"\"tick_loc, tick_angle, tick_label\"\"\"\n            if self._loc in [\"bottom\", \"top\"]:\n                angle_normal, angle_tangent = 90, 0\n            else:\n                angle_normal, angle_tangent = 0, 90\n\n            major = self.axis.major\n            major_locs = major.locator()\n            major_labels = major.formatter.format_ticks(major_locs)\n\n            minor = self.axis.minor\n            minor_locs = minor.locator()\n            minor_labels = minor.formatter.format_ticks(minor_locs)\n\n            tick_to_axes = self.get_tick_transform(axes) - axes.transAxes\n\n            def _f(locs, labels):\n                for x, l in zip(locs, labels):\n                    c = list(self.passthru_pt)  # copy\n                    c[self.nth_coord] = x\n                    # check if the tick point is inside axes\n                    c2 = tick_to_axes.transform(c)\n                    if mpl.transforms._interval_contains_close(\n                            (0, 1), c2[self.nth_coord]):\n                        yield c, angle_normal, angle_tangent, l\n\n            return _f(major_locs, major_labels), _f(minor_locs, minor_labels)\n\n    class Floating(AxisArtistHelper.Floating):\n        def __init__(self, axes, nth_coord,\n                     passingthrough_point, axis_direction=\"bottom\"):\n            super().__init__(nth_coord, passingthrough_point)\n            self._axis_direction = axis_direction\n            self.axis = [axes.xaxis, axes.yaxis][self.nth_coord]\n\n        def get_line(self, axes):\n            _verts = np.array([[0., 0.],\n                               [1., 1.]])\n\n            fixed_coord = 1 - self.nth_coord\n            data_to_axes = axes.transData - axes.transAxes\n            p = data_to_axes.transform([self._value, self._value])\n            _verts[:, fixed_coord] = p[fixed_coord]\n\n            return Path(_verts)\n\n        def get_line_transform(self, axes):\n            return axes.transAxes\n\n        def get_axislabel_transform(self, axes):\n            return axes.transAxes\n\n        def get_axislabel_pos_angle(self, axes):\n            \"\"\"\n            Return the label reference position in transAxes.\n\n            get_label_transform() returns a transform of (transAxes+offset)\n            \"\"\"\n            angle = [0, 90][self.nth_coord]\n            _verts = [0.5, 0.5]\n            fixed_coord = 1 - self.nth_coord\n            data_to_axes = axes.transData - axes.transAxes\n            p = data_to_axes.transform([self._value, self._value])\n            _verts[fixed_coord] = p[fixed_coord]\n            if 0 <= _verts[fixed_coord] <= 1:\n                return _verts, angle\n            else:\n                return None, None\n\n        def get_tick_transform(self, axes):\n            return axes.transData\n\n        def get_tick_iterators(self, axes):\n            \"\"\"tick_loc, tick_angle, tick_label\"\"\"\n            if self.nth_coord == 0:\n                angle_normal, angle_tangent = 90, 0\n            else:\n                angle_normal, angle_tangent = 0, 90\n\n            major = self.axis.major\n            major_locs = major.locator()\n            major_labels = major.formatter.format_ticks(major_locs)\n\n            minor = self.axis.minor\n            minor_locs = minor.locator()\n            minor_labels = minor.formatter.format_ticks(minor_locs)\n\n            data_to_axes = axes.transData - axes.transAxes\n\n            def _f(locs, labels):\n                for x, l in zip(locs, labels):\n                    c = [self._value, self._value]\n                    c[self.nth_coord] = x\n                    c1, c2 = data_to_axes.transform(c)\n                    if 0 <= c1 <= 1 and 0 <= c2 <= 1:\n                        yield c, angle_normal, angle_tangent, l\n\n            return _f(major_locs, major_labels), _f(minor_locs, minor_labels)",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.mpl_toolkits.axisartist.axislines.AxisArtistHelperRectlinear",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/mpl_toolkits/axisartist/axislines.py"
+          },
+          {
+            "start_node": "lib/mpl_toolkits/axisartist/axislines.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.mpl_toolkits.axisartist.axislines.AxisArtistHelperRectlinear"
+          }
+        ],
+        "similarity": 0.12641181332036336,
+        "end_line": 307,
+        "signature": null
+      },
+      {
+        "start_line": 739,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FontConstantsBase:\n    \"\"\"\n    A set of constants that controls how certain things, such as sub-\n    and superscripts are laid out.  These are all metrics that can't\n    be reliably retrieved from the font metrics in the font itself.\n    \"\"\"\n    # Percentage of x-height of additional horiz. space after sub/superscripts\n    script_space = 0.05\n\n    # Percentage of x-height that sub/superscripts drop below the baseline\n    subdrop = 0.4\n\n    # Percentage of x-height that superscripts are raised from the baseline\n    sup1 = 0.7\n\n    # Percentage of x-height that subscripts drop below the baseline\n    sub1 = 0.3\n\n    # Percentage of x-height that subscripts drop below the baseline when a\n    # superscript is present\n    sub2 = 0.5\n\n    # Percentage of x-height that sub/supercripts are offset relative to the\n    # nucleus edge for non-slanted nuclei\n    delta = 0.025\n\n    # Additional percentage of last character height above 2/3 of the\n    # x-height that supercripts are offset relative to the subscript\n    # for slanted nuclei\n    delta_slanted = 0.2\n\n    # Percentage of x-height that supercripts and subscripts are offset for\n    # integrals\n    delta_integral = 0.1",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.FontConstantsBase",
+        "documentation": "A set of constants that controls how certain things, such as sub-\nand superscripts are laid out.  These are all metrics that can't\nbe reliably retrieved from the font metrics in the font itself.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.FontConstantsBase"
+          }
+        ],
+        "similarity": 0.11936172110036213,
+        "end_line": 772,
+        "signature": null
+      },
+      {
+        "start_line": 425,
+        "file_path": "lib/matplotlib/colors.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ColorConverter:\n    \"\"\"\n    A class only kept for backwards compatibility.\n\n    Its functionality is entirely provided by module-level functions.\n    \"\"\"\n    colors = _colors_full_map\n    cache = _colors_full_map.cache\n    to_rgb = staticmethod(to_rgb)\n    to_rgba = staticmethod(to_rgba)\n    to_rgba_array = staticmethod(to_rgba_array)",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.colors.ColorConverter",
+        "documentation": "A class only kept for backwards compatibility.\n\nIts functionality is entirely provided by module-level functions.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/colors.py"
+          },
+          {
+            "start_node": "lib/matplotlib/colors.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.colors.ColorConverter"
+          }
+        ],
+        "similarity": 0.1091987623855569,
+        "end_line": 435,
+        "signature": null
+      },
+      {
+        "start_line": 53,
+        "file_path": "lib/mpl_toolkits/axisartist/axislines.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AxisArtistHelper:\n    \"\"\"\n    AxisArtistHelper should define\n    following method with given APIs. Note that the first axes argument\n    will be axes attribute of the caller artist.::\n\n\n        # LINE (spinal line?)\n\n        def get_line(self, axes):\n            # path : Path\n            return path\n\n        def get_line_transform(self, axes):\n            # ...\n            # trans : transform\n            return trans\n\n        # LABEL\n\n        def get_label_pos(self, axes):\n            # x, y : position\n            return (x, y), trans\n\n\n        def get_label_offset_transform(self,\n                axes,\n                pad_points, fontprops, renderer,\n                bboxes,\n                ):\n            # va : vertical alignment\n            # ha : horizontal alignment\n            # a : angle\n            return trans, va, ha, a\n\n        # TICK\n\n        def get_tick_transform(self, axes):\n            return trans\n\n        def get_tick_iterators(self, axes):\n            # iter : iterable object that yields (c, angle, l) where\n            # c, angle, l is position, tick angle, and label\n\n            return iter_major, iter_minor\n    \"\"\"\n\n    class _Base:\n        \"\"\"Base class for axis helper.\"\"\"\n\n        def update_lim(self, axes):\n            pass\n\n        delta1 = _api.deprecated(\"3.6\")(\n            property(lambda self: 0.00001, lambda self, value: None))\n        delta2 = _api.deprecated(\"3.6\")(\n            property(lambda self: 0.00001, lambda self, value: None))\n\n    class Fixed(_Base):\n        \"\"\"Helper class for a fixed (in the axes coordinate) axis.\"\"\"\n\n        _default_passthru_pt = dict(left=(0, 0),\n                                    right=(1, 0),\n                                    bottom=(0, 0),\n                                    top=(0, 1))\n\n        def __init__(self, loc, nth_coord=None):\n            \"\"\"\n            nth_coord = along which coordinate value varies\n            in 2D, nth_coord = 0 ->  x axis, nth_coord = 1 -> y axis\n            \"\"\"\n            _api.check_in_list([\"left\", \"right\", \"bottom\", \"top\"], loc=loc)\n            self._loc = loc\n\n            if nth_coord is None:\n                if loc in [\"left\", \"right\"]:\n                    nth_coord = 1\n                elif loc in [\"bottom\", \"top\"]:\n                    nth_coord = 0\n\n            self.nth_coord = nth_coord\n\n            super().__init__()\n\n            self.passthru_pt = self._default_passthru_pt[loc]\n\n            _verts = np.array([[0., 0.],\n                               [1., 1.]])\n            fixed_coord = 1 - nth_coord\n            _verts[:, fixed_coord] = self.passthru_pt[fixed_coord]\n\n            # axis line in transAxes\n            self._path = Path(_verts)\n\n        def get_nth_coord(self):\n            return self.nth_coord\n\n        # LINE\n\n        def get_line(self, axes):\n            return self._path\n\n        def get_line_transform(self, axes):\n            return axes.transAxes\n\n        # LABEL\n\n        def get_axislabel_transform(self, axes):\n            return axes.transAxes\n\n        def get_axislabel_pos_angle(self, axes):\n            \"\"\"\n            Return the label reference position in transAxes.\n\n            get_label_transform() returns a transform of (transAxes+offset)\n            \"\"\"\n            return dict(left=((0., 0.5), 90),  # (position, angle_tangent)\n                        right=((1., 0.5), 90),\n                        bottom=((0.5, 0.), 0),\n                        top=((0.5, 1.), 0))[self._loc]\n\n        # TICK\n\n        def get_tick_transform(self, axes):\n            return [axes.get_xaxis_transform(),\n                    axes.get_yaxis_transform()][self.nth_coord]\n\n    class Floating(_Base):\n\n        def __init__(self, nth_coord, value):\n            self.nth_coord = nth_coord\n            self._value = value\n            super().__init__()\n\n        def get_nth_coord(self):\n            return self.nth_coord\n\n        def get_line(self, axes):\n            raise RuntimeError(\n                \"get_line method should be defined by the derived class\")",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.mpl_toolkits.axisartist.axislines.AxisArtistHelper",
+        "documentation": "AxisArtistHelper should define\nfollowing method with given APIs. Note that the first axes argument\nwill be axes attribute of the caller artist.::\n\n\n    # LINE (spinal line?)\n\n    def get_line(self, axes):\n        # path : Path\n        return path\n\n    def get_line_transform(self, axes):\n        # ...\n        # trans : transform\n        return trans\n\n    # LABEL\n\n    def get_label_pos(self, axes):\n        # x, y : position\n        return (x, y), trans\n\n\n    def get_label_offset_transform(self,\n            axes,\n            pad_points, fontprops, renderer,\n            bboxes,\n            ):\n        # va : vertical alignment\n        # ha : horizontal alignment\n        # a : angle\n        return trans, va, ha, a\n\n    # TICK\n\n    def get_tick_transform(self, axes):\n        return trans\n\n    def get_tick_iterators(self, axes):\n        # iter : iterable object that yields (c, angle, l) where\n        # c, angle, l is position, tick angle, and label\n\n        return iter_major, iter_minor",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/mpl_toolkits/axisartist/axislines.py"
+          },
+          {
+            "start_node": "lib/mpl_toolkits/axisartist/axislines.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.mpl_toolkits.axisartist.axislines.AxisArtistHelper"
+          }
+        ],
+        "similarity": 0.1076900952360455,
+        "end_line": 192,
+        "signature": null
+      },
+      {
+        "start_line": 29,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Cursors(enum.IntEnum):  # Must subclass int for the macOS backend.\n    \"\"\"Backend-independent cursor types.\"\"\"\n    POINTER = enum.auto()\n    HAND = enum.auto()\n    SELECT_REGION = enum.auto()\n    MOVE = enum.auto()\n    WAIT = enum.auto()\n    RESIZE_HORIZONTAL = enum.auto()\n    RESIZE_VERTICAL = enum.auto()",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.Cursors",
+        "documentation": "Backend-independent cursor types.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.Cursors"
+          }
+        ],
+        "similarity": 0.09846416923750245,
+        "end_line": 37,
+        "signature": null
+      },
+      {
+        "start_line": 42,
+        "file_path": "lib/matplotlib/backends/backend_wx.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class __getattr__:\n    cursord = _api.deprecated(\"3.5\", obj_type=\"\")(property(lambda self: {\n        cursors.MOVE: wx.CURSOR_HAND,\n        cursors.HAND: wx.CURSOR_HAND,\n        cursors.POINTER: wx.CURSOR_ARROW,\n        cursors.SELECT_REGION: wx.CURSOR_CROSS,\n        cursors.WAIT: wx.CURSOR_WAIT,\n        cursors.RESIZE_HORIZONTAL: wx.CURSOR_SIZEWE,\n        cursors.RESIZE_VERTICAL: wx.CURSOR_SIZENS,\n    }))",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_wx.__getattr__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_wx.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_wx.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_wx.__getattr__"
+          }
+        ],
+        "similarity": 0.09501229389253207,
+        "end_line": 51,
+        "signature": null
+      },
+      {
+        "start_line": 2658,
+        "file_path": "lib/matplotlib/backend_bases.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonGuiException(Exception):\n    \"\"\"Raised when trying show a figure in a non-GUI backend.\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_bases.NonGuiException",
+        "documentation": "Raised when trying show a figure in a non-GUI backend.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_bases.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_bases.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_bases.NonGuiException"
+          }
+        ],
+        "similarity": 0.09014519116278087,
+        "end_line": 2660,
+        "signature": null
+      },
+      {
+        "start_line": 1662,
+        "file_path": "lib/matplotlib/colors.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class LogNorm(Normalize):\n    \"\"\"Normalize a given value to the 0-1 range on a log scale.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.colors.LogNorm",
+        "documentation": "Normalize a given value to the 0-1 range on a log scale.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/colors.py"
+          },
+          {
+            "start_node": "lib/matplotlib/colors.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.colors.LogNorm"
+          }
+        ],
+        "similarity": 0.08707141370086213,
+        "end_line": 1663,
+        "signature": null
+      },
+      {
+        "start_line": 184,
+        "file_path": "lib/matplotlib/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class __getattr__:\n    __version__ = property(lambda self: _get_version())\n    __version_info__ = property(\n        lambda self: _parse_to_version_info(self.__version__))\n    # module-level deprecations\n    URL_REGEX = _api.deprecated(\"3.5\", obj_type=\"\")(property(\n        lambda self: re.compile(r'^http://|^https://|^ftp://|^file:')))",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.__init__.__getattr__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/__init__.py"
+          },
+          {
+            "start_node": "lib/matplotlib/__init__.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.__init__.__getattr__"
+          }
+        ],
+        "similarity": 0.08701355615923263,
+        "end_line": 190,
+        "signature": null
+      },
+      {
+        "start_line": 517,
+        "file_path": "lib/matplotlib/streamplot.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class OutOfBounds(IndexError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.streamplot.OutOfBounds",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/streamplot.py"
+          },
+          {
+            "start_node": "lib/matplotlib/streamplot.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.streamplot.OutOfBounds"
+          }
+        ],
+        "similarity": 0.08697340750675298,
+        "end_line": 518,
+        "signature": null
+      },
+      {
+        "start_line": 63,
+        "file_path": "lib/matplotlib/backends/backend_nbagg.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NavigationIPy(NavigationToolbar2WebAgg):\n\n    # Use the standard toolbar items + download button\n    toolitems = [(text, tooltip_text,\n                  _FONT_AWESOME_CLASSES[image_file], name_of_method)\n                 for text, tooltip_text, image_file, name_of_method\n                 in (NavigationToolbar2.toolitems +\n                     (('Download', 'Download plot', 'download', 'download'),))\n                 if image_file in _FONT_AWESOME_CLASSES]",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_nbagg.NavigationIPy",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_nbagg.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_nbagg.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_nbagg.NavigationIPy"
+          }
+        ],
+        "similarity": 0.08464437546940712,
+        "end_line": 71,
+        "signature": null
+      },
+      {
+        "start_line": 288,
+        "file_path": "lib/matplotlib/__init__.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ExecutableNotFoundError(FileNotFoundError):\n    \"\"\"\n    Error raised when an executable that Matplotlib optionally\n    depends on can't be found.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.__init__.ExecutableNotFoundError",
+        "documentation": "Error raised when an executable that Matplotlib optionally\ndepends on can't be found.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/__init__.py"
+          },
+          {
+            "start_node": "lib/matplotlib/__init__.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.__init__.ExecutableNotFoundError"
+          }
+        ],
+        "similarity": 0.08416549918314102,
+        "end_line": 293,
+        "signature": null
+      },
+      {
+        "start_line": 432,
+        "file_path": "lib/matplotlib/streamplot.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InvalidIndexError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.streamplot.InvalidIndexError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/streamplot.py"
+          },
+          {
+            "start_node": "lib/matplotlib/streamplot.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.streamplot.InvalidIndexError"
+          }
+        ],
+        "similarity": 0.08045405041978565,
+        "end_line": 433,
+        "signature": null
+      },
+      {
+        "start_line": 559,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class DejaVuSerifFonts(DejaVuFonts):\n    \"\"\"\n    A font handling class for the DejaVu Serif fonts\n\n    If a glyph is not found it will fallback to Stix Serif\n    \"\"\"\n    _fontmap = {\n        'rm': 'DejaVu Serif',\n        'it': 'DejaVu Serif:italic',\n        'bf': 'DejaVu Serif:weight=bold',\n        'sf': 'DejaVu Sans',\n        'tt': 'DejaVu Sans Mono',\n        'ex': 'DejaVu Serif Display',\n        0:    'DejaVu Serif',\n    }",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.DejaVuSerifFonts",
+        "documentation": "A font handling class for the DejaVu Serif fonts\n\nIf a glyph is not found it will fallback to Stix Serif",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.DejaVuSerifFonts"
+          }
+        ],
+        "similarity": 0.07904577999950427,
+        "end_line": 573,
+        "signature": null
+      },
+      {
+        "start_line": 624,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ToolHome(ViewsPositionsBase):\n    \"\"\"Restore the original view limits.\"\"\"\n\n    description = 'Reset original view'\n    image = 'home'\n    default_keymap = property(lambda self: mpl.rcParams['keymap.home'])\n    _on_trigger = 'home'",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.ToolHome",
+        "documentation": "Restore the original view limits.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.ToolHome"
+          }
+        ],
+        "similarity": 0.07773209142720346,
+        "end_line": 630,
+        "signature": null
+      },
+      {
+        "start_line": 642,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ToolForward(ViewsPositionsBase):\n    \"\"\"Move forward in the view lim stack.\"\"\"\n\n    description = 'Forward to next view'\n    image = 'forward'\n    default_keymap = property(lambda self: mpl.rcParams['keymap.forward'])\n    _on_trigger = 'forward'",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.ToolForward",
+        "documentation": "Move forward in the view lim stack.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.ToolForward"
+          }
+        ],
+        "similarity": 0.0773438853282366,
+        "end_line": 648,
+        "signature": null
+      },
+      {
+        "start_line": 576,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class DejaVuSansFonts(DejaVuFonts):\n    \"\"\"\n    A font handling class for the DejaVu Sans fonts\n\n    If a glyph is not found it will fallback to Stix Sans\n    \"\"\"\n    _fontmap = {\n        'rm': 'DejaVu Sans',\n        'it': 'DejaVu Sans:italic',\n        'bf': 'DejaVu Sans:weight=bold',\n        'sf': 'DejaVu Sans',\n        'tt': 'DejaVu Sans Mono',\n        'ex': 'DejaVu Sans Display',\n        0:    'DejaVu Sans',\n    }",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.DejaVuSansFonts",
+        "documentation": "A font handling class for the DejaVu Sans fonts\n\nIf a glyph is not found it will fallback to Stix Sans",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.DejaVuSansFonts"
+          }
+        ],
+        "similarity": 0.07690610486134072,
+        "end_line": 590,
+        "signature": null
+      },
+      {
+        "start_line": 658,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SaveFigureBase(ToolBase):\n    \"\"\"Base tool for figure saving.\"\"\"\n\n    description = 'Save the figure'\n    image = 'filesave'\n    default_keymap = property(lambda self: mpl.rcParams['keymap.save'])",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.SaveFigureBase",
+        "documentation": "Base tool for figure saving.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.SaveFigureBase"
+          }
+        ],
+        "similarity": 0.07305549048233632,
+        "end_line": 663,
+        "signature": null
+      },
+      {
+        "start_line": 30,
+        "file_path": "lib/matplotlib/cm.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class __getattr__:\n    LUTSIZE = _api.deprecated(\n        \"3.5\", obj_type=\"\", alternative=\"rcParams['image.lut']\")(\n            property(lambda self: _LUTSIZE))",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.cm.__getattr__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/cm.py"
+          },
+          {
+            "start_node": "lib/matplotlib/cm.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.cm.__getattr__"
+          }
+        ],
+        "similarity": 0.07236433282693956,
+        "end_line": 33,
+        "signature": null
+      },
+      {
+        "start_line": 1355,
+        "file_path": "lib/matplotlib/collections.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AsteriskPolygonCollection(RegularPolyCollection):\n    \"\"\"Draw a collection of regular asterisks with *numsides* points.\"\"\"\n    _path_generator = mpath.Path.unit_regular_asterisk",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.collections.AsteriskPolygonCollection",
+        "documentation": "Draw a collection of regular asterisks with *numsides* points.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/collections.py"
+          },
+          {
+            "start_node": "lib/matplotlib/collections.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.collections.AsteriskPolygonCollection"
+          }
+        ],
+        "similarity": 0.07057076725871128,
+        "end_line": 1357,
+        "signature": null
+      },
+      {
+        "start_line": 633,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ToolBack(ViewsPositionsBase):\n    \"\"\"Move back up the view limits stack.\"\"\"\n\n    description = 'Back to previous view'\n    image = 'back'\n    default_keymap = property(lambda self: mpl.rcParams['keymap.back'])\n    _on_trigger = 'back'",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.ToolBack",
+        "documentation": "Move back up the view limits stack.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.ToolBack"
+          }
+        ],
+        "similarity": 0.0705674038099386,
+        "end_line": 639,
+        "signature": null
+      },
+      {
+        "start_line": 25,
+        "file_path": "lib/matplotlib/bezier.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonIntersectingPathException(ValueError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.bezier.NonIntersectingPathException",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/bezier.py"
+          },
+          {
+            "start_node": "lib/matplotlib/bezier.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.bezier.NonIntersectingPathException"
+          }
+        ],
+        "similarity": 0.06946594306226844,
+        "end_line": 26,
+        "signature": null
+      },
+      {
+        "start_line": 799,
+        "file_path": "lib/matplotlib/rcsetup.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _ignorecase(list):\n    \"\"\"A marker class indicating that a list-of-str is case-insensitive.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.rcsetup._ignorecase",
+        "documentation": "A marker class indicating that a list-of-str is case-insensitive.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/rcsetup.py"
+          },
+          {
+            "start_node": "lib/matplotlib/rcsetup.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.rcsetup._ignorecase"
+          }
+        ],
+        "similarity": 0.06882966591669501,
+        "end_line": 800,
+        "signature": null
+      },
+      {
+        "start_line": 775,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ComputerModernFontConstants(FontConstantsBase):\n    script_space = 0.075\n    subdrop = 0.2\n    sup1 = 0.45\n    sub1 = 0.2\n    sub2 = 0.3\n    delta = 0.075\n    delta_slanted = 0.3\n    delta_integral = 0.3",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.ComputerModernFontConstants",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.ComputerModernFontConstants"
+          }
+        ],
+        "similarity": 0.06657489752182502,
+        "end_line": 783,
+        "signature": null
+      },
+      {
+        "start_line": 1350,
+        "file_path": "lib/matplotlib/collections.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class StarPolygonCollection(RegularPolyCollection):\n    \"\"\"Draw a collection of regular stars with *numsides* points.\"\"\"\n    _path_generator = mpath.Path.unit_regular_star",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.collections.StarPolygonCollection",
+        "documentation": "Draw a collection of regular stars with *numsides* points.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/collections.py"
+          },
+          {
+            "start_node": "lib/matplotlib/collections.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.collections.StarPolygonCollection"
+          }
+        ],
+        "similarity": 0.06600294314477753,
+        "end_line": 1352,
+        "signature": null
+      },
+      {
+        "start_line": 1359,
+        "file_path": "lib/matplotlib/backend_bases.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class MouseButton(IntEnum):\n    LEFT = 1\n    MIDDLE = 2\n    RIGHT = 3\n    BACK = 8\n    FORWARD = 9",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_bases.MouseButton",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_bases.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_bases.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_bases.MouseButton"
+          }
+        ],
+        "similarity": 0.06596932858790706,
+        "end_line": 1364,
+        "signature": null
+      },
+      {
+        "start_line": 562,
+        "file_path": "lib/matplotlib/backends/backend_gtk4.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FigureManagerGTK4(_FigureManagerGTK):\n    _toolbar2_class = NavigationToolbar2GTK4\n    _toolmanager_toolbar_class = ToolbarGTK4",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_gtk4.FigureManagerGTK4",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_gtk4.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_gtk4.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_gtk4.FigureManagerGTK4"
+          }
+        ],
+        "similarity": 0.06530862701748398,
+        "end_line": 564,
+        "signature": null
+      },
+      {
+        "start_line": 2703,
+        "file_path": "lib/matplotlib/patches.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ConnectionStyle(_Style):\n    \"\"\"\n    `ConnectionStyle` is a container class which defines\n    several connectionstyle classes, which is used to create a path\n    between two points.  These are mainly used with `FancyArrowPatch`.\n\n    A connectionstyle object can be either created as::\n\n           ConnectionStyle.Arc3(rad=0.2)\n\n    or::\n\n           ConnectionStyle(\"Arc3\", rad=0.2)\n\n    or::\n\n           ConnectionStyle(\"Arc3, rad=0.2\")\n\n    The following classes are defined\n\n    %(AvailableConnectorstyles)s\n\n    An instance of any connection style class is an callable object,\n    whose call signature is::\n\n        __call__(self, posA, posB,\n                 patchA=None, patchB=None,\n                 shrinkA=2., shrinkB=2.)\n\n    and it returns a `.Path` instance. *posA* and *posB* are\n    tuples of (x, y) coordinates of the two points to be\n    connected. *patchA* (or *patchB*) is given, the returned path is\n    clipped so that it start (or end) from the boundary of the\n    patch. The path is further shrunk by *shrinkA* (or *shrinkB*)\n    which is given in points.\n    \"\"\"\n\n    _style_list = {}\n\n    class _Base:\n        \"\"\"\n        A base class for connectionstyle classes. The subclass needs\n        to implement a *connect* method whose call signature is::\n\n          connect(posA, posB)\n\n        where posA and posB are tuples of x, y coordinates to be\n        connected.  The method needs to return a path connecting two\n        points. This base class defines a __call__ method, and a few\n        helper methods.\n        \"\"\"\n\n        class SimpleEvent:\n            def __init__(self, xy):\n                self.x, self.y = xy\n\n        def _clip(self, path, patchA, patchB):\n            \"\"\"\n            Clip the path to the boundary of the patchA and patchB.\n            The starting point of the path needed to be inside of the\n            patchA and the end point inside the patch B. The *contains*\n            methods of each patch object is utilized to test if the point\n            is inside the path.\n            \"\"\"\n\n            if patchA:\n                def insideA(xy_display):\n                    xy_event = ConnectionStyle._Base.SimpleEvent(xy_display)\n                    return patchA.contains(xy_event)[0]\n\n                try:\n                    left, right = split_path_inout(path, insideA)\n                except ValueError:\n                    right = path\n\n                path = right\n\n            if patchB:\n                def insideB(xy_display):\n                    xy_event = ConnectionStyle._Base.SimpleEvent(xy_display)\n                    return patchB.contains(xy_event)[0]\n\n                try:\n                    left, right = split_path_inout(path, insideB)\n                except ValueError:\n                    left = path\n\n                path = left\n\n            return path\n\n        def _shrink(self, path, shrinkA, shrinkB):\n            \"\"\"\n            Shrink the path by fixed size (in points) with shrinkA and shrinkB.\n            \"\"\"\n            if shrinkA:\n                insideA = inside_circle(*path.vertices[0], shrinkA)\n                try:\n                    left, path = split_path_inout(path, insideA)\n                except ValueError:\n                    pass\n            if shrinkB:\n                insideB = inside_circle(*path.vertices[-1], shrinkB)\n                try:\n                    path, right = split_path_inout(path, insideB)\n                except ValueError:\n                    pass\n            return path\n\n        def __call__(self, posA, posB,\n                     shrinkA=2., shrinkB=2., patchA=None, patchB=None):\n            \"\"\"\n            Call the *connect* method to create a path between *posA* and\n            *posB*; then clip and shrink the path.\n            \"\"\"\n            path = self.connect(posA, posB)\n            clipped_path = self._clip(path, patchA, patchB)\n            shrunk_path = self._shrink(clipped_path, shrinkA, shrinkB)\n            return shrunk_path\n\n    @_register_style(_style_list)\n    class Arc3(_Base):\n        \"\"\"\n        Creates a simple quadratic Bezier curve between two\n        points. The curve is created so that the middle control point\n        (C1) is located at the same distance from the start (C0) and\n        end points(C2) and the distance of the C1 to the line\n        connecting C0-C2 is *rad* times the distance of C0-C2.\n        \"\"\"\n\n        def __init__(self, rad=0.):\n            \"\"\"\n            *rad*\n              curvature of the curve.\n            \"\"\"\n            self.rad = rad\n\n        def connect(self, posA, posB):\n            x1, y1 = posA\n            x2, y2 = posB\n            x12, y12 = (x1 + x2) / 2., (y1 + y2) / 2.\n            dx, dy = x2 - x1, y2 - y1\n\n            f = self.rad\n\n            cx, cy = x12 + f * dy, y12 - f * dx\n\n            vertices = [(x1, y1),\n                        (cx, cy),\n                        (x2, y2)]\n            codes = [Path.MOVETO,\n                     Path.CURVE3,\n                     Path.CURVE3]\n\n            return Path(vertices, codes)\n\n    @_register_style(_style_list)\n    class Angle3(_Base):\n        \"\"\"\n        Creates a simple quadratic Bezier curve between two\n        points. The middle control points is placed at the\n        intersecting point of two lines which cross the start and\n        end point, and have a slope of angleA and angleB, respectively.\n        \"\"\"\n\n        def __init__(self, angleA=90, angleB=0):\n            \"\"\"\n            *angleA*\n              starting angle of the path\n\n            *angleB*\n              ending angle of the path\n            \"\"\"\n\n            self.angleA = angleA\n            self.angleB = angleB\n\n        def connect(self, posA, posB):\n            x1, y1 = posA\n            x2, y2 = posB\n\n            cosA = math.cos(math.radians(self.angleA))\n            sinA = math.sin(math.radians(self.angleA))\n            cosB = math.cos(math.radians(self.angleB))\n            sinB = math.sin(math.radians(self.angleB))\n\n            cx, cy = get_intersection(x1, y1, cosA, sinA,\n                                      x2, y2, cosB, sinB)\n\n            vertices = [(x1, y1), (cx, cy), (x2, y2)]\n            codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]\n\n            return Path(vertices, codes)\n\n    @_register_style(_style_list)\n    class Angle(_Base):\n        \"\"\"\n        Creates a piecewise continuous quadratic Bezier path between\n        two points. The path has a one passing-through point placed at\n        the intersecting point of two lines which cross the start\n        and end point, and have a slope of angleA and angleB, respectively.\n        The connecting edges are rounded with *rad*.\n        \"\"\"\n\n        def __init__(self, angleA=90, angleB=0, rad=0.):\n            \"\"\"\n            *angleA*\n              starting angle of the path\n\n            *angleB*\n              ending angle of the path\n\n            *rad*\n              rounding radius of the edge\n            \"\"\"\n\n            self.angleA = angleA\n            self.angleB = angleB\n\n            self.rad = rad\n\n        def connect(self, posA, posB):\n            x1, y1 = posA\n            x2, y2 = posB\n\n            cosA = math.cos(math.radians(self.angleA))\n            sinA = math.sin(math.radians(self.angleA))\n            cosB = math.cos(math.radians(self.angleB))\n            sinB = math.sin(math.radians(self.angleB))\n\n            cx, cy = get_intersection(x1, y1, cosA, sinA,\n                                      x2, y2, cosB, sinB)\n\n            vertices = [(x1, y1)]\n            codes = [Path.MOVETO]\n\n            if self.rad == 0.:\n                vertices.append((cx, cy))\n                codes.append(Path.LINETO)\n            else:\n                dx1, dy1 = x1 - cx, y1 - cy\n                d1 = np.hypot(dx1, dy1)\n                f1 = self.rad / d1\n                dx2, dy2 = x2 - cx, y2 - cy\n                d2 = np.hypot(dx2, dy2)\n                f2 = self.rad / d2\n                vertices.extend([(cx + dx1 * f1, cy + dy1 * f1),\n                                 (cx, cy),\n                                 (cx + dx2 * f2, cy + dy2 * f2)])\n                codes.extend([Path.LINETO, Path.CURVE3, Path.CURVE3])\n\n            vertices.append((x2, y2))\n            codes.append(Path.LINETO)\n\n            return Path(vertices, codes)\n\n    @_register_style(_style_list)\n    class Arc(_Base):\n        \"\"\"\n        Creates a piecewise continuous quadratic Bezier path between\n        two points. The path can have two passing-through points, a\n        point placed at the distance of armA and angle of angleA from\n        point A, another point with respect to point B. The edges are\n        rounded with *rad*.\n        \"\"\"\n\n        def __init__(self, angleA=0, angleB=0, armA=None, armB=None, rad=0.):\n            \"\"\"\n            *angleA* :\n              starting angle of the path\n\n            *angleB* :\n              ending angle of the path\n\n            *armA* :\n              length of the starting arm\n\n            *armB* :\n              length of the ending arm\n\n            *rad* :\n              rounding radius of the edges\n            \"\"\"\n\n            self.angleA = angleA\n            self.angleB = angleB\n            self.armA = armA\n            self.armB = armB\n\n            self.rad = rad\n\n        def connect(self, posA, posB):\n            x1, y1 = posA\n            x2, y2 = posB\n\n            vertices = [(x1, y1)]\n            rounded = []\n            codes = [Path.MOVETO]\n\n            if self.armA:\n                cosA = math.cos(math.radians(self.angleA))\n                sinA = math.sin(math.radians(self.angleA))\n                # x_armA, y_armB\n                d = self.armA - self.rad\n                rounded.append((x1 + d * cosA, y1 + d * sinA))\n                d = self.armA\n                rounded.append((x1 + d * cosA, y1 + d * sinA))\n\n            if self.armB:\n                cosB = math.cos(math.radians(self.angleB))\n                sinB = math.sin(math.radians(self.angleB))\n                x_armB, y_armB = x2 + self.armB * cosB, y2 + self.armB * sinB\n\n                if rounded:\n                    xp, yp = rounded[-1]\n                    dx, dy = x_armB - xp, y_armB - yp\n                    dd = (dx * dx + dy * dy) ** .5\n\n                    rounded.append((xp + self.rad * dx / dd,\n                                    yp + self.rad * dy / dd))\n                    vertices.extend(rounded)\n                    codes.extend([Path.LINETO,\n                                  Path.CURVE3,\n                                  Path.CURVE3])\n                else:\n                    xp, yp = vertices[-1]\n                    dx, dy = x_armB - xp, y_armB - yp\n                    dd = (dx * dx + dy * dy) ** .5\n\n                d = dd - self.rad\n                rounded = [(xp + d * dx / dd, yp + d * dy / dd),\n                           (x_armB, y_armB)]\n\n            if rounded:\n                xp, yp = rounded[-1]\n                dx, dy = x2 - xp, y2 - yp\n                dd = (dx * dx + dy * dy) ** .5\n\n                rounded.append((xp + self.rad * dx / dd,\n                                yp + self.rad * dy / dd))\n                vertices.extend(rounded)\n                codes.extend([Path.LINETO,\n                              Path.CURVE3,\n                              Path.CURVE3])\n\n            vertices.append((x2, y2))\n            codes.append(Path.LINETO)\n\n            return Path(vertices, codes)\n\n    @_register_style(_style_list)\n    class Bar(_Base):\n        \"\"\"\n        A line with *angle* between A and B with *armA* and\n        *armB*. One of the arms is extended so that they are connected in\n        a right angle. The length of armA is determined by (*armA*\n        + *fraction* x AB distance). Same for armB.\n        \"\"\"\n\n        def __init__(self, armA=0., armB=0., fraction=0.3, angle=None):\n            \"\"\"\n            Parameters\n            ----------\n            armA : float\n                minimum length of armA\n\n            armB : float\n                minimum length of armB\n\n            fraction : float\n                a fraction of the distance between two points that\n                will be added to armA and armB.\n\n            angle : float or None\n                angle of the connecting line (if None, parallel\n                to A and B)\n            \"\"\"\n            self.armA = armA\n            self.armB = armB\n            self.fraction = fraction\n            self.angle = angle\n\n        def connect(self, posA, posB):\n            x1, y1 = posA\n            x20, y20 = x2, y2 = posB\n\n            theta1 = math.atan2(y2 - y1, x2 - x1)\n            dx, dy = x2 - x1, y2 - y1\n            dd = (dx * dx + dy * dy) ** .5\n            ddx, ddy = dx / dd, dy / dd\n\n            armA, armB = self.armA, self.armB\n\n            if self.angle is not None:\n                theta0 = np.deg2rad(self.angle)\n                dtheta = theta1 - theta0\n                dl = dd * math.sin(dtheta)\n                dL = dd * math.cos(dtheta)\n                x2, y2 = x1 + dL * math.cos(theta0), y1 + dL * math.sin(theta0)\n                armB = armB - dl\n\n                # update\n                dx, dy = x2 - x1, y2 - y1\n                dd2 = (dx * dx + dy * dy) ** .5\n                ddx, ddy = dx / dd2, dy / dd2\n\n            arm = max(armA, armB)\n            f = self.fraction * dd + arm\n\n            cx1, cy1 = x1 + f * ddy, y1 - f * ddx\n            cx2, cy2 = x2 + f * ddy, y2 - f * ddx\n\n            vertices = [(x1, y1),\n                        (cx1, cy1),\n                        (cx2, cy2),\n                        (x20, y20)]\n            codes = [Path.MOVETO,\n                     Path.LINETO,\n                     Path.LINETO,\n                     Path.LINETO]\n\n            return Path(vertices, codes)",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.patches.ConnectionStyle",
+        "documentation": "`ConnectionStyle` is a container class which defines\nseveral connectionstyle classes, which is used to create a path\nbetween two points.  These are mainly used with `FancyArrowPatch`.\n\nA connectionstyle object can be either created as::\n\n       ConnectionStyle.Arc3(rad=0.2)\n\nor::\n\n       ConnectionStyle(\"Arc3\", rad=0.2)\n\nor::\n\n       ConnectionStyle(\"Arc3, rad=0.2\")\n\nThe following classes are defined\n\n%(AvailableConnectorstyles)s\n\nAn instance of any connection style class is an callable object,\nwhose call signature is::\n\n    __call__(self, posA, posB,\n             patchA=None, patchB=None,\n             shrinkA=2., shrinkB=2.)\n\nand it returns a `.Path` instance. *posA* and *posB* are\ntuples of (x, y) coordinates of the two points to be\nconnected. *patchA* (or *patchB*) is given, the returned path is\nclipped so that it start (or end) from the boundary of the\npatch. The path is further shrunk by *shrinkA* (or *shrinkB*)\nwhich is given in points.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/patches.py"
+          },
+          {
+            "start_node": "lib/matplotlib/patches.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.patches.ConnectionStyle"
+          }
+        ],
+        "similarity": 0.06458425438540938,
+        "end_line": 3124,
+        "signature": null
+      },
+      {
+        "start_line": 609,
+        "file_path": "lib/matplotlib/backends/backend_gtk3.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FigureManagerGTK3(_FigureManagerGTK):\n    _toolbar2_class = NavigationToolbar2GTK3\n    _toolmanager_toolbar_class = ToolbarGTK3",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_gtk3.FigureManagerGTK3",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_gtk3.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_gtk3.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_gtk3.FigureManagerGTK3"
+          }
+        ],
+        "similarity": 0.06320260155872506,
+        "end_line": 611,
+        "signature": null
+      },
+      {
+        "start_line": 145,
+        "file_path": "lib/matplotlib/backends/backend_nbagg.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FigureCanvasNbAgg(FigureCanvasWebAggCore):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_nbagg.FigureCanvasNbAgg",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_nbagg.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_nbagg.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_nbagg.FigureCanvasNbAgg"
+          }
+        ],
+        "similarity": 0.06306535670972296,
+        "end_line": 146,
+        "signature": null
+      },
+      {
+        "start_line": 568,
+        "file_path": "lib/matplotlib/backends/backend_gtk4.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _BackendGTK4(_BackendGTK):\n    FigureCanvas = FigureCanvasGTK4\n    FigureManager = FigureManagerGTK4",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_gtk4._BackendGTK4",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_gtk4.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_gtk4.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_gtk4._BackendGTK4"
+          }
+        ],
+        "similarity": 0.06283664427429396,
+        "end_line": 570,
+        "signature": null
+      },
+      {
+        "start_line": 1276,
+        "file_path": "lib/matplotlib/backend_bases.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CloseEvent(Event):\n    \"\"\"An event triggered by a figure being closed.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_bases.CloseEvent",
+        "documentation": "An event triggered by a figure being closed.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_bases.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_bases.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_bases.CloseEvent"
+          }
+        ],
+        "similarity": 0.06270656782661264,
+        "end_line": 1277,
+        "signature": null
+      },
+      {
+        "start_line": 615,
+        "file_path": "lib/matplotlib/backends/backend_gtk3.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _BackendGTK3(_BackendGTK):\n    FigureCanvas = FigureCanvasGTK3\n    FigureManager = FigureManagerGTK3",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_gtk3._BackendGTK3",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_gtk3.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_gtk3.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_gtk3._BackendGTK3"
+          }
+        ],
+        "similarity": 0.062311261172797935,
+        "end_line": 617,
+        "signature": null
+      },
+      {
+        "start_line": 462,
+        "file_path": "lib/matplotlib/sphinxext/plot_directive.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PlotError(RuntimeError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.sphinxext.plot_directive.PlotError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/sphinxext/plot_directive.py"
+          },
+          {
+            "start_node": "lib/matplotlib/sphinxext/plot_directive.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.sphinxext.plot_directive.PlotError"
+          }
+        ],
+        "similarity": 0.060358488692631475,
+        "end_line": 463,
+        "signature": null
+      },
+      {
+        "start_line": 2250,
+        "file_path": "lib/matplotlib/patches.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BoxStyle(_Style):\n    \"\"\"\n    `BoxStyle` is a container class which defines several\n    boxstyle classes, which are used for `FancyBboxPatch`.\n\n    A style object can be created as::\n\n           BoxStyle.Round(pad=0.2)\n\n    or::\n\n           BoxStyle(\"Round\", pad=0.2)\n\n    or::\n\n           BoxStyle(\"Round, pad=0.2\")\n\n    The following boxstyle classes are defined.\n\n    %(AvailableBoxstyles)s\n\n    An instance of any boxstyle class is an callable object,\n    whose call signature is::\n\n       __call__(self, x0, y0, width, height, mutation_size)\n\n    and returns a `.Path` instance. *x0*, *y0*, *width* and\n    *height* specify the location and size of the box to be\n    drawn. *mutation_scale* determines the overall size of the\n    mutation (by which I mean the transformation of the rectangle to\n    the fancy box).\n    \"\"\"\n\n    _style_list = {}\n\n    @_api.deprecated(\"3.4\")\n    class _Base:\n        \"\"\"\n        Abstract base class for styling of `.FancyBboxPatch`.\n\n        This class is not an artist itself.  The `__call__` method returns the\n        `~matplotlib.path.Path` for outlining the fancy box. The actual drawing\n        is handled in `.FancyBboxPatch`.\n\n        Subclasses may only use parameters with default values in their\n        ``__init__`` method because they must be able to be initialized\n        without arguments.\n\n        Subclasses must implement the `__call__` method. It receives the\n        enclosing rectangle *x0, y0, width, height* as well as the\n        *mutation_size*, which scales the outline properties such as padding.\n        It returns the outline of the fancy box as `.path.Path`.\n        \"\"\"\n\n        @_api.deprecated(\"3.4\")\n        def transmute(self, x0, y0, width, height, mutation_size):\n            \"\"\"Return the `~.path.Path` outlining the given rectangle.\"\"\"\n            return self(self, x0, y0, width, height, mutation_size, 1)\n\n        # This can go away once the deprecation period elapses, leaving _Base\n        # as a fully abstract base class just providing docstrings, no logic.\n        def __init_subclass__(cls):\n            transmute = _api.deprecate_method_override(\n                __class__.transmute, cls, since=\"3.4\")\n            if transmute:\n                cls.__call__ = transmute\n                return\n\n            __call__ = cls.__call__\n\n            @_api.delete_parameter(\"3.4\", \"mutation_aspect\")\n            def call_wrapper(\n                    self, x0, y0, width, height, mutation_size,\n                    mutation_aspect=_api.deprecation._deprecated_parameter):\n                if mutation_aspect is _api.deprecation._deprecated_parameter:\n                    # Don't trigger deprecation warning internally.\n                    return __call__(self, x0, y0, width, height, mutation_size)\n                else:\n                    # Squeeze the given height by the aspect_ratio.\n                    y0, height = y0 / mutation_aspect, height / mutation_aspect\n                    path = self(x0, y0, width, height, mutation_size,\n                                mutation_aspect)\n                    vertices, codes = path.vertices, path.codes\n                    # Restore the height.\n                    vertices[:, 1] = vertices[:, 1] * mutation_aspect\n                    return Path(vertices, codes)\n\n            cls.__call__ = call_wrapper\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            \"\"\"\n            Given the location and size of the box, return the path of\n            the box around it.\n\n            Parameters\n            ----------\n            x0, y0, width, height : float\n                Location and size of the box.\n            mutation_size : float\n                A reference scale for the mutation.\n\n            Returns\n            -------\n            `~matplotlib.path.Path`\n            \"\"\"\n            raise NotImplementedError('Derived must override')\n\n    @_register_style(_style_list)\n    class Square(_Base):\n        \"\"\"A square box.\"\"\"\n\n        def __init__(self, pad=0.3):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            \"\"\"\n            self.pad = pad\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            pad = mutation_size * self.pad\n            # width and height with padding added.\n            width, height = width + 2 * pad, height + 2 * pad\n            # boundary of the padded box\n            x0, y0 = x0 - pad, y0 - pad\n            x1, y1 = x0 + width, y0 + height\n            return Path([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)],\n                        closed=True)\n\n    @_register_style(_style_list)\n    class Circle(_Base):\n        \"\"\"A circular box.\"\"\"\n\n        def __init__(self, pad=0.3):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            \"\"\"\n            self.pad = pad\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            pad = mutation_size * self.pad\n            width, height = width + 2 * pad, height + 2 * pad\n            # boundary of the padded box\n            x0, y0 = x0 - pad, y0 - pad\n            return Path.circle((x0 + width / 2, y0 + height / 2),\n                               max(width, height) / 2)\n\n    @_register_style(_style_list)\n    class LArrow(_Base):\n        \"\"\"A box in the shape of a left-pointing arrow.\"\"\"\n\n        def __init__(self, pad=0.3):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            \"\"\"\n            self.pad = pad\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            # padding\n            pad = mutation_size * self.pad\n            # width and height with padding added.\n            width, height = width + 2 * pad, height + 2 * pad\n            # boundary of the padded box\n            x0, y0 = x0 - pad, y0 - pad,\n            x1, y1 = x0 + width, y0 + height\n\n            dx = (y1 - y0) / 2\n            dxx = dx / 2\n            x0 = x0 + pad / 1.4  # adjust by ~sqrt(2)\n\n            return Path([(x0 + dxx, y0), (x1, y0), (x1, y1), (x0 + dxx, y1),\n                         (x0 + dxx, y1 + dxx), (x0 - dx, y0 + dx),\n                         (x0 + dxx, y0 - dxx),  # arrow\n                         (x0 + dxx, y0), (x0 + dxx, y0)],\n                        closed=True)\n\n    @_register_style(_style_list)\n    class RArrow(LArrow):\n        \"\"\"A box in the shape of a right-pointing arrow.\"\"\"\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            p = BoxStyle.LArrow.__call__(\n                self, x0, y0, width, height, mutation_size)\n            p.vertices[:, 0] = 2 * x0 + width - p.vertices[:, 0]\n            return p\n\n    @_register_style(_style_list)\n    class DArrow(_Base):\n        \"\"\"A box in the shape of a two-way arrow.\"\"\"\n        # Modified from LArrow to add a right arrow to the bbox.\n\n        def __init__(self, pad=0.3):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            \"\"\"\n            self.pad = pad\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            # padding\n            pad = mutation_size * self.pad\n            # width and height with padding added.\n            # The width is padded by the arrows, so we don't need to pad it.\n            height = height + 2 * pad\n            # boundary of the padded box\n            x0, y0 = x0 - pad, y0 - pad\n            x1, y1 = x0 + width, y0 + height\n\n            dx = (y1 - y0) / 2\n            dxx = dx / 2\n            x0 = x0 + pad / 1.4  # adjust by ~sqrt(2)\n\n            return Path([(x0 + dxx, y0), (x1, y0),  # bot-segment\n                         (x1, y0 - dxx), (x1 + dx + dxx, y0 + dx),\n                         (x1, y1 + dxx),  # right-arrow\n                         (x1, y1), (x0 + dxx, y1),  # top-segment\n                         (x0 + dxx, y1 + dxx), (x0 - dx, y0 + dx),\n                         (x0 + dxx, y0 - dxx),  # left-arrow\n                         (x0 + dxx, y0), (x0 + dxx, y0)],  # close-poly\n                        closed=True)\n\n    @_register_style(_style_list)\n    class Round(_Base):\n        \"\"\"A box with round corners.\"\"\"\n\n        def __init__(self, pad=0.3, rounding_size=None):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            rounding_size : float, default: *pad*\n                Radius of the corners.\n            \"\"\"\n            self.pad = pad\n            self.rounding_size = rounding_size\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n\n            # padding\n            pad = mutation_size * self.pad\n\n            # size of the rounding corner\n            if self.rounding_size:\n                dr = mutation_size * self.rounding_size\n            else:\n                dr = pad\n\n            width, height = width + 2 * pad, height + 2 * pad\n\n            x0, y0 = x0 - pad, y0 - pad,\n            x1, y1 = x0 + width, y0 + height\n\n            # Round corners are implemented as quadratic Bezier, e.g.,\n            # [(x0, y0-dr), (x0, y0), (x0+dr, y0)] for lower left corner.\n            cp = [(x0 + dr, y0),\n                  (x1 - dr, y0),\n                  (x1, y0), (x1, y0 + dr),\n                  (x1, y1 - dr),\n                  (x1, y1), (x1 - dr, y1),\n                  (x0 + dr, y1),\n                  (x0, y1), (x0, y1 - dr),\n                  (x0, y0 + dr),\n                  (x0, y0), (x0 + dr, y0),\n                  (x0 + dr, y0)]\n\n            com = [Path.MOVETO,\n                   Path.LINETO,\n                   Path.CURVE3, Path.CURVE3,\n                   Path.LINETO,\n                   Path.CURVE3, Path.CURVE3,\n                   Path.LINETO,\n                   Path.CURVE3, Path.CURVE3,\n                   Path.LINETO,\n                   Path.CURVE3, Path.CURVE3,\n                   Path.CLOSEPOLY]\n\n            path = Path(cp, com)\n\n            return path\n\n    @_register_style(_style_list)\n    class Round4(_Base):\n        \"\"\"A box with rounded edges.\"\"\"\n\n        def __init__(self, pad=0.3, rounding_size=None):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            rounding_size : float, default: *pad*/2\n                Rounding of edges.\n            \"\"\"\n            self.pad = pad\n            self.rounding_size = rounding_size\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n\n            # padding\n            pad = mutation_size * self.pad\n\n            # Rounding size; defaults to half of the padding.\n            if self.rounding_size:\n                dr = mutation_size * self.rounding_size\n            else:\n                dr = pad / 2.\n\n            width = width + 2 * pad - 2 * dr\n            height = height + 2 * pad - 2 * dr\n\n            x0, y0 = x0 - pad + dr, y0 - pad + dr,\n            x1, y1 = x0 + width, y0 + height\n\n            cp = [(x0, y0),\n                  (x0 + dr, y0 - dr), (x1 - dr, y0 - dr), (x1, y0),\n                  (x1 + dr, y0 + dr), (x1 + dr, y1 - dr), (x1, y1),\n                  (x1 - dr, y1 + dr), (x0 + dr, y1 + dr), (x0, y1),\n                  (x0 - dr, y1 - dr), (x0 - dr, y0 + dr), (x0, y0),\n                  (x0, y0)]\n\n            com = [Path.MOVETO,\n                   Path.CURVE4, Path.CURVE4, Path.CURVE4,\n                   Path.CURVE4, Path.CURVE4, Path.CURVE4,\n                   Path.CURVE4, Path.CURVE4, Path.CURVE4,\n                   Path.CURVE4, Path.CURVE4, Path.CURVE4,\n                   Path.CLOSEPOLY]\n\n            path = Path(cp, com)\n\n            return path\n\n    @_register_style(_style_list)\n    class Sawtooth(_Base):\n        \"\"\"A box with a sawtooth outline.\"\"\"\n\n        def __init__(self, pad=0.3, tooth_size=None):\n            \"\"\"\n            Parameters\n            ----------\n            pad : float, default: 0.3\n                The amount of padding around the original box.\n            tooth_size : float, default: *pad*/2\n                Size of the sawtooth.\n            \"\"\"\n            self.pad = pad\n            self.tooth_size = tooth_size\n\n        def _get_sawtooth_vertices(self, x0, y0, width, height, mutation_size):\n\n            # padding\n            pad = mutation_size * self.pad\n\n            # size of sawtooth\n            if self.tooth_size is None:\n                tooth_size = self.pad * .5 * mutation_size\n            else:\n                tooth_size = self.tooth_size * mutation_size\n\n            tooth_size2 = tooth_size / 2\n            width = width + 2 * pad - tooth_size\n            height = height + 2 * pad - tooth_size\n\n            # the sizes of the vertical and horizontal sawtooth are\n            # separately adjusted to fit the given box size.\n            dsx_n = int(round((width - tooth_size) / (tooth_size * 2))) * 2\n            dsx = (width - tooth_size) / dsx_n\n            dsy_n = int(round((height - tooth_size) / (tooth_size * 2))) * 2\n            dsy = (height - tooth_size) / dsy_n\n\n            x0, y0 = x0 - pad + tooth_size2, y0 - pad + tooth_size2\n            x1, y1 = x0 + width, y0 + height\n\n            bottom_saw_x = [\n                x0,\n                *(x0 + tooth_size2 + dsx * .5 * np.arange(dsx_n * 2)),\n                x1 - tooth_size2,\n            ]\n            bottom_saw_y = [\n                y0,\n                *([y0 - tooth_size2, y0, y0 + tooth_size2, y0] * dsx_n),\n                y0 - tooth_size2,\n            ]\n            right_saw_x = [\n                x1,\n                *([x1 + tooth_size2, x1, x1 - tooth_size2, x1] * dsx_n),\n                x1 + tooth_size2,\n            ]\n            right_saw_y = [\n                y0,\n                *(y0 + tooth_size2 + dsy * .5 * np.arange(dsy_n * 2)),\n                y1 - tooth_size2,\n            ]\n            top_saw_x = [\n                x1,\n                *(x1 - tooth_size2 - dsx * .5 * np.arange(dsx_n * 2)),\n                x0 + tooth_size2,\n            ]\n            top_saw_y = [\n                y1,\n                *([y1 + tooth_size2, y1, y1 - tooth_size2, y1] * dsx_n),\n                y1 + tooth_size2,\n            ]\n            left_saw_x = [\n                x0,\n                *([x0 - tooth_size2, x0, x0 + tooth_size2, x0] * dsy_n),\n                x0 - tooth_size2,\n            ]\n            left_saw_y = [\n                y1,\n                *(y1 - tooth_size2 - dsy * .5 * np.arange(dsy_n * 2)),\n                y0 + tooth_size2,\n            ]\n\n            saw_vertices = [*zip(bottom_saw_x, bottom_saw_y),\n                            *zip(right_saw_x, right_saw_y),\n                            *zip(top_saw_x, top_saw_y),\n                            *zip(left_saw_x, left_saw_y),\n                            (bottom_saw_x[0], bottom_saw_y[0])]\n\n            return saw_vertices\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            saw_vertices = self._get_sawtooth_vertices(x0, y0, width,\n                                                       height, mutation_size)\n            path = Path(saw_vertices, closed=True)\n            return path\n\n    @_register_style(_style_list)\n    class Roundtooth(Sawtooth):\n        \"\"\"A box with a rounded sawtooth outline.\"\"\"\n\n        def __call__(self, x0, y0, width, height, mutation_size):\n            saw_vertices = self._get_sawtooth_vertices(x0, y0,\n                                                       width, height,\n                                                       mutation_size)\n            # Add a trailing vertex to allow us to close the polygon correctly\n            saw_vertices = np.concatenate([saw_vertices, [saw_vertices[0]]])\n            codes = ([Path.MOVETO] +\n                     [Path.CURVE3, Path.CURVE3] * ((len(saw_vertices)-1)//2) +\n                     [Path.CLOSEPOLY])\n            return Path(saw_vertices, codes)",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.patches.BoxStyle",
+        "documentation": "`BoxStyle` is a container class which defines several\nboxstyle classes, which are used for `FancyBboxPatch`.\n\nA style object can be created as::\n\n       BoxStyle.Round(pad=0.2)\n\nor::\n\n       BoxStyle(\"Round\", pad=0.2)\n\nor::\n\n       BoxStyle(\"Round, pad=0.2\")\n\nThe following boxstyle classes are defined.\n\n%(AvailableBoxstyles)s\n\nAn instance of any boxstyle class is an callable object,\nwhose call signature is::\n\n   __call__(self, x0, y0, width, height, mutation_size)\n\nand returns a `.Path` instance. *x0*, *y0*, *width* and\n*height* specify the location and size of the box to be\ndrawn. *mutation_scale* determines the overall size of the\nmutation (by which I mean the transformation of the rectangle to\nthe fancy box).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/patches.py"
+          },
+          {
+            "start_node": "lib/matplotlib/patches.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.patches.BoxStyle"
+          }
+        ],
+        "similarity": 0.05979358660191046,
+        "end_line": 2700,
+        "signature": null
+      },
+      {
+        "start_line": 436,
+        "file_path": "lib/matplotlib/streamplot.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class TerminateTrajectory(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.streamplot.TerminateTrajectory",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/streamplot.py"
+          },
+          {
+            "start_node": "lib/matplotlib/streamplot.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.streamplot.TerminateTrajectory"
+          }
+        ],
+        "similarity": 0.05752363782486364,
+        "end_line": 437,
+        "signature": null
+      },
+      {
+        "start_line": 651,
+        "file_path": "lib/matplotlib/backend_tools.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ConfigureSubplotsBase(ToolBase):\n    \"\"\"Base tool for the configuration of subplots.\"\"\"\n\n    description = 'Configure subplots'\n    image = 'subplots'",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backend_tools.ConfigureSubplotsBase",
+        "documentation": "Base tool for the configuration of subplots.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backend_tools.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backend_tools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backend_tools.ConfigureSubplotsBase"
+          }
+        ],
+        "similarity": 0.056911389471770754,
+        "end_line": 655,
+        "signature": null
+      },
+      {
+        "start_line": 13,
+        "file_path": "lib/matplotlib/backends/backend_macosx.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class TimerMac(_macosx.Timer, TimerBase):\n    \"\"\"Subclass of `.TimerBase` using CFRunLoop timer events.\"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_macosx.TimerMac",
+        "documentation": "Subclass of `.TimerBase` using CFRunLoop timer events.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_macosx.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_macosx.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_macosx.TimerMac"
+          }
+        ],
+        "similarity": 0.054883915111889656,
+        "end_line": 14,
+        "signature": null
+      },
+      {
+        "start_line": 678,
+        "file_path": "lib/matplotlib/animation.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ImageMagickFileWriter(ImageMagickBase, FileMovieWriter):\n    \"\"\"\n    File-based animated gif writer.\n\n    Frames are written to temporary files on disk and then stitched\n    together at the end.\n    \"\"\"\n\n    supported_formats = ['png', 'jpeg', 'tiff', 'raw', 'rgba']\n    input_names = property(\n        lambda self: f'{self.temp_prefix}*.{self.frame_format}')",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.animation.ImageMagickFileWriter",
+        "documentation": "File-based animated gif writer.\n\nFrames are written to temporary files on disk and then stitched\ntogether at the end.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/animation.py"
+          },
+          {
+            "start_node": "lib/matplotlib/animation.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.animation.ImageMagickFileWriter"
+          }
+        ],
+        "similarity": 0.05464250250340419,
+        "end_line": 688,
+        "signature": null
+      },
+      {
+        "start_line": 665,
+        "file_path": "lib/matplotlib/animation.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ImageMagickWriter(ImageMagickBase, MovieWriter):\n    \"\"\"\n    Pipe-based animated gif.\n\n    Frames are streamed directly to ImageMagick via a pipe and written\n    in a single pass.\n    \"\"\"\n\n    input_names = \"-\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.animation.ImageMagickWriter",
+        "documentation": "Pipe-based animated gif.\n\nFrames are streamed directly to ImageMagick via a pipe and written\nin a single pass.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/animation.py"
+          },
+          {
+            "start_node": "lib/matplotlib/animation.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.animation.ImageMagickWriter"
+          }
+        ],
+        "similarity": 0.05418406389844418,
+        "end_line": 673,
+        "signature": null
+      },
+      {
+        "start_line": 786,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class STIXFontConstants(FontConstantsBase):\n    script_space = 0.1\n    sup1 = 0.8\n    sub2 = 0.6\n    delta = 0.05\n    delta_slanted = 0.3\n    delta_integral = 0.3",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.STIXFontConstants",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.STIXFontConstants"
+          }
+        ],
+        "similarity": 0.052951682434595575,
+        "end_line": 792,
+        "signature": null
+      },
+      {
+        "start_line": 1364,
+        "file_path": "lib/matplotlib/backends/backend_ps.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _BackendPS(_Backend):\n    FigureCanvas = FigureCanvasPS",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.backends.backend_ps._BackendPS",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/backends/backend_ps.py"
+          },
+          {
+            "start_node": "lib/matplotlib/backends/backend_ps.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.backends.backend_ps._BackendPS"
+          }
+        ],
+        "similarity": 0.05127485180811258,
+        "end_line": 1365,
+        "signature": null
+      },
+      {
+        "start_line": 700,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class StixSansFonts(StixFonts):\n    \"\"\"\n    A font handling class for the STIX fonts (that uses sans-serif\n    characters by default).\n    \"\"\"\n    _sans = True",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.StixSansFonts",
+        "documentation": "A font handling class for the STIX fonts (that uses sans-serif\ncharacters by default).",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.StixSansFonts"
+          }
+        ],
+        "similarity": 0.05082293446228881,
+        "end_line": 705,
+        "signature": null
+      },
+      {
+        "start_line": 795,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class STIXSansFontConstants(FontConstantsBase):\n    script_space = 0.05\n    sup1 = 0.8\n    delta_slanted = 0.6\n    delta_integral = 0.3",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.STIXSansFontConstants",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.STIXSansFontConstants"
+          }
+        ],
+        "similarity": 0.04859284985162886,
+        "end_line": 799,
+        "signature": null
+      },
+      {
+        "start_line": 802,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class DejaVuSerifFontConstants(FontConstantsBase):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.DejaVuSerifFontConstants",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.DejaVuSerifFontConstants"
+          }
+        ],
+        "similarity": 0.04558568363318726,
+        "end_line": 803,
+        "signature": null
+      },
+      {
+        "start_line": 806,
+        "file_path": "lib/matplotlib/_mathtext.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class DejaVuSansFontConstants(FontConstantsBase):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._mathtext.DejaVuSansFontConstants",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_mathtext.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_mathtext.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._mathtext.DejaVuSansFontConstants"
+          }
+        ],
+        "similarity": 0.0443956494241788,
+        "end_line": 807,
+        "signature": null
+      },
+      {
+        "start_line": 3139,
+        "file_path": "lib/matplotlib/patches.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ArrowStyle(_Style):\n    \"\"\"\n    `ArrowStyle` is a container class which defines several\n    arrowstyle classes, which is used to create an arrow path along a\n    given path.  These are mainly used with `FancyArrowPatch`.\n\n    A arrowstyle object can be either created as::\n\n           ArrowStyle.Fancy(head_length=.4, head_width=.4, tail_width=.4)\n\n    or::\n\n           ArrowStyle(\"Fancy\", head_length=.4, head_width=.4, tail_width=.4)\n\n    or::\n\n           ArrowStyle(\"Fancy, head_length=.4, head_width=.4, tail_width=.4\")\n\n    The following classes are defined\n\n    %(AvailableArrowstyles)s\n\n    An instance of any arrow style class is a callable object,\n    whose call signature is::\n\n        __call__(self, path, mutation_size, linewidth, aspect_ratio=1.)\n\n    and it returns a tuple of a `.Path` instance and a boolean\n    value. *path* is a `.Path` instance along which the arrow\n    will be drawn. *mutation_size* and *aspect_ratio* have the same\n    meaning as in `BoxStyle`. *linewidth* is a line width to be\n    stroked. This is meant to be used to correct the location of the\n    head so that it does not overshoot the destination point, but not all\n    classes support it.\n    \"\"\"\n\n    _style_list = {}\n\n    class _Base:\n        \"\"\"\n        Arrow Transmuter Base class\n\n        ArrowTransmuterBase and its derivatives are used to make a fancy\n        arrow around a given path. The __call__ method returns a path\n        (which will be used to create a PathPatch instance) and a boolean\n        value indicating the path is open therefore is not fillable.  This\n        class is not an artist and actual drawing of the fancy arrow is\n        done by the FancyArrowPatch class.\n        \"\"\"\n\n        # The derived classes are required to be able to be initialized\n        # w/o arguments, i.e., all its argument (except self) must have\n        # the default values.\n\n        @staticmethod\n        def ensure_quadratic_bezier(path):\n            \"\"\"\n            Some ArrowStyle classes only works with a simple quadratic\n            Bezier curve (created with `.ConnectionStyle.Arc3` or\n            `.ConnectionStyle.Angle3`). This static method checks if the\n            provided path is a simple quadratic Bezier curve and returns its\n            control points if true.\n            \"\"\"\n            segments = list(path.iter_segments())\n            if (len(segments) != 2 or segments[0][1] != Path.MOVETO or\n                    segments[1][1] != Path.CURVE3):\n                raise ValueError(\n                    \"'path' is not a valid quadratic Bezier curve\")\n            return [*segments[0][0], *segments[1][0]]\n\n        def transmute(self, path, mutation_size, linewidth):\n            \"\"\"\n            The transmute method is the very core of the ArrowStyle class and\n            must be overridden in the subclasses. It receives the path object\n            along which the arrow will be drawn, and the mutation_size, with\n            which the arrow head etc. will be scaled. The linewidth may be\n            used to adjust the path so that it does not pass beyond the given\n            points. It returns a tuple of a Path instance and a boolean. The\n            boolean value indicate whether the path can be filled or not. The\n            return value can also be a list of paths and list of booleans of a\n            same length.\n            \"\"\"\n            raise NotImplementedError('Derived must override')\n\n        def __call__(self, path, mutation_size, linewidth,\n                     aspect_ratio=1.):\n            \"\"\"\n            The __call__ method is a thin wrapper around the transmute method\n            and takes care of the aspect ratio.\n            \"\"\"\n\n            if aspect_ratio is not None:\n                # Squeeze the given height by the aspect_ratio\n                vertices = path.vertices / [1, aspect_ratio]\n                path_shrunk = Path(vertices, path.codes)\n                # call transmute method with squeezed height.\n                path_mutated, fillable = self.transmute(path_shrunk,\n                                                        mutation_size,\n                                                        linewidth)\n                if np.iterable(fillable):\n                    path_list = []\n                    for p in path_mutated:\n                        # Restore the height\n                        path_list.append(\n                            Path(p.vertices * [1, aspect_ratio], p.codes))\n                    return path_list, fillable\n                else:\n                    return path_mutated, fillable\n            else:\n                return self.transmute(path, mutation_size, linewidth)\n\n    class _Curve(_Base):\n        \"\"\"\n        A simple arrow which will work with any path instance. The\n        returned path is the concatenation of the original path, and at\n        most two paths representing the arrow head or bracket at the begin\n        point and at the end point. The arrow heads can be either open\n        or closed.\n        \"\"\"\n\n        beginarrow = endarrow = None  # Whether arrows are drawn.\n        arrow = \"-\"\n        fillbegin = fillend = False  # Whether arrows are filled.\n\n        def __init__(self, head_length=.4, head_width=.2, widthA=1., widthB=1.,\n                     lengthA=0.2, lengthB=0.2, angleA=0, angleB=0, scaleA=None,\n                     scaleB=None):\n            \"\"\"\n            Parameters\n            ----------\n            head_length : float, default: 0.4\n                Length of the arrow head, relative to *mutation_scale*.\n            head_width : float, default: 0.2\n                Width of the arrow head, relative to *mutation_scale*.\n            widthA : float, default: 1.0\n                Width of the bracket at the beginning of the arrow\n            widthB : float, default: 1.0\n                Width of the bracket at the end of the arrow\n            lengthA : float, default: 0.2\n                Length of the bracket at the beginning of the arrow\n            lengthB : float, default: 0.2\n                Length of the bracket at the end of the arrow\n            angleA : float, default 0\n                Orientation of the bracket at the beginning, as a\n                counterclockwise angle. 0 degrees means perpendicular\n                to the line.\n            angleB : float, default 0\n                Orientation of the bracket at the beginning, as a\n                counterclockwise angle. 0 degrees means perpendicular\n                to the line.\n            scaleA : float, default *mutation_size*\n                The mutation_size for the beginning bracket\n            scaleB : float, default *mutation_size*\n                The mutation_size for the end bracket\n            \"\"\"\n\n            self.head_length, self.head_width = head_length, head_width\n            self.widthA, self.widthB = widthA, widthB\n            self.lengthA, self.lengthB = lengthA, lengthB\n            self.angleA, self.angleB = angleA, angleB\n            self.scaleA, self.scaleB = scaleA, scaleB\n\n            self._beginarrow_head = False\n            self._beginarrow_bracket = False\n            self._endarrow_head = False\n            self._endarrow_bracket = False\n\n            if \"-\" not in self.arrow:\n                raise ValueError(\"arrow must have the '-' between \"\n                                 \"the two heads\")\n\n            beginarrow, endarrow = self.arrow.split(\"-\", 1)\n\n            if beginarrow == \"<\":\n                self._beginarrow_head = True\n                self._beginarrow_bracket = False\n            elif beginarrow == \"<|\":\n                self._beginarrow_head = True\n                self._beginarrow_bracket = False\n                self.fillbegin = True\n            elif beginarrow in (\"]\", \"|\"):\n                self._beginarrow_head = False\n                self._beginarrow_bracket = True\n            elif self.beginarrow is True:\n                self._beginarrow_head = True\n                self._beginarrow_bracket = False\n\n                _api.warn_deprecated('3.5', name=\"beginarrow\",\n                                     alternative=\"arrow\")\n            elif self.beginarrow is False:\n                self._beginarrow_head = False\n                self._beginarrow_bracket = False\n\n                _api.warn_deprecated('3.5', name=\"beginarrow\",\n                                     alternative=\"arrow\")\n\n            if endarrow == \">\":\n                self._endarrow_head = True\n                self._endarrow_bracket = False\n            elif endarrow == \"|>\":\n                self._endarrow_head = True\n                self._endarrow_bracket = False\n                self.fillend = True\n            elif endarrow in (\"[\", \"|\"):\n                self._endarrow_head = False\n                self._endarrow_bracket = True\n            elif self.endarrow is True:\n                self._endarrow_head = True\n                self._endarrow_bracket = False\n\n                _api.warn_deprecated('3.5', name=\"endarrow\",\n                                     alternative=\"arrow\")\n            elif self.endarrow is False:\n                self._endarrow_head = False\n                self._endarrow_bracket = False\n\n                _api.warn_deprecated('3.5', name=\"endarrow\",\n                                     alternative=\"arrow\")\n\n            super().__init__()\n\n        def _get_arrow_wedge(self, x0, y0, x1, y1,\n                             head_dist, cos_t, sin_t, linewidth):\n            \"\"\"\n            Return the paths for arrow heads. Since arrow lines are\n            drawn with capstyle=projected, The arrow goes beyond the\n            desired point. This method also returns the amount of the path\n            to be shrunken so that it does not overshoot.\n            \"\"\"\n\n            # arrow from x0, y0 to x1, y1\n            dx, dy = x0 - x1, y0 - y1\n\n            cp_distance = np.hypot(dx, dy)\n\n            # pad_projected : amount of pad to account the\n            # overshooting of the projection of the wedge\n            pad_projected = (.5 * linewidth / sin_t)\n\n            # Account for division by zero\n            if cp_distance == 0:\n                cp_distance = 1\n\n            # apply pad for projected edge\n            ddx = pad_projected * dx / cp_distance\n            ddy = pad_projected * dy / cp_distance\n\n            # offset for arrow wedge\n            dx = dx / cp_distance * head_dist\n            dy = dy / cp_distance * head_dist\n\n            dx1, dy1 = cos_t * dx + sin_t * dy, -sin_t * dx + cos_t * dy\n            dx2, dy2 = cos_t * dx - sin_t * dy, sin_t * dx + cos_t * dy\n\n            vertices_arrow = [(x1 + ddx + dx1, y1 + ddy + dy1),\n                              (x1 + ddx, y1 + ddy),\n                              (x1 + ddx + dx2, y1 + ddy + dy2)]\n            codes_arrow = [Path.MOVETO,\n                           Path.LINETO,\n                           Path.LINETO]\n\n            return vertices_arrow, codes_arrow, ddx, ddy\n\n        def _get_bracket(self, x0, y0,\n                         x1, y1, width, length, angle):\n\n            cos_t, sin_t = get_cos_sin(x1, y1, x0, y0)\n\n            # arrow from x0, y0 to x1, y1\n            from matplotlib.bezier import get_normal_points\n            x1, y1, x2, y2 = get_normal_points(x0, y0, cos_t, sin_t, width)\n\n            dx, dy = length * cos_t, length * sin_t\n\n            vertices_arrow = [(x1 + dx, y1 + dy),\n                              (x1, y1),\n                              (x2, y2),\n                              (x2 + dx, y2 + dy)]\n            codes_arrow = [Path.MOVETO,\n                           Path.LINETO,\n                           Path.LINETO,\n                           Path.LINETO]\n\n            if angle:\n                trans = transforms.Affine2D().rotate_deg_around(x0, y0, angle)\n                vertices_arrow = trans.transform(vertices_arrow)\n\n            return vertices_arrow, codes_arrow\n\n        def transmute(self, path, mutation_size, linewidth):\n\n            if self._beginarrow_head or self._endarrow_head:\n                head_length = self.head_length * mutation_size\n                head_width = self.head_width * mutation_size\n                head_dist = np.hypot(head_length, head_width)\n                cos_t, sin_t = head_length / head_dist, head_width / head_dist\n\n            scaleA = mutation_size if self.scaleA is None else self.scaleA\n            scaleB = mutation_size if self.scaleB is None else self.scaleB\n\n            # begin arrow\n            x0, y0 = path.vertices[0]\n            x1, y1 = path.vertices[1]\n\n            # If there is no room for an arrow and a line, then skip the arrow\n            has_begin_arrow = self._beginarrow_head and (x0, y0) != (x1, y1)\n            verticesA, codesA, ddxA, ddyA = (\n                self._get_arrow_wedge(x1, y1, x0, y0,\n                                      head_dist, cos_t, sin_t, linewidth)\n                if has_begin_arrow\n                else ([], [], 0, 0)\n            )\n\n            # end arrow\n            x2, y2 = path.vertices[-2]\n            x3, y3 = path.vertices[-1]\n\n            # If there is no room for an arrow and a line, then skip the arrow\n            has_end_arrow = self._endarrow_head and (x2, y2) != (x3, y3)\n            verticesB, codesB, ddxB, ddyB = (\n                self._get_arrow_wedge(x2, y2, x3, y3,\n                                      head_dist, cos_t, sin_t, linewidth)\n                if has_end_arrow\n                else ([], [], 0, 0)\n            )\n\n            # This simple code will not work if ddx, ddy is greater than the\n            # separation between vertices.\n            _path = [Path(np.concatenate([[(x0 + ddxA, y0 + ddyA)],\n                                          path.vertices[1:-1],\n                                          [(x3 + ddxB, y3 + ddyB)]]),\n                          path.codes)]\n            _fillable = [False]\n\n            if has_begin_arrow:\n                if self.fillbegin:\n                    p = np.concatenate([verticesA, [verticesA[0],\n                                                    verticesA[0]], ])\n                    c = np.concatenate([codesA, [Path.LINETO, Path.CLOSEPOLY]])\n                    _path.append(Path(p, c))\n                    _fillable.append(True)\n                else:\n                    _path.append(Path(verticesA, codesA))\n                    _fillable.append(False)\n            elif self._beginarrow_bracket:\n                x0, y0 = path.vertices[0]\n                x1, y1 = path.vertices[1]\n                verticesA, codesA = self._get_bracket(x0, y0, x1, y1,\n                                                      self.widthA * scaleA,\n                                                      self.lengthA * scaleA,\n                                                      self.angleA)\n\n                _path.append(Path(verticesA, codesA))\n                _fillable.append(False)\n\n            if has_end_arrow:\n                if self.fillend:\n                    _fillable.append(True)\n                    p = np.concatenate([verticesB, [verticesB[0],\n                                                    verticesB[0]], ])\n                    c = np.concatenate([codesB, [Path.LINETO, Path.CLOSEPOLY]])\n                    _path.append(Path(p, c))\n                else:\n                    _fillable.append(False)\n                    _path.append(Path(verticesB, codesB))\n            elif self._endarrow_bracket:\n                x0, y0 = path.vertices[-1]\n                x1, y1 = path.vertices[-2]\n                verticesB, codesB = self._get_bracket(x0, y0, x1, y1,\n                                                      self.widthB * scaleB,\n                                                      self.lengthB * scaleB,\n                                                      self.angleB)\n\n                _path.append(Path(verticesB, codesB))\n                _fillable.append(False)\n\n            return _path, _fillable\n\n    @_register_style(_style_list, name=\"-\")\n    class Curve(_Curve):\n        \"\"\"A simple curve without any arrow head.\"\"\"\n\n        def __init__(self):  # hide head_length, head_width\n            # These attributes (whose values come from backcompat) only matter\n            # if someone modifies beginarrow/etc. on an ArrowStyle instance.\n            super().__init__(head_length=.2, head_width=.1)\n\n    @_register_style(_style_list, name=\"<-\")\n    class CurveA(_Curve):\n        \"\"\"An arrow with a head at its begin point.\"\"\"\n        arrow = \"<-\"\n\n    @_register_style(_style_list, name=\"->\")\n    class CurveB(_Curve):\n        \"\"\"An arrow with a head at its end point.\"\"\"\n        arrow = \"->\"\n\n    @_register_style(_style_list, name=\"<->\")\n    class CurveAB(_Curve):\n        \"\"\"An arrow with heads both at the begin and the end point.\"\"\"\n        arrow = \"<->\"\n\n    @_register_style(_style_list, name=\"<|-\")\n    class CurveFilledA(_Curve):\n        \"\"\"An arrow with filled triangle head at the begin.\"\"\"\n        arrow = \"<|-\"\n\n    @_register_style(_style_list, name=\"-|>\")\n    class CurveFilledB(_Curve):\n        \"\"\"An arrow with filled triangle head at the end.\"\"\"\n        arrow = \"-|>\"\n\n    @_register_style(_style_list, name=\"<|-|>\")\n    class CurveFilledAB(_Curve):\n        \"\"\"An arrow with filled triangle heads at both ends.\"\"\"\n        arrow = \"<|-|>\"\n\n    @_register_style(_style_list, name=\"]-\")\n    class BracketA(_Curve):\n        \"\"\"An arrow with an outward square bracket at its start.\"\"\"\n        arrow = \"]-\"\n\n        def __init__(self, widthA=1., lengthA=0.2, angleA=0):\n            \"\"\"\n            Parameters\n            ----------\n            widthA : float, default: 1.0\n                Width of the bracket.\n            lengthA : float, default: 0.2\n                Length of the bracket.\n            angleA : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthA=widthA, lengthA=lengthA, angleA=angleA)\n\n    @_register_style(_style_list, name=\"-[\")\n    class BracketB(_Curve):\n        \"\"\"An arrow with an outward square bracket at its end.\"\"\"\n        arrow = \"-[\"\n\n        def __init__(self, widthB=1., lengthB=0.2, angleB=0):\n            \"\"\"\n            Parameters\n            ----------\n            widthB : float, default: 1.0\n                Width of the bracket.\n            lengthB : float, default: 0.2\n                Length of the bracket.\n            angleB : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthB=widthB, lengthB=lengthB, angleB=angleB)\n\n    @_register_style(_style_list, name=\"]-[\")\n    class BracketAB(_Curve):\n        \"\"\"An arrow with outward square brackets at both ends.\"\"\"\n        arrow = \"]-[\"\n\n        def __init__(self,\n                     widthA=1., lengthA=0.2, angleA=0,\n                     widthB=1., lengthB=0.2, angleB=0):\n            \"\"\"\n            Parameters\n            ----------\n            widthA, widthB : float, default: 1.0\n                Width of the bracket.\n            lengthA, lengthB : float, default: 0.2\n                Length of the bracket.\n            angleA, angleB : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthA=widthA, lengthA=lengthA, angleA=angleA,\n                             widthB=widthB, lengthB=lengthB, angleB=angleB)\n\n    @_register_style(_style_list, name=\"|-|\")\n    class BarAB(_Curve):\n        \"\"\"An arrow with vertical bars ``|`` at both ends.\"\"\"\n        arrow = \"|-|\"\n\n        def __init__(self, widthA=1., angleA=0, widthB=1., angleB=0):\n            \"\"\"\n            Parameters\n            ----------\n            widthA, widthB : float, default: 1.0\n                Width of the bracket.\n            angleA, angleB : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthA=widthA, lengthA=0, angleA=angleA,\n                             widthB=widthB, lengthB=0, angleB=angleB)\n\n    @_register_style(_style_list, name=']->')\n    class BracketCurve(_Curve):\n        \"\"\"\n        An arrow with an outward square bracket at its start and a head at\n        the end.\n        \"\"\"\n        arrow = \"]->\"\n\n        def __init__(self, widthA=1., lengthA=0.2, angleA=None):\n            \"\"\"\n            Parameters\n            ----------\n            widthA : float, default: 1.0\n                Width of the bracket.\n            lengthA : float, default: 0.2\n                Length of the bracket.\n            angleA : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthA=widthA, lengthA=lengthA, angleA=angleA)\n\n    @_register_style(_style_list, name='<-[')\n    class CurveBracket(_Curve):\n        \"\"\"\n        An arrow with an outward square bracket at its end and a head at\n        the start.\n        \"\"\"\n        arrow = \"<-[\"\n\n        def __init__(self, widthB=1., lengthB=0.2, angleB=None):\n            \"\"\"\n            Parameters\n            ----------\n            widthB : float, default: 1.0\n                Width of the bracket.\n            lengthB : float, default: 0.2\n                Length of the bracket.\n            angleB : float, default: 0 degrees\n                Orientation of the bracket, as a counterclockwise angle.\n                0 degrees means perpendicular to the line.\n            \"\"\"\n            super().__init__(widthB=widthB, lengthB=lengthB, angleB=angleB)\n\n    @_register_style(_style_list)\n    class Simple(_Base):\n        \"\"\"A simple arrow. Only works with a quadratic Bezier curve.\"\"\"\n\n        def __init__(self, head_length=.5, head_width=.5, tail_width=.2):\n            \"\"\"\n            Parameters\n            ----------\n            head_length : float, default: 0.5\n                Length of the arrow head.\n\n            head_width : float, default: 0.5\n                Width of the arrow head.\n\n            tail_width : float, default: 0.2\n                Width of the arrow tail.\n            \"\"\"\n            self.head_length, self.head_width, self.tail_width = \\\n                head_length, head_width, tail_width\n            super().__init__()\n\n        def transmute(self, path, mutation_size, linewidth):\n\n            x0, y0, x1, y1, x2, y2 = self.ensure_quadratic_bezier(path)\n\n            # divide the path into a head and a tail\n            head_length = self.head_length * mutation_size\n            in_f = inside_circle(x2, y2, head_length)\n            arrow_path = [(x0, y0), (x1, y1), (x2, y2)]\n\n            try:\n                arrow_out, arrow_in = \\\n                    split_bezier_intersecting_with_closedpath(\n                        arrow_path, in_f, tolerance=0.01)\n            except NonIntersectingPathException:\n                # if this happens, make a straight line of the head_length\n                # long.\n                x0, y0 = _point_along_a_line(x2, y2, x1, y1, head_length)\n                x1n, y1n = 0.5 * (x0 + x2), 0.5 * (y0 + y2)\n                arrow_in = [(x0, y0), (x1n, y1n), (x2, y2)]\n                arrow_out = None\n\n            # head\n            head_width = self.head_width * mutation_size\n            head_left, head_right = make_wedged_bezier2(arrow_in,\n                                                        head_width / 2., wm=.5)\n\n            # tail\n            if arrow_out is not None:\n                tail_width = self.tail_width * mutation_size\n                tail_left, tail_right = get_parallels(arrow_out,\n                                                      tail_width / 2.)\n\n                patch_path = [(Path.MOVETO, tail_right[0]),\n                              (Path.CURVE3, tail_right[1]),\n                              (Path.CURVE3, tail_right[2]),\n                              (Path.LINETO, head_right[0]),\n                              (Path.CURVE3, head_right[1]),\n                              (Path.CURVE3, head_right[2]),\n                              (Path.CURVE3, head_left[1]),\n                              (Path.CURVE3, head_left[0]),\n                              (Path.LINETO, tail_left[2]),\n                              (Path.CURVE3, tail_left[1]),\n                              (Path.CURVE3, tail_left[0]),\n                              (Path.LINETO, tail_right[0]),\n                              (Path.CLOSEPOLY, tail_right[0]),\n                              ]\n            else:\n                patch_path = [(Path.MOVETO, head_right[0]),\n                              (Path.CURVE3, head_right[1]),\n                              (Path.CURVE3, head_right[2]),\n                              (Path.CURVE3, head_left[1]),\n                              (Path.CURVE3, head_left[0]),\n                              (Path.CLOSEPOLY, head_left[0]),\n                              ]\n\n            path = Path([p for c, p in patch_path], [c for c, p in patch_path])\n\n            return path, True\n\n    @_register_style(_style_list)\n    class Fancy(_Base):\n        \"\"\"A fancy arrow. Only works with a quadratic Bezier curve.\"\"\"\n\n        def __init__(self, head_length=.4, head_width=.4, tail_width=.4):\n            \"\"\"\n            Parameters\n            ----------\n            head_length : float, default: 0.4\n                Length of the arrow head.\n\n            head_width : float, default: 0.4\n                Width of the arrow head.\n\n            tail_width : float, default: 0.4\n                Width of the arrow tail.\n            \"\"\"\n            self.head_length, self.head_width, self.tail_width = \\\n                head_length, head_width, tail_width\n            super().__init__()\n\n        def transmute(self, path, mutation_size, linewidth):\n\n            x0, y0, x1, y1, x2, y2 = self.ensure_quadratic_bezier(path)\n\n            # divide the path into a head and a tail\n            head_length = self.head_length * mutation_size\n            arrow_path = [(x0, y0), (x1, y1), (x2, y2)]\n\n            # path for head\n            in_f = inside_circle(x2, y2, head_length)\n            try:\n                path_out, path_in = split_bezier_intersecting_with_closedpath(\n                    arrow_path, in_f, tolerance=0.01)\n            except NonIntersectingPathException:\n                # if this happens, make a straight line of the head_length\n                # long.\n                x0, y0 = _point_along_a_line(x2, y2, x1, y1, head_length)\n                x1n, y1n = 0.5 * (x0 + x2), 0.5 * (y0 + y2)\n                arrow_path = [(x0, y0), (x1n, y1n), (x2, y2)]\n                path_head = arrow_path\n            else:\n                path_head = path_in\n\n            # path for head\n            in_f = inside_circle(x2, y2, head_length * .8)\n            path_out, path_in = split_bezier_intersecting_with_closedpath(\n                arrow_path, in_f, tolerance=0.01)\n            path_tail = path_out\n\n            # head\n            head_width = self.head_width * mutation_size\n            head_l, head_r = make_wedged_bezier2(path_head,\n                                                 head_width / 2.,\n                                                 wm=.6)\n\n            # tail\n            tail_width = self.tail_width * mutation_size\n            tail_left, tail_right = make_wedged_bezier2(path_tail,\n                                                        tail_width * .5,\n                                                        w1=1., wm=0.6, w2=0.3)\n\n            # path for head\n            in_f = inside_circle(x0, y0, tail_width * .3)\n            path_in, path_out = split_bezier_intersecting_with_closedpath(\n                arrow_path, in_f, tolerance=0.01)\n            tail_start = path_in[-1]\n\n            head_right, head_left = head_r, head_l\n            patch_path = [(Path.MOVETO, tail_start),\n                          (Path.LINETO, tail_right[0]),\n                          (Path.CURVE3, tail_right[1]),\n                          (Path.CURVE3, tail_right[2]),\n                          (Path.LINETO, head_right[0]),\n                          (Path.CURVE3, head_right[1]),\n                          (Path.CURVE3, head_right[2]),\n                          (Path.CURVE3, head_left[1]),\n                          (Path.CURVE3, head_left[0]),\n                          (Path.LINETO, tail_left[2]),\n                          (Path.CURVE3, tail_left[1]),\n                          (Path.CURVE3, tail_left[0]),\n                          (Path.LINETO, tail_start),\n                          (Path.CLOSEPOLY, tail_start),\n                          ]\n            path = Path([p for c, p in patch_path], [c for c, p in patch_path])\n\n            return path, True\n\n    @_register_style(_style_list)\n    class Wedge(_Base):\n        \"\"\"\n        Wedge(?) shape. Only works with a quadratic Bezier curve.  The\n        begin point has a width of the tail_width and the end point has a\n        width of 0. At the middle, the width is shrink_factor*tail_width.\n        \"\"\"\n\n        def __init__(self, tail_width=.3, shrink_factor=0.5):\n            \"\"\"\n            Parameters\n            ----------\n            tail_width : float, default: 0.3\n                Width of the tail.\n\n            shrink_factor : float, default: 0.5\n                Fraction of the arrow width at the middle point.\n            \"\"\"\n            self.tail_width = tail_width\n            self.shrink_factor = shrink_factor\n            super().__init__()\n\n        def transmute(self, path, mutation_size, linewidth):\n\n            x0, y0, x1, y1, x2, y2 = self.ensure_quadratic_bezier(path)\n\n            arrow_path = [(x0, y0), (x1, y1), (x2, y2)]\n            b_plus, b_minus = make_wedged_bezier2(\n                                    arrow_path,\n                                    self.tail_width * mutation_size / 2.,\n                                    wm=self.shrink_factor)\n\n            patch_path = [(Path.MOVETO, b_plus[0]),\n                          (Path.CURVE3, b_plus[1]),\n                          (Path.CURVE3, b_plus[2]),\n                          (Path.LINETO, b_minus[2]),\n                          (Path.CURVE3, b_minus[1]),\n                          (Path.CURVE3, b_minus[0]),\n                          (Path.CLOSEPOLY, b_minus[0]),\n                          ]\n            path = Path([p for c, p in patch_path], [c for c, p in patch_path])\n\n            return path, True",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib.patches.ArrowStyle",
+        "documentation": "`ArrowStyle` is a container class which defines several\narrowstyle classes, which is used to create an arrow path along a\ngiven path.  These are mainly used with `FancyArrowPatch`.\n\nA arrowstyle object can be either created as::\n\n       ArrowStyle.Fancy(head_length=.4, head_width=.4, tail_width=.4)\n\nor::\n\n       ArrowStyle(\"Fancy\", head_length=.4, head_width=.4, tail_width=.4)\n\nor::\n\n       ArrowStyle(\"Fancy, head_length=.4, head_width=.4, tail_width=.4\")\n\nThe following classes are defined\n\n%(AvailableArrowstyles)s\n\nAn instance of any arrow style class is a callable object,\nwhose call signature is::\n\n    __call__(self, path, mutation_size, linewidth, aspect_ratio=1.)\n\nand it returns a tuple of a `.Path` instance and a boolean\nvalue. *path* is a `.Path` instance along which the arrow\nwill be drawn. *mutation_size* and *aspect_ratio* have the same\nmeaning as in `BoxStyle`. *linewidth* is a line width to be\nstroked. This is meant to be used to correct the location of the\nhead so that it does not overshoot the destination point, but not all\nclasses support it.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/patches.py"
+          },
+          {
+            "start_node": "lib/matplotlib/patches.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib.patches.ArrowStyle"
+          }
+        ],
+        "similarity": 0.042276150921569805,
+        "end_line": 3888,
+        "signature": null
+      },
+      {
+        "start_line": 250,
+        "file_path": "tutorials/intermediate/legend_guide.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AnyObject:\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "tutorials.intermediate.legend_guide.AnyObject",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "tutorials/intermediate/legend_guide.py"
+          },
+          {
+            "start_node": "tutorials/intermediate/legend_guide.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "tutorials.intermediate.legend_guide.AnyObject"
+          }
+        ],
+        "similarity": 0.03840927658313318,
+        "end_line": 251,
+        "signature": null
+      },
+      {
+        "start_line": 124,
+        "file_path": "lib/matplotlib/_type1font.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _WhitespaceToken(_Token):\n    kind = 'whitespace'",
+        "distance": 1.25,
+        "title": null,
+        "name": "lib.matplotlib._type1font._WhitespaceToken",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "lib/matplotlib/_type1font.py"
+          },
+          {
+            "start_node": "lib/matplotlib/_type1font.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "lib.matplotlib._type1font._WhitespaceToken"
+          }
+        ],
+        "similarity": 0.03671409029036398,
+        "end_line": 125,
+        "signature": null
+      }
+    ],
+    "issues": [
+      {
+        "content": "### Bug summary\r\n\r\nIn 3.5.0 if you do:\r\n\r\n```python\r\nimport matplotlib.pyplot as plt\r\nimport numpy as np\r\nimport matplotlib as mpl\r\n\r\nfig, ax = plt.subplots()\r\nnorm = mpl.colors.BoundaryNorm(np.linspace(-4, 4, 5), 256)\r\nX = np.random.randn(10, 10)\r\npc = ax.imshow(X, cmap='RdBu_r', norm=norm)\r\n```\r\n\r\nand mouse over the image, it crashes with\r\n\r\n```\r\nFile \"/Users/jklymak/matplotlib/lib/matplotlib/artist.py\", line 1282, in format_cursor_data\r\n    neighbors = self.norm.inverse(\r\n  File \"/Users/jklymak/matplotlib/lib/matplotlib/colors.py\", line 1829, in inverse\r\n    raise ValueError(\"BoundaryNorm is not invertible\")\r\nValueError: BoundaryNorm is not invertible\r\n```\r\n\r\nand interaction stops.  \r\n\r\nNot sure if we should have a special check here, a try-except, or actually just make BoundaryNorm approximately invertible.  \r\n\r\n\r\n### Matplotlib Version\r\n\r\nmain 3.5.0\r\n\r\n\n[Bug]: scalar mappable format_cursor_data crashes on BoundarNorm\n### Bug summary\r\n\r\nIn 3.5.0 if you do:\r\n\r\n```python\r\nimport matplotlib.pyplot as plt\r\nimport numpy as np\r\nimport matplotlib as mpl\r\n\r\nfig, ax = plt.subplots()\r\nnorm = mpl.colors.BoundaryNorm(np.linspace(-4, 4, 5), 256)\r\nX = np.random.randn(10, 10)\r\npc = ax.imshow(X, cmap='RdBu_r', norm=norm)\r\n```\r\n\r\nand mouse over the image, it crashes with\r\n\r\n```\r\nFile \"/Users/jklymak/matplotlib/lib/matplotlib/artist.py\", line 1282, in format_cursor_data\r\n    neighbors = self.norm.inverse(\r\n  File \"/Users/jklymak/matplotlib/lib/matplotlib/colors.py\", line 1829, in inverse\r\n    raise ValueError(\"BoundaryNorm is not invertible\")\r\nValueError: BoundaryNorm is not invertible\r\n```\r\n\r\nand interaction stops.  \r\n\r\nNot sure if we should have a special check here, a try-except, or actually just make BoundaryNorm approximately invertible.  \r\n\r\n\r\n### Matplotlib Version\r\n\r\nmain 3.5.0\r\n\r\n\n",
+        "distance": 0,
+        "title": "[Bug]: scalar mappable format_cursor_data crashes on BoundarNorm",
+        "name": "root",
+        "path": [],
+        "issue_id": "root",
+        "similarity": 2.0,
+        "type": "issue"
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "22829",
+        "type": "issue",
+        "content": "### Bug summary\n\nSetting a scalar formatter on a log axis can produce tick labels that render as `0`.\n\n### Code for reproduction\n\n```python\nimport matplotlib as mpl\r\nimport matplotlib.pyplot as plt\r\nax = plt.figure().subplots()\r\nax.set_yscale(\"log\")\r\nax.plot([10 ** x for x in range(-2, 3)])\r\nax.yaxis.set_major_formatter(mpl.ticker.ScalarFormatter())\n```\n\n\n### Actual outcome\n\n![image](https://user-images.githubusercontent.com/315810/162862493-32e357df-b722-4395-9acb-75b2151f9bfe.png)\r\n\n\n### Expected outcome\n\n![image](https://user-images.githubusercontent.com/315810/162862789-a97150f8-e204-4b53-9432-9117cabbf255.png)\r\n\n\n### Additional information\n\n_No response_\n\n### Operating system\n\n_No response_\n\n### Matplotlib Version\n\n3.5.1\n\n### Matplotlib Backend\n\ninline\n\n### Python version\n\n_No response_\n\n### Jupyter version\n\n_No response_\n\n### Installation\n\n_No response_\n\n",
+        "source_code": null,
+        "distance": 0.25,
+        "title": "[Bug]: Labels for log ticks with scalar formatter rounded to zero",
+        "name": "issue#22829",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#22829"
+          }
+        ],
+        "similarity": 0.3474745968977888,
+        "end_line": null,
+        "signature": null
+      }
+    ]
+  },
+  "artifact_stats": {
+    "skipped_due_to_time": 11,
+    "valid_related_items": 21
+  }
+}

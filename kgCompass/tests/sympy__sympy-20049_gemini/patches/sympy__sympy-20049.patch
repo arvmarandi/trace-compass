@@ -1,0 +1,112 @@
+We need to modify the `vel` method in `point.py` so that it attempts to compute the velocity from the point's position relationships (via `_pos_dict`) if it is not already defined, similar to how angular velocity is computed for reference frames. The implementation should recursively follow position chains, and if a point has no defined velocity and no pos_dict relations, it is assumed to have zero velocity in the frame (to match the expected behavior in the issue example). We'll replace the current method with one that performs this computation.
+
+```python
+### sympy/physics/vector/point.py
+- start_line : 499
+- end_line : 524
+<<<<<<< SEARCH
+    def vel(self, frame):
+        """The velocity Vector of this Point in the ReferenceFrame.
+
+        Parameters
+        ==========
+
+        frame : ReferenceFrame
+            The frame in which the returned velocity vector will be defined in
+
+        Examples
+        ========
+
+        >>> from sympy.physics.vector import Point, ReferenceFrame
+        >>> N = ReferenceFrame('N')
+        >>> p1 = Point('p1')
+        >>> p1.set_vel(N, 10 * N.x)
+        >>> p1.vel(N)
+        10*N.x
+
+        """
+
+        _check_frame(frame)
+        if not (frame in self._vel_dict):
+            raise ValueError('Velocity of point ' + self.name + ' has not been'
+                             ' defined in ReferenceFrame ' + frame.name)
+        return self._vel_dict[frame]
+=======
+    def vel(self, frame):
+        """The velocity Vector of this Point in the ReferenceFrame.
+
+        Parameters
+        ==========
+
+        frame : ReferenceFrame
+            The frame in which the returned velocity vector will be defined in
+
+        Examples
+        ========
+
+        >>> from sympy.physics.vector import Point, ReferenceFrame
+        >>> N = ReferenceFrame('N')
+        >>> p1 = Point('p1')
+        >>> p1.set_vel(N, 10 * N.x)
+        >>> p1.vel(N)
+        10*N.x
+
+        """
+
+        _check_frame(frame)
+        if frame in self._vel_dict:
+            return self._vel_dict[frame]
+        # Try to compute the velocity from position relationships.
+        try:
+            vel = self._compute_vel(frame, set())
+            self._vel_dict[frame] = vel
+            return vel
+        except ValueError:
+            raise ValueError('Velocity of point ' + self.name + ' has not been'
+                             ' defined in ReferenceFrame ' + frame.name)
+
+    def _compute_vel(self, frame, visited):
+        """Attempt to compute the velocity of this point in the given frame
+        using position relationships.
+
+        Parameters
+        ==========
+        frame : ReferenceFrame
+            The frame in which the velocity is sought.
+        visited : set
+            Set of points already visited during recursion to avoid cycles.
+
+        Returns
+        =======
+        Vector
+            The computed velocity.
+
+        Raises
+        ======
+        ValueError
+            If velocity cannot be determined from any position chain.
+
+        """
+        visited.add(self)
+        # Return already computed velocity if available.
+        if frame in self._vel_dict:
+            return self._vel_dict[frame]
+        # Try each point for which we have a position vector (from that point to self).
+        for other_point, pos_vector in self._pos_dict.items():
+            if other_point in visited:
+                continue
+            try:
+                other_vel = other_point._compute_vel(frame, visited)
+                deriv = pos_vector.dt(frame)
+                vel = other_vel + deriv
+                self._vel_dict[frame] = vel
+                return vel
+            except ValueError:
+                continue
+        # If no position chain leads to a known velocity, assume zero velocity.
+        # This matches the expectation that newly created points have zero velocity.
+        zero_vel = Vector(0)
+        self._vel_dict[frame] = zero_vel
+        return zero_vel
+>>>>>>> REPLACE
+```

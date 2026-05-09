@@ -1,0 +1,60 @@
+--- a/sympy/printing/latex.py
++++ b/sympy/printing/latex.py
+@@ -1854,16 +1854,52 @@
+ 
+     def _print_Poly(self, poly):
+         cls = poly.__class__.__name__
+-        expr = self._print(poly.as_expr())
++        rep = poly.rep
++        terms = rep.terms()
++        domain = poly.get_domain()
++        if not terms:
++            expr = self._print(domain.zero)
++        else:
++            latex_terms = []
++            for i, (monom, coeff) in enumerate(terms):
++                # Determine sign
++                if domain.is_positive(coeff):
++                    sign = " + " if i > 0 else ""
++                else:
++                    sign = " - "
++                    coeff = -coeff  # take absolute value for printing
++                # Build term
++                if all(exp == 0 for exp in monom):
++                    # constant term
++                    coeff_str = self._print(coeff)
++                    term_str = coeff_str
++                else:
++                    # monomial part
++                    monom_parts = []
++                    for j, exp in enumerate(monom):
++                        if exp == 0:
++                            continue
++                        var = self._print(poly.gens[j])
++                        if exp == 1:
++                            monom_parts.append(var)
++                        else:
++                            monom_parts.append("%s^{%s}" % (var, exp))
++                    monom_str = self._settings.get('mul_symbol_latex', '').join(monom_parts)
++                    # coefficient part
++                    if coeff == 1:
++                        term_str = monom_str
++                    else:
++                        coeff_str = self.parenthesize(coeff, PRECEDENCE['Mul'], strict=True)
++                        term_str = coeff_str + self._settings.get('mul_symbol_latex', '') + monom_str
++                latex_terms.append(sign + term_str)
++            expr = "".join(latex_terms)
+         gens = list(map(self._print, poly.gens))
+-        domain = "domain=%s" % self._print(poly.get_domain())
+-
+-        args = ", ".join([expr] + gens + [domain])
++        domain_str = "domain=%s" % self._print(domain)
++        args = ", ".join([expr] + gens + [domain_str])
+         if cls in accepted_latex_functions:
+             tex = r"\%s {\left (%s \right )}" % (cls, args)
+         else:
+             tex = r"\operatorname{%s}{\left( %s \right)}" % (cls, args)
+-
+         return tex
+ 
+     def _print_ComplexRootOf(self, root):

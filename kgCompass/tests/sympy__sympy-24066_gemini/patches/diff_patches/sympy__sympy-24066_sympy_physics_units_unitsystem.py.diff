@@ -1,0 +1,27 @@
+--- a/sympy/physics/units/unitsystem.py
++++ b/sympy/physics/units/unitsystem.py
+@@ -192,8 +192,22 @@
+         elif isinstance(expr, Function):
+             fds = [self._collect_factor_and_dimension(
+                 arg) for arg in expr.args]
+-            return (expr.func(*(f[0] for f in fds)),
+-                    *(d[1] for d in fds))
++            arg_factors = [f[0] for f in fds]
++            arg_dims = [f[1] for f in fds]
++            # Compute dimension of the function result using the dimension system.
++            # This handles elementary functions like exp, log, sin, cos correctly.
++            # If the dimension system raises a TypeError (e.g., non-dimensionless argument),
++            # we convert it to a ValueError to match the rest of the method.
++            from sympy.physics.units.dimensions import Dimension
++            result_dim_name = expr.func(*[d.name for d in arg_dims])
++            result_dim = Dimension(result_dim_name)
++            try:
++                dimdep = self.get_dimension_system().get_dimensional_dependencies(result_dim)
++            except TypeError as e:
++                raise ValueError(str(e))
++            if dimdep == {}:
++                result_dim = Dimension(1)
++            return (expr.func(*arg_factors), result_dim)
+         elif isinstance(expr, Dimension):
+             return S.One, expr
+         else:

@@ -1,0 +1,2799 @@
+{
+  "related_entities": {
+    "methods": [
+      {
+        "name": "sympy.polys.partfrac.apart",
+        "signature": "sympy.polys.partfrac.apart(f, x, full)",
+        "file_path": "sympy/polys/partfrac.py",
+        "start_line": 17,
+        "source_code": "def apart(f, x=None, full=False, **options):\n    \"\"\"\n    Compute partial fraction decomposition of a rational function.\n\n    Given a rational function ``f``, computes the partial fraction\n    decomposition of ``f``. Two algorithms are available: One is based on the\n    undertermined coefficients method, the other is Bronstein's full partial\n    fraction decomposition algorithm.\n\n    The undetermined coefficients method (selected by ``full=False``) uses\n    polynomial factorization (and therefore accepts the same options as\n    factor) for the denominator. Per default it works over the rational\n    numbers, therefore decomposition of denominators with non-rational roots\n    (e.g. irrational, complex roots) is not supported by default (see options\n    of factor).\n\n    Bronstein's algorithm can be selected by using ``full=True`` and allows a\n    decomposition of denominators with non-rational roots. A human-readable\n    result can be obtained via ``doit()`` (see examples below).\n\n    Examples\n    ========\n\n    >>> from sympy.polys.partfrac import apart\n    >>> from sympy.abc import x, y\n\n    By default, using the undetermined coefficients method:\n\n    >>> apart(y/(x + 2)/(x + 1), x)\n    -y/(x + 2) + y/(x + 1)\n\n    The undetermined coefficients method does not provide a result when the\n    denominators roots are not rational:\n\n    >>> apart(y/(x**2 + x + 1), x)\n    y/(x**2 + x + 1)\n\n    You can choose Bronstein's algorithm by setting ``full=True``:\n\n    >>> apart(y/(x**2 + x + 1), x, full=True)\n    RootSum(_w**2 + _w + 1, Lambda(_a, (-2*_a*y/3 - y/3)/(-_a + x)))\n\n    Calling ``doit()`` yields a human-readable result:\n\n    >>> apart(y/(x**2 + x + 1), x, full=True).doit()\n    (-y/3 - 2*y*(-1/2 - sqrt(3)*I/2)/3)/(x + 1/2 + sqrt(3)*I/2) + (-y/3 -\n        2*y*(-1/2 + sqrt(3)*I/2)/3)/(x + 1/2 - sqrt(3)*I/2)\n\n\n    See Also\n    ========\n\n    apart_list, assemble_partfrac_list\n    \"\"\"\n    allowed_flags(options, [])\n\n    f = sympify(f)\n\n    if f.is_Atom:\n        return f\n    else:\n        P, Q = f.as_numer_denom()\n\n    _options = options.copy()\n    options = set_defaults(options, extension=True)\n    try:\n        (P, Q), opt = parallel_poly_from_expr((P, Q), x, **options)\n    except PolynomialError as msg:\n        if f.is_commutative:\n            raise PolynomialError(msg)\n        # non-commutative\n        if f.is_Mul:\n            c, nc = f.args_cnc(split_1=False)\n            nc = f.func(*nc)\n            if c:\n                c = apart(f.func._from_args(c), x=x, full=full, **_options)\n                return c*nc\n            else:\n                return nc\n        elif f.is_Add:\n            c = []\n            nc = []\n            for i in f.args:\n                if i.is_commutative:\n                    c.append(i)\n                else:\n                    try:\n                        nc.append(apart(i, x=x, full=full, **_options))\n                    except NotImplementedError:\n                        nc.append(i)\n            return apart(f.func(*c), x=x, full=full, **_options) + f.func(*nc)\n        else:\n            reps = []\n            pot = preorder_traversal(f)\n            next(pot)\n            for e in pot:\n                try:\n                    reps.append((e, apart(e, x=x, full=full, **_options)))\n                    pot.skip()  # this was handled successfully\n                except NotImplementedError:\n                    pass\n            return f.xreplace(dict(reps))\n\n    if P.is_multivariate:\n        fc = f.cancel()\n        if fc != f:\n            return apart(fc, x=x, full=full, **_options)\n\n        raise NotImplementedError(\n            \"multivariate partial fraction decomposition\")\n\n    common, P, Q = P.cancel(Q)\n\n    poly, P = P.div(Q, auto=True)\n    P, Q = P.rat_clear_denoms(Q)\n\n    if Q.degree() <= 1:\n        partial = P/Q\n    else:\n        if not full:\n            partial = apart_undetermined_coeffs(P, Q)\n        else:\n            partial = apart_full_decomposition(P, Q)\n\n    terms = S.Zero\n\n    for term in Add.make_args(partial):\n        if term.has(RootSum):\n            terms += term\n        else:\n            terms += factor(term)\n\n    return common*(poly.as_expr() + terms)",
+        "end_line": 149,
+        "doc_string": "Compute partial fraction decomposition of a rational function.\n\nGiven a rational function ``f``, computes the partial fraction\ndecomposition of ``f``. Two algorithms are available: One is based on the\nundertermined coefficients method, the other is Bronstein's full partial\nfraction decomposition algorithm.\n\nThe undetermined coefficients method (selected by ``full=False``) uses\npolynomial factorization (and therefore accepts the same options as\nfactor) for the denominator. Per default it works over the rational\nnumbers, therefore decomposition of denominators with non-rational roots\n(e.g. irrational, complex roots) is not supported by default (see options\nof factor).\n\nBronstein's algorithm can be selected by using ``full=True`` and allows a\ndecomposition of denominators with non-rational roots. A human-readable\nresult can be obtained via ``doit()`` (see examples below).\n\nExamples\n========\n\n>>> from sympy.polys.partfrac import apart\n>>> from sympy.abc import x, y\n\nBy default, using the undetermined coefficients method:\n\n>>> apart(y/(x + 2)/(x + 1), x)\n-y/(x + 2) + y/(x + 1)\n\nThe undetermined coefficients method does not provide a result when the\ndenominators roots are not rational:\n\n>>> apart(y/(x**2 + x + 1), x)\ny/(x**2 + x + 1)\n\nYou can choose Bronstein's algorithm by setting ``full=True``:\n\n>>> apart(y/(x**2 + x + 1), x, full=True)\nRootSum(_w**2 + _w + 1, Lambda(_a, (-2*_a*y/3 - y/3)/(-_a + x)))\n\nCalling ``doit()`` yields a human-readable result:\n\n>>> apart(y/(x**2 + x + 1), x, full=True).doit()\n(-y/3 - 2*y*(-1/2 - sqrt(3)*I/2)/3)/(x + 1/2 + sqrt(3)*I/2) + (-y/3 -\n    2*y*(-1/2 + sqrt(3)*I/2)/3)/(x + 1/2 - sqrt(3)*I/2)\n\n\nSee Also\n========\n\napart_list, assemble_partfrac_list",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "sympy.polys.partfrac.apart"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sympy.core.expr.Expr.apart",
+        "file_path": "sympy/core/expr.py",
+        "start_line": 3075,
+        "end_line": 3078,
+        "source_code": "    def apart(self, x=None, **args):\n        \"\"\"See the apart function in sympy.polys\"\"\"\n        from sympy.polys import apart\n        return apart(self, x, **args)",
+        "signature": "sympy.core.expr.Expr.apart(self, x)",
+        "doc_string": "See the apart function in sympy.polys",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to method",
+            "type": "INFERENCE",
+            "end_node": "sympy.core.expr.Expr.apart"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sympy.polys.rings.PolyElement.__truediv__",
+        "file_path": "sympy/polys/rings.py",
+        "start_line": 1318,
+        "end_line": 1342,
+        "source_code": "    def __truediv__(p1, p2):\n        ring = p1.ring\n        p = ring.zero\n\n        if not p2:\n            raise ZeroDivisionError(\"polynomial division\")\n        elif isinstance(p2, ring.dtype):\n            if p2.is_monomial:\n                return p1*(p2**(-1))\n            else:\n                return p1.quo(p2)\n        elif isinstance(p2, PolyElement):\n            if isinstance(ring.domain, PolynomialRing) and ring.domain.ring == p2.ring:\n                pass\n            elif isinstance(p2.ring.domain, PolynomialRing) and p2.ring.domain.ring == ring:\n                return p2.__rtruediv__(p1)\n            else:\n                return NotImplemented\n\n        try:\n            p2 = ring.domain_new(p2)\n        except CoercionFailed:\n            return NotImplemented\n        else:\n            return p1.quo_ground(p2)",
+        "signature": "sympy.polys.rings.PolyElement.__truediv__(p1, p2)",
+        "doc_string": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.__truediv__"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sympy.polys.rings.PolyElement.__sub__",
+        "file_path": "sympy/polys/rings.py",
+        "start_line": 977,
+        "end_line": 1029,
+        "source_code": "    def __sub__(p1, p2):\n        \"\"\"Subtract polynomial p2 from p1.\n\n        Examples\n        ========\n\n        >>> from sympy.polys.domains import ZZ\n        >>> from sympy.polys.rings import ring\n\n        >>> _, x, y = ring('x, y', ZZ)\n        >>> p1 = x + y**2\n        >>> p2 = x*y + y**2\n        >>> p1 - p2\n        -x*y + x\n\n        \"\"\"\n        if not p2:\n            return p1.copy()\n        ring = p1.ring\n        if isinstance(p2, ring.dtype):\n            p = p1.copy()\n            get = p.get\n            zero = ring.domain.zero\n            for k, v in p2.items():\n                v = get(k, zero) - v\n                if v:\n                    p[k] = v\n                else:\n                    del p[k]\n            return p\n        elif isinstance(p2, PolyElement):\n            if isinstance(ring.domain, PolynomialRing) and ring.domain.ring == p2.ring:\n                pass\n            elif isinstance(p2.ring.domain, PolynomialRing) and p2.ring.domain.ring == ring:\n                return p2.__rsub__(p1)\n            else:\n                return NotImplemented\n\n        try:\n            p2 = ring.domain_new(p2)\n        except CoercionFailed:\n            return NotImplemented\n        else:\n            p = p1.copy()\n            zm = ring.zero_monom\n            if zm not in p1.keys():\n                p[zm] = -p2\n            else:\n                if p2 == p[zm]:\n                    del p[zm]\n                else:\n                    p[zm] -= p2\n            return p",
+        "signature": "sympy.polys.rings.PolyElement.__sub__(p1, p2)",
+        "doc_string": "Subtract polynomial p2 from p1.\n\nExamples\n========\n\n>>> from sympy.polys.domains import ZZ\n>>> from sympy.polys.rings import ring\n\n>>> _, x, y = ring('x, y', ZZ)\n>>> p1 = x + y**2\n>>> p2 = x*y + y**2\n>>> p1 - p2\n-x*y + x",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.__sub__"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "name": "sympy.polys.fields.FracElement.__sub__",
+        "file_path": "sympy/polys/fields.py",
+        "start_line": 399,
+        "end_line": 435,
+        "source_code": "    def __sub__(f, g):\n        \"\"\"Subtract rational functions ``f`` and ``g``. \"\"\"\n        field = f.field\n\n        if not g:\n            return f\n        elif not f:\n            return -g\n        elif isinstance(g, field.dtype):\n            if f.denom == g.denom:\n                return f.new(f.numer - g.numer, f.denom)\n            else:\n                return f.new(f.numer*g.denom - f.denom*g.numer, f.denom*g.denom)\n        elif isinstance(g, field.ring.dtype):\n            return f.new(f.numer - f.denom*g, f.denom)\n        else:\n            if isinstance(g, FracElement):\n                if isinstance(field.domain, FractionField) and field.domain.field == g.field:\n                    pass\n                elif isinstance(g.field.domain, FractionField) and g.field.domain.field == field:\n                    return g.__rsub__(f)\n                else:\n                    return NotImplemented\n            elif isinstance(g, PolyElement):\n                if isinstance(field.domain, PolynomialRing) and field.domain.ring == g.ring:\n                    pass\n                else:\n                    return g.__rsub__(f)\n\n        op, g_numer, g_denom = f._extract_ground(g)\n\n        if op == 1:\n            return f.new(f.numer - f.denom*g_numer, f.denom)\n        elif not op:\n            return NotImplemented\n        else:\n            return f.new(f.numer*g_denom - f.denom*g_numer, f.denom*g_denom)",
+        "signature": "sympy.polys.fields.FracElement.__sub__(f, g)",
+        "doc_string": "Subtract rational functions ``f`` and ``g``. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/fields.py"
+          },
+          {
+            "start_node": "sympy/polys/fields.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.fields.FracElement.__sub__"
+          }
+        ],
+        "type": "method",
+        "similarity": 1.0
+      },
+      {
+        "start_line": 2320,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def subs(self, x, a=None):\n        f = self\n\n        if isinstance(x, list) and a is None:\n            for X, a in x:\n                f = f.subs(X, a)\n            return f\n\n        ring = f.ring\n        i = ring.index(x)\n        a = ring.domain.convert(a)\n\n        if ring.ngens == 1:\n            result = ring.domain.zero\n\n            for (n,), coeff in f.iterterms():\n                result += coeff*a**n\n\n            return ring.ground_new(result)\n        else:\n            poly = ring.zero\n\n            for monom, coeff in f.iterterms():\n                n, monom = monom[i], monom[:i] + (0,) + monom[i+1:]\n                coeff = coeff*a**n\n\n                if monom in poly:\n                    coeff = coeff + poly[monom]\n\n                    if coeff:\n                        poly[monom] = coeff\n                    else:\n                        del poly[monom]\n                else:\n                    if coeff:\n                        poly[monom] = coeff\n\n            return poly",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement.subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.subs"
+          }
+        ],
+        "similarity": 0.15900607975480474,
+        "end_line": 2357,
+        "signature": "sympy.polys.rings.PolyElement.subs(self, x, a)"
+      },
+      {
+        "start_line": 1015,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, ap, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        ap, bq, i = list(map(sympify, [ap, bq, i]))\n\n        self._ap = ap\n        self._bq = bq\n        self._i = i\n\n        ap = list(ap)\n        bq = list(bq)\n        ai = ap.pop(i) - 1\n\n        if ai == 0:\n            raise ValueError('Cannot decrement unit upper index.')\n\n        m = Poly(z*ai, _x)\n        for a in ap:\n            m *= Poly(_x + a, _x)\n\n        A = Dummy('A')\n        n = D = Poly(ai*A - ai, A)\n        for b in bq:\n            n *= (D + b - 1)\n\n        b0 = -n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot decrement upper index: '\n                             'cancels with lower')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], A).as_expr().subs(A, _x/ai + 1), _x)\n\n        self._poly = Poly((n - m)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.UnShiftA.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.UnShiftA.__init__"
+          }
+        ],
+        "similarity": 0.1527735247051209,
+        "end_line": 1046,
+        "signature": "sympy.simplify.hyperexpand.UnShiftA.__init__(self, ap, bq, i, z)"
+      },
+      {
+        "start_line": 679,
+        "file_path": "sympy/core/add.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_subs(self, old, new):\n        if not old.is_Add:\n            return None\n\n        coeff_self, terms_self = self.as_coeff_Add()\n        coeff_old, terms_old = old.as_coeff_Add()\n\n        if coeff_self.is_Rational and coeff_old.is_Rational:\n            if terms_self == terms_old:   # (2 + a).subs( 3 + a, y) -> -1 + y\n                return self.func(new, coeff_self, -coeff_old)\n            if terms_self == -terms_old:  # (2 + a).subs(-3 - a, y) -> -1 - y\n                return self.func(-new, coeff_self, coeff_old)\n\n        if coeff_self.is_Rational and coeff_old.is_Rational \\\n                or coeff_self == coeff_old:\n            args_old, args_self = self.func.make_args(\n                terms_old), self.func.make_args(terms_self)\n            if len(args_old) < len(args_self):  # (a+b+c).subs(b+c,x) -> a+x\n                self_set = set(args_self)\n                old_set = set(args_old)\n\n                if old_set < self_set:\n                    ret_set = self_set - old_set\n                    return self.func(new, coeff_self, -coeff_old,\n                               *[s._subs(old, new) for s in ret_set])\n\n                args_old = self.func.make_args(\n                    -terms_old)     # (a+b+c+d).subs(-b-c,x) -> a-x+d\n                old_set = set(args_old)\n                if old_set < self_set:\n                    ret_set = self_set - old_set\n                    return self.func(-new, coeff_self, coeff_old,\n                               *[s._subs(old, new) for s in ret_set])",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.add.Add._eval_subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/add.py"
+          },
+          {
+            "start_node": "sympy/core/add.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.add.Add._eval_subs"
+          }
+        ],
+        "similarity": 0.15182259826009606,
+        "end_line": 711,
+        "signature": "sympy.core.add.Add._eval_subs(self, old, new)"
+      },
+      {
+        "start_line": 1142,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, an, ap, bm, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        an, ap, bm, bq, i = list(map(sympify, [an, ap, bm, bq, i]))\n\n        self._an = an\n        self._ap = ap\n        self._bm = bm\n        self._bq = bq\n        self._i = i\n\n        an = list(an)\n        ap = list(ap)\n        bm = list(bm)\n        bq = list(bq)\n        bi = bm.pop(i) - 1\n\n        m = Poly(1, _x)\n        for b in bm:\n            m *= Poly(b - _x, _x)\n        for b in bq:\n            m *= Poly(_x - b, _x)\n\n        A = Dummy('A')\n        D = Poly(bi - A, A)\n        n = Poly(z, A)\n        for a in an:\n            n *= (D + 1 - a)\n        for a in ap:\n            n *= (-D + a - 1)\n\n        b0 = n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot decrement upper b index (cancels)')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], A).as_expr().subs(A, bi - _x), _x)\n\n        self._poly = Poly((m - n)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.MeijerUnShiftA.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.MeijerUnShiftA.__init__"
+          }
+        ],
+        "similarity": 0.1513570657880525,
+        "end_line": 1178,
+        "signature": "sympy.simplify.hyperexpand.MeijerUnShiftA.__init__(self, an, ap, bm, bq, i, z)"
+      },
+      {
+        "start_line": 2276,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def evaluate(self, x, a=None):\n        f = self\n\n        if isinstance(x, list) and a is None:\n            (X, a), x = x[0], x[1:]\n            f = f.evaluate(X, a)\n\n            if not x:\n                return f\n            else:\n                x = [ (Y.drop(X), a) for (Y, a) in x ]\n                return f.evaluate(x)\n\n        ring = f.ring\n        i = ring.index(x)\n        a = ring.domain.convert(a)\n\n        if ring.ngens == 1:\n            result = ring.domain.zero\n\n            for (n,), coeff in f.iterterms():\n                result += coeff*a**n\n\n            return result\n        else:\n            poly = ring.drop(x).zero\n\n            for monom, coeff in f.iterterms():\n                n, monom = monom[i], monom[:i] + monom[i+1:]\n                coeff = coeff*a**n\n\n                if monom in poly:\n                    coeff = coeff + poly[monom]\n\n                    if coeff:\n                        poly[monom] = coeff\n                    else:\n                        del poly[monom]\n                else:\n                    if coeff:\n                        poly[monom] = coeff\n\n            return poly",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement.evaluate",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.evaluate"
+          }
+        ],
+        "similarity": 0.14958731673761957,
+        "end_line": 2318,
+        "signature": "sympy.polys.rings.PolyElement.evaluate(self, x, a)"
+      },
+      {
+        "start_line": 1288,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, an, ap, bm, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        an, ap, bm, bq, i = list(map(sympify, [an, ap, bm, bq, i]))\n\n        self._an = an\n        self._ap = ap\n        self._bm = bm\n        self._bq = bq\n        self._i = i\n\n        an = list(an)\n        ap = list(ap)\n        bm = list(bm)\n        bq = list(bq)\n        ai = ap.pop(i) + 1\n\n        m = Poly(z, _x)\n        for a in an:\n            m *= Poly(1 - a + _x, _x)\n        for a in ap:\n            m *= Poly(a - 1 - _x, _x)\n\n        B = Dummy('B')  # - this is the shift operator `D_I`\n        D = Poly(ai - 1 - B, B)\n        n = Poly(1, B)\n        for b in bm:\n            n *= (-D + b)\n        for b in bq:\n            n *= (D - b)\n\n        b0 = n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot increment lower a index (cancels)')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], B).as_expr().subs(\n            B, ai - 1 - _x), _x)\n\n        self._poly = Poly((m - n)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.MeijerUnShiftD.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.MeijerUnShiftD.__init__"
+          }
+        ],
+        "similarity": 0.14882975301553827,
+        "end_line": 1325,
+        "signature": "sympy.simplify.hyperexpand.MeijerUnShiftD.__init__(self, an, ap, bm, bq, i, z)"
+      },
+      {
+        "start_line": 418,
+        "file_path": "sympy/series/order.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_subs(self, old, new):\n        if old in self.variables:\n            newexpr = self.expr.subs(old, new)\n            i = self.variables.index(old)\n            newvars = list(self.variables)\n            newpt = list(self.point)\n            if new.is_Symbol:\n                newvars[i] = new\n            else:\n                syms = new.free_symbols\n                if len(syms) == 1 or old in syms:\n                    if old in syms:\n                        var = self.variables[i]\n                    else:\n                        var = syms.pop()\n                    # First, try to substitute self.point in the \"new\"\n                    # expr to see if this is a fixed point.\n                    # E.g.  O(y).subs(y, sin(x))\n                    point = new.subs(var, self.point[i])\n                    if point != self.point[i]:\n                        from sympy.solvers.solveset import solveset\n                        d = Dummy()\n                        sol = solveset(old - new.subs(var, d), d)\n                        if isinstance(sol, Complement):\n                            e1 = sol.args[0]\n                            e2 = sol.args[1]\n                            sol = set(e1) - set(e2)\n                        res = [dict(zip((d, ), sol))]\n                        point = d.subs(res[0]).limit(old, self.point[i])\n                    newvars[i] = var\n                    newpt[i] = point\n                elif old not in syms:\n                    del newvars[i], newpt[i]\n                    if not syms and new == self.point[i]:\n                        newvars.extend(syms)\n                        newpt.extend([S.Zero]*len(syms))\n                else:\n                    return\n            return Order(newexpr, *zip(newvars, newpt))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.series.order.Order._eval_subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/series/order.py"
+          },
+          {
+            "start_node": "sympy/series/order.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sympy.series.order.Order._eval_subs"
+          }
+        ],
+        "similarity": 0.14864737011003523,
+        "end_line": 456,
+        "signature": "sympy.series.order.Order._eval_subs(self, old, new)"
+      },
+      {
+        "start_line": 1188,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, an, ap, bm, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        an, ap, bm, bq, i = list(map(sympify, [an, ap, bm, bq, i]))\n\n        self._an = an\n        self._ap = ap\n        self._bm = bm\n        self._bq = bq\n        self._i = i\n\n        an = list(an)\n        ap = list(ap)\n        bm = list(bm)\n        bq = list(bq)\n        ai = an.pop(i) + 1\n\n        m = Poly(z, _x)\n        for a in an:\n            m *= Poly(1 - a + _x, _x)\n        for a in ap:\n            m *= Poly(a - 1 - _x, _x)\n\n        B = Dummy('B')\n        D = Poly(B + ai - 1, B)\n        n = Poly(1, B)\n        for b in bm:\n            n *= (-D + b)\n        for b in bq:\n            n *= (D - b)\n\n        b0 = n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot increment upper a index (cancels)')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], B).as_expr().subs(\n            B, 1 - ai + _x), _x)\n\n        self._poly = Poly((m - n)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.MeijerUnShiftB.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.MeijerUnShiftB.__init__"
+          }
+        ],
+        "similarity": 0.14690776870519445,
+        "end_line": 1225,
+        "signature": "sympy.simplify.hyperexpand.MeijerUnShiftB.__init__(self, an, ap, bm, bq, i, z)"
+      },
+      {
+        "start_line": 1086,
+        "file_path": "sympy/polys/agca/modules.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _syzygies(self):\n        \"\"\"Compute syzygies. See [SCA, algorithm 2.5.4].\"\"\"\n        # NOTE if self.gens is a standard basis, this can be done more\n        #      efficiently using Schreyer's theorem\n        from sympy.matrices import eye\n\n        # First bullet point\n        k = len(self.gens)\n        r = self.rank\n        im = eye(k)\n        Rkr = self.ring.free_module(r + k)\n        newgens = []\n        for j, f in enumerate(self.gens):\n            m = [0]*(r + k)\n            for i, v in enumerate(f):\n                m[i] = f[i]\n            for i in range(k):\n                m[r + i] = im[j, i]\n            newgens.append(Rkr.convert(m))\n        # Note: we need *descending* order on module index, and TOP=False to\n        #       get an eliminetaion order\n        F = Rkr.submodule(*newgens, order='ilex', TOP=False)\n\n        # Second bullet point: standard basis of F\n        G = F._groebner_vec()\n\n        # Third bullet point: G0 = G intersect the new k components\n        G0 = [x[r:] for x in G if all(y == self.ring.convert(0)\n                                      for y in x[:r])]\n\n        # Fourth and fifth bullet points: we are done\n        return G0",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.agca.modules.SubModulePolyRing._syzygies",
+        "documentation": "Compute syzygies. See [SCA, algorithm 2.5.4].",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/agca/modules.py"
+          },
+          {
+            "start_node": "sympy/polys/agca/modules.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.agca.modules.SubModulePolyRing._syzygies"
+          }
+        ],
+        "similarity": 0.1467120727703347,
+        "end_line": 1117,
+        "signature": "sympy.polys.agca.modules.SubModulePolyRing._syzygies(self)"
+      },
+      {
+        "start_line": 565,
+        "file_path": "sympy/integrals/integrals.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_derivative(self, sym):\n        \"\"\"Evaluate the derivative of the current Integral object by\n        differentiating under the integral sign [1], using the Fundamental\n        Theorem of Calculus [2] when possible.\n\n        Whenever an Integral is encountered that is equivalent to zero or\n        has an integrand that is independent of the variable of integration\n        those integrals are performed. All others are returned as Integral\n        instances which can be resolved with doit() (provided they are integrable).\n\n        References:\n           [1] http://en.wikipedia.org/wiki/Differentiation_under_the_integral_sign\n           [2] http://en.wikipedia.org/wiki/Fundamental_theorem_of_calculus\n\n        Examples\n        ========\n\n        >>> from sympy import Integral\n        >>> from sympy.abc import x, y\n        >>> i = Integral(x + y, y, (y, 1, x))\n        >>> i.diff(x)\n        Integral(x + y, (y, x)) + Integral(1, y, (y, 1, x))\n        >>> i.doit().diff(x) == i.diff(x).doit()\n        True\n        >>> i.diff(y)\n        0\n\n        The previous must be true since there is no y in the evaluated integral:\n\n        >>> i.free_symbols\n        {x}\n        >>> i.doit()\n        2*x**3/3 - x/2 - 1/6\n\n        \"\"\"\n\n        # differentiate under the integral sign; we do not\n        # check for regularity conditions (TODO), see issue 4215\n\n        # get limits and the function\n        f, limits = self.function, list(self.limits)\n\n        # the order matters if variables of integration appear in the limits\n        # so work our way in from the outside to the inside.\n        limit = limits.pop(-1)\n        if len(limit) == 3:\n            x, a, b = limit\n        elif len(limit) == 2:\n            x, b = limit\n            a = None\n        else:\n            a = b = None\n            x = limit[0]\n\n        if limits:  # f is the argument to an integral\n            f = self.func(f, *tuple(limits))\n\n        # assemble the pieces\n        def _do(f, ab):\n            dab_dsym = diff(ab, sym)\n            if not dab_dsym:\n                return S.Zero\n            if isinstance(f, Integral):\n                limits = [(x, x) if (len(l) == 1 and l[0] == x) else l\n                          for l in f.limits]\n                f = self.func(f.function, *limits)\n            return f.subs(x, ab)*dab_dsym\n        rv = 0\n        if b is not None:\n            rv += _do(f, b)\n        if a is not None:\n            rv -= _do(f, a)\n        if len(limit) == 1 and sym == x:\n            # the dummy variable *is* also the real-world variable\n            arg = f\n            rv += arg\n        else:\n            # the dummy variable might match sym but it's\n            # only a dummy and the actual variable is determined\n            # by the limits, so mask off the variable of integration\n            # while differentiating\n            u = Dummy('u')\n            arg = f.subs(x, u).diff(sym).subs(u, x)\n            rv += self.func(arg, Tuple(x, a, b))\n        return rv",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.integrals.Integral._eval_derivative",
+        "documentation": "Evaluate the derivative of the current Integral object by\ndifferentiating under the integral sign [1], using the Fundamental\nTheorem of Calculus [2] when possible.\n\nWhenever an Integral is encountered that is equivalent to zero or\nhas an integrand that is independent of the variable of integration\nthose integrals are performed. All others are returned as Integral\ninstances which can be resolved with doit() (provided they are integrable).\n\nReferences:\n   [1] http://en.wikipedia.org/wiki/Differentiation_under_the_integral_sign\n   [2] http://en.wikipedia.org/wiki/Fundamental_theorem_of_calculus\n\nExamples\n========\n\n>>> from sympy import Integral\n>>> from sympy.abc import x, y\n>>> i = Integral(x + y, y, (y, 1, x))\n>>> i.diff(x)\nIntegral(x + y, (y, x)) + Integral(1, y, (y, 1, x))\n>>> i.doit().diff(x) == i.diff(x).doit()\nTrue\n>>> i.diff(y)\n0\n\nThe previous must be true since there is no y in the evaluated integral:\n\n>>> i.free_symbols\n{x}\n>>> i.doit()\n2*x**3/3 - x/2 - 1/6",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/integrals.py"
+          },
+          {
+            "start_node": "sympy/integrals/integrals.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.integrals.Integral._eval_derivative"
+          }
+        ],
+        "similarity": 0.14550689861515598,
+        "end_line": 649,
+        "signature": "sympy.integrals.integrals.Integral._eval_derivative(self, sym)"
+      },
+      {
+        "start_line": 1240,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, an, ap, bm, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        an, ap, bm, bq, i = list(map(sympify, [an, ap, bm, bq, i]))\n\n        self._an = an\n        self._ap = ap\n        self._bm = bm\n        self._bq = bq\n        self._i = i\n\n        an = list(an)\n        ap = list(ap)\n        bm = list(bm)\n        bq = list(bq)\n        bi = bq.pop(i) - 1\n\n        m = Poly(1, _x)\n        for b in bm:\n            m *= Poly(b - _x, _x)\n        for b in bq:\n            m *= Poly(_x - b, _x)\n\n        C = Dummy('C')\n        D = Poly(bi + C, C)\n        n = Poly(z, C)\n        for a in an:\n            n *= (D + 1 - a)\n        for a in ap:\n            n *= (-D + a - 1)\n\n        b0 = n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot decrement lower b index (cancels)')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], C).as_expr().subs(C, _x - bi), _x)\n\n        self._poly = Poly((m - n)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.MeijerUnShiftC.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.MeijerUnShiftC.__init__"
+          }
+        ],
+        "similarity": 0.14512206336690567,
+        "end_line": 1276,
+        "signature": "sympy.simplify.hyperexpand.MeijerUnShiftC.__init__(self, an, ap, bm, bq, i, z)"
+      },
+      {
+        "start_line": 1399,
+        "file_path": "sympy/functions/elementary/trigonometric.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_trig(self, **hints):\n        from sympy import im, re\n        arg = self.args[0]\n        x = None\n        if arg.is_Add:\n            from sympy import symmetric_poly\n            n = len(arg.args)\n            CX = []\n            for x in arg.args:\n                cx = cot(x, evaluate=False)._eval_expand_trig()\n                CX.append(cx)\n\n            Yg = numbered_symbols('Y')\n            Y = [ next(Yg) for i in range(n) ]\n\n            p = [0, 0]\n            for i in range(n, -1, -1):\n                p[(n - i) % 2] += symmetric_poly(i, Y)*(-1)**(((n - i) % 4)//2)\n            return (p[0]/p[1]).subs(list(zip(Y, CX)))\n        else:\n            coeff, terms = arg.as_coeff_Mul(rational=True)\n            if coeff.is_Integer and coeff > 1:\n                I = S.ImaginaryUnit\n                z = Symbol('dummy', real=True)\n                P = ((z + I)**coeff).expand()\n                return (re(P)/im(P)).subs([(z, cot(terms))])\n        return cot(arg)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.elementary.trigonometric.cot._eval_expand_trig",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/elementary/trigonometric.py"
+          },
+          {
+            "start_node": "sympy/functions/elementary/trigonometric.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.elementary.trigonometric.cot._eval_expand_trig"
+          }
+        ],
+        "similarity": 0.14416894713460088,
+        "end_line": 1425,
+        "signature": "sympy.functions.elementary.trigonometric.cot._eval_expand_trig(self)"
+      },
+      {
+        "start_line": 118,
+        "file_path": "sympy/functions/special/zeta_functions.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_func(self, **hints):\n        from sympy import exp, I, floor, Add, Poly, Dummy, exp_polar, unpolarify\n        z, s, a = self.args\n        if z == 1:\n            return zeta(s, a)\n        if s.is_Integer and s <= 0:\n            t = Dummy('t')\n            p = Poly((t + a)**(-s), t)\n            start = 1/(1 - t)\n            res = S(0)\n            for c in reversed(p.all_coeffs()):\n                res += c*start\n                start = t*start.diff(t)\n            return res.subs(t, z)\n\n        if a.is_Rational:\n            # See section 18 of\n            #   Kelly B. Roach.  Hypergeometric Function Representations.\n            #   In: Proceedings of the 1997 International Symposium on Symbolic and\n            #   Algebraic Computation, pages 205-211, New York, 1997. ACM.\n            # TODO should something be polarified here?\n            add = S(0)\n            mul = S(1)\n            # First reduce a to the interaval (0, 1]\n            if a > 1:\n                n = floor(a)\n                if n == a:\n                    n -= 1\n                a -= n\n                mul = z**(-n)\n                add = Add(*[-z**(k - n)/(a + k)**s for k in range(n)])\n            elif a <= 0:\n                n = floor(-a) + 1\n                a += n\n                mul = z**n\n                add = Add(*[z**(n - 1 - k)/(a - k - 1)**s for k in range(n)])\n\n            m, n = S([a.p, a.q])\n            zet = exp_polar(2*pi*I/n)\n            root = z**(1/n)\n            return add + mul*n**(s - 1)*Add(\n                *[polylog(s, zet**k*root)._eval_expand_func(**hints)\n                  / (unpolarify(zet)**k*root)**m for k in range(n)])\n\n        # TODO use minpoly instead of ad-hoc methods when issue 5888 is fixed\n        if z.func is exp and (z.args[0]/(pi*I)).is_Rational or z in [-1, I, -I]:\n            # TODO reference?\n            if z == -1:\n                p, q = S([1, 2])\n            elif z == I:\n                p, q = S([1, 4])\n            elif z == -I:\n                p, q = S([-1, 4])\n            else:\n                arg = z.args[0]/(2*pi*I)\n                p, q = S([arg.p, arg.q])\n            return Add(*[exp(2*pi*I*k*p/q)/q**s*zeta(s, (k + a)/q)\n                         for k in range(q)])\n\n        return lerchphi(z, s, a)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.special.zeta_functions.lerchphi._eval_expand_func",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/special/zeta_functions.py"
+          },
+          {
+            "start_node": "sympy/functions/special/zeta_functions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.special.zeta_functions.lerchphi._eval_expand_func"
+          }
+        ],
+        "similarity": 0.14381559661248453,
+        "end_line": 177,
+        "signature": "sympy.functions.special.zeta_functions.lerchphi._eval_expand_func(self)"
+      },
+      {
+        "start_line": 1056,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, ap, bq, i, z):\n        \"\"\" Note: i counts from zero! \"\"\"\n        ap, bq, i = list(map(sympify, [ap, bq, i]))\n\n        self._ap = ap\n        self._bq = bq\n        self._i = i\n\n        ap = list(ap)\n        bq = list(bq)\n        bi = bq.pop(i) + 1\n\n        if bi == 0:\n            raise ValueError('Cannot increment -1 lower index.')\n\n        m = Poly(_x*(bi - 1), _x)\n        for b in bq:\n            m *= Poly(_x + b - 1, _x)\n\n        B = Dummy('B')\n        D = Poly((bi - 1)*B - bi + 1, B)\n        n = Poly(z, B)\n        for a in ap:\n            n *= (D + a)\n\n        b0 = n.nth(0)\n        if b0 == 0:\n            raise ValueError('Cannot increment index: cancels with upper')\n\n        n = Poly(Poly(n.all_coeffs()[:-1], B).as_expr().subs(\n            B, _x/(bi - 1) + 1), _x)\n\n        self._poly = Poly((m - n)/b0, _x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.UnShiftB.__init__",
+        "documentation": "Note: i counts from zero! ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.UnShiftB.__init__"
+          }
+        ],
+        "similarity": 0.14337545401475824,
+        "end_line": 1088,
+        "signature": "sympy.simplify.hyperexpand.UnShiftB.__init__(self, ap, bq, i, z)"
+      },
+      {
+        "start_line": 417,
+        "file_path": "sympy/functions/special/zeta_functions.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def eval(cls, z, a_=None):\n        if a_ is None:\n            z, a = list(map(sympify, (z, 1)))\n        else:\n            z, a = list(map(sympify, (z, a_)))\n\n        if a.is_Number:\n            if a is S.NaN:\n                return S.NaN\n            elif a is S.One and a_ is not None:\n                return cls(z)\n            # TODO Should a == 0 return S.NaN as well?\n\n        if z.is_Number:\n            if z is S.NaN:\n                return S.NaN\n            elif z is S.Infinity:\n                return S.One\n            elif z is S.Zero:\n                return S.Half - a\n            elif z is S.One:\n                return S.ComplexInfinity\n            elif z.is_Integer:\n                if a.is_Integer:\n                    if z.is_negative:\n                        zeta = (-1)**z * bernoulli(-z + 1)/(-z + 1)\n                    elif z.is_even:\n                        B, F = bernoulli(z), factorial(z)\n                        zeta = 2**(z - 1) * abs(B) * pi**z / F\n                    else:\n                        return\n\n                    if a.is_negative:\n                        return zeta + harmonic(abs(a), z)\n                    else:\n                        return zeta - harmonic(a - 1, z)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.special.zeta_functions.zeta.eval",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/special/zeta_functions.py"
+          },
+          {
+            "start_node": "sympy/functions/special/zeta_functions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.special.zeta_functions.zeta.eval"
+          }
+        ],
+        "similarity": 0.14271820382049746,
+        "end_line": 452,
+        "signature": "sympy.functions.special.zeta_functions.zeta.eval(cls, z, a_)"
+      },
+      {
+        "start_line": 1115,
+        "file_path": "sympy/series/formal.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __add__(self, other):\n        other = sympify(other)\n\n        if isinstance(other, FormalPowerSeries):\n            if self.dir != other.dir:\n                raise ValueError(\"Both series should be calculated from the\"\n                                 \" same direction.\")\n            elif self.x0 != other.x0:\n                raise ValueError(\"Both series should be calculated about the\"\n                                 \" same point.\")\n\n            x, y = self.x, other.x\n            f = self.function + other.function.subs(y, x)\n\n            if self.x not in f.free_symbols:\n                return f\n\n            ak = self.ak + other.ak\n            if self.ak.start > other.ak.start:\n                seq = other.ak\n                s, e = other.ak.start, self.ak.start\n            else:\n                seq = self.ak\n                s, e = self.ak.start, other.ak.start\n            save = Add(*[z[0]*z[1] for z in zip(seq[0:(e - s)], self.xk[s:e])])\n            ind = self.ind + other.ind + save\n\n            return self.func(f, x, self.x0, self.dir, (ak, self.xk, ind))\n\n        elif not other.has(self.x):\n            f = self.function + other\n            ind = self.ind + other\n\n            return self.func(f, self.x, self.x0, self.dir,\n                             (self.ak, self.xk, ind))\n\n        return Add(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.series.formal.FormalPowerSeries.__add__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/series/formal.py"
+          },
+          {
+            "start_node": "sympy/series/formal.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.series.formal.FormalPowerSeries.__add__"
+          }
+        ],
+        "similarity": 0.14204692719713066,
+        "end_line": 1151,
+        "signature": "sympy.series.formal.FormalPowerSeries.__add__(self, other)"
+      },
+      {
+        "start_line": 529,
+        "file_path": "sympy/printing/latex.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_BasisDependent(self, expr):\n        from sympy.vector import Vector\n\n        o1 = []\n        if expr == expr.zero:\n            return expr.zero._latex_form\n        if isinstance(expr, Vector):\n            items = expr.separate().items()\n        else:\n            items = [(0, expr)]\n\n        for system, vect in items:\n            inneritems = list(vect.components.items())\n            inneritems.sort(key = lambda x:x[0].__str__())\n            for k, v in inneritems:\n                if v == 1:\n                    o1.append(' + ' + k._latex_form)\n                elif v == -1:\n                    o1.append(' - ' + k._latex_form)\n                else:\n                    arg_str = '(' + LatexPrinter().doprint(v) + ')'\n                    o1.append(' + ' + arg_str + k._latex_form)\n\n        outstr = (''.join(o1))\n        if outstr[1] != '-':\n            outstr = outstr[3:]\n        else:\n            outstr = outstr[1:]\n        return outstr",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.latex.LatexPrinter._print_BasisDependent",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/latex.py"
+          },
+          {
+            "start_node": "sympy/printing/latex.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.latex.LatexPrinter._print_BasisDependent"
+          }
+        ],
+        "similarity": 0.14121368974461335,
+        "end_line": 557,
+        "signature": "sympy.printing.latex.LatexPrinter._print_BasisDependent(self, expr)"
+      },
+      {
+        "start_line": 2314,
+        "file_path": "sympy/functions/elementary/trigonometric.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def eval(cls, arg):\n        if arg.is_Number:\n            if arg is S.NaN:\n                return S.NaN\n            elif arg is S.Infinity:\n                return S.Zero\n            elif arg is S.NegativeInfinity:\n                return S.Zero\n            elif arg is S.Zero:\n                return S.Pi/ 2\n            elif arg is S.One:\n                return S.Pi / 4\n            elif arg is S.NegativeOne:\n                return -S.Pi / 4\n\n        if arg.could_extract_minus_sign():\n            return -cls(-arg)\n\n        if arg.is_number:\n            cst_table = {\n                sqrt(3)/3: 3,\n                -sqrt(3)/3: -3,\n                1/sqrt(3): 3,\n                -1/sqrt(3): -3,\n                sqrt(3): 6,\n                -sqrt(3): -6,\n                (1 + sqrt(2)): 8,\n                -(1 + sqrt(2)): -8,\n                (1 - sqrt(2)): -S(8)/3,\n                (sqrt(2) - 1): S(8)/3,\n                sqrt(5 + 2*sqrt(5)): 10,\n                -sqrt(5 + 2*sqrt(5)): -10,\n                (2 + sqrt(3)): 12,\n                -(2 + sqrt(3)): -12,\n                (2 - sqrt(3)): S(12)/5,\n                -(2 - sqrt(3)): -S(12)/5,\n            }\n\n            if arg in cst_table:\n                return S.Pi / cst_table[arg]\n\n        i_coeff = arg.as_coefficient(S.ImaginaryUnit)\n        if i_coeff is not None:\n            return -S.ImaginaryUnit * acoth(i_coeff)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.elementary.trigonometric.acot.eval",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/elementary/trigonometric.py"
+          },
+          {
+            "start_node": "sympy/functions/elementary/trigonometric.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.elementary.trigonometric.acot.eval"
+          }
+        ],
+        "similarity": 0.14106989007138312,
+        "end_line": 2357,
+        "signature": "sympy.functions.elementary.trigonometric.acot.eval(cls, arg)"
+      },
+      {
+        "start_line": 1353,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_subs(self, old, new):\n        if old in self.variables and not new._diff_wrt:\n            # issue 4719\n            return Subs(self, old, new)\n        # If both are Derivatives with the same expr, check if old is\n        # equivalent to self or if old is a subderivative of self.\n        if old.is_Derivative and old.expr == self.expr:\n            # Check if canonnical order of variables is equal.\n            old_vars = collections.Counter(old.variables)\n            self_vars = collections.Counter(self.variables)\n            if old_vars == self_vars:\n                return new\n\n            # collections.Counter doesn't have __le__\n            def _subset(a, b):\n                return all(a[i] <= b[i] for i in a)\n\n            if _subset(old_vars, self_vars):\n                return Derivative(new, *(self_vars - old_vars).elements())\n\n        return Derivative(*(x._subs(old, new) for x in self.args))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.Derivative._eval_subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.Derivative._eval_subs"
+          }
+        ],
+        "similarity": 0.14079622266559053,
+        "end_line": 1373,
+        "signature": "sympy.core.function.Derivative._eval_subs(self, old, new)"
+      },
+      {
+        "start_line": 783,
+        "file_path": "sympy/core/add.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_as_leading_term(self, x):\n        from sympy import expand_mul, factor_terms\n\n        old = self\n\n        expr = expand_mul(self)\n        if not expr.is_Add:\n            return expr.as_leading_term(x)\n\n        infinite = [t for t in expr.args if t.is_infinite]\n\n        expr = expr.func(*[t.as_leading_term(x) for t in expr.args]).removeO()\n        if not expr:\n            # simple leading term analysis gave us 0 but we have to send\n            # back a term, so compute the leading term (via series)\n            return old.compute_leading_term(x)\n        elif expr is S.NaN:\n            return old.func._from_args(infinite)\n        elif not expr.is_Add:\n            return expr\n        else:\n            plain = expr.func(*[s for s, _ in expr.extract_leading_order(x)])\n            rv = factor_terms(plain, fraction=False)\n            rv_simplify = rv.simplify()\n            # if it simplifies to an x-free expression, return that;\n            # tests don't fail if we don't but it seems nicer to do this\n            if x not in rv_simplify.free_symbols:\n                if rv_simplify.is_zero and plain.is_zero is not True:\n                    return (expr - plain)._eval_as_leading_term(x)\n                return rv_simplify\n            return rv",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.add.Add._eval_as_leading_term",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/add.py"
+          },
+          {
+            "start_node": "sympy/core/add.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.add.Add._eval_as_leading_term"
+          }
+        ],
+        "similarity": 0.140206720060568,
+        "end_line": 813,
+        "signature": "sympy.core.add.Add._eval_as_leading_term(self, x)"
+      },
+      {
+        "start_line": 489,
+        "file_path": "sympy/polys/fields.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __truediv__(f, g):\n        \"\"\"Computes quotient of fractions ``f`` and ``g``. \"\"\"\n        field = f.field\n\n        if not g:\n            raise ZeroDivisionError\n        elif isinstance(g, field.dtype):\n            return f.new(f.numer*g.denom, f.denom*g.numer)\n        elif isinstance(g, field.ring.dtype):\n            return f.new(f.numer, f.denom*g)\n        else:\n            if isinstance(g, FracElement):\n                if isinstance(field.domain, FractionField) and field.domain.field == g.field:\n                    pass\n                elif isinstance(g.field.domain, FractionField) and g.field.domain.field == field:\n                    return g.__rtruediv__(f)\n                else:\n                    return NotImplemented\n            elif isinstance(g, PolyElement):\n                if isinstance(field.domain, PolynomialRing) and field.domain.ring == g.ring:\n                    pass\n                else:\n                    return g.__rtruediv__(f)\n\n        op, g_numer, g_denom = f._extract_ground(g)\n\n        if op == 1:\n            return f.new(f.numer, f.denom*g_numer)\n        elif not op:\n            return NotImplemented\n        else:\n            return f.new(f.numer*g_denom, f.denom*g_numer)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.fields.FracElement.__truediv__",
+        "documentation": "Computes quotient of fractions ``f`` and ``g``. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/fields.py"
+          },
+          {
+            "start_node": "sympy/polys/fields.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.fields.FracElement.__truediv__"
+          }
+        ],
+        "similarity": 0.13989018386198432,
+        "end_line": 520,
+        "signature": "sympy.polys.fields.FracElement.__truediv__(f, g)"
+      },
+      {
+        "start_line": 1629,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, expr, variables, point, **assumptions):\n        from sympy import Symbol\n        if not is_sequence(variables, Tuple):\n            variables = [variables]\n        variables = list(sympify(variables))\n\n        if list(uniq(variables)) != variables:\n            repeated = [ v for v in set(variables) if variables.count(v) > 1 ]\n            raise ValueError('cannot substitute expressions %s more than '\n                             'once.' % repeated)\n\n        point = Tuple(*(point if is_sequence(point, Tuple) else [point]))\n\n        if len(point) != len(variables):\n            raise ValueError('Number of point values must be the same as '\n                             'the number of variables.')\n\n        expr = sympify(expr)\n\n        # use symbols with names equal to the point value (with preppended _)\n        # to give a variable-independent expression\n        pre = \"_\"\n        pts = sorted(set(point), key=default_sort_key)\n        from sympy.printing import StrPrinter\n        class CustomStrPrinter(StrPrinter):\n            def _print_Dummy(self, expr):\n                return str(expr) + str(expr.dummy_index)\n        def mystr(expr, **settings):\n            p = CustomStrPrinter(settings)\n            return p.doprint(expr)\n        while 1:\n            s_pts = {p: Symbol(pre + mystr(p)) for p in pts}\n            reps = [(v, s_pts[p])\n                for v, p in zip(variables, point)]\n            # if any underscore-preppended symbol is already a free symbol\n            # and is a variable with a different point value, then there\n            # is a clash, e.g. _0 clashes in Subs(_0 + _1, (_0, _1), (1, 0))\n            # because the new symbol that would be created is _1 but _1\n            # is already mapped to 0 so __0 and __1 are used for the new\n            # symbols\n            if any(r in expr.free_symbols and\n                   r in variables and\n                   Symbol(pre + mystr(point[variables.index(r)])) != r\n                   for _, r in reps):\n                pre += \"_\"\n                continue\n            break\n\n        obj = Expr.__new__(cls, expr, Tuple(*variables), point)\n        obj._expr = expr.subs(reps)\n        return obj",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.Subs.__new__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.Subs.__new__"
+          }
+        ],
+        "similarity": 0.13951000418115356,
+        "end_line": 1679,
+        "signature": "sympy.core.function.Subs.__new__(cls, expr, variables, point)"
+      },
+      {
+        "start_line": 796,
+        "file_path": "sympy/printing/pretty/pretty.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_BasisDependent(self, expr):\n        from sympy.vector import Vector\n\n        if not self._use_unicode:\n            raise NotImplementedError(\"ASCII pretty printing of BasisDependent is not implemented\")\n\n        if expr == expr.zero:\n            return prettyForm(expr.zero._pretty_form)\n        o1 = []\n        vectstrs = []\n        if isinstance(expr, Vector):\n            items = expr.separate().items()\n        else:\n            items = [(0, expr)]\n        for system, vect in items:\n            inneritems = list(vect.components.items())\n            inneritems.sort(key = lambda x: x[0].__str__())\n            for k, v in inneritems:\n                #if the coef of the basis vector is 1\n                #we skip the 1\n                if v == 1:\n                    o1.append(u\"\" +\n                              k._pretty_form)\n                #Same for -1\n                elif v == -1:\n                    o1.append(u\"(-1) \" +\n                              k._pretty_form)\n                #For a general expr\n                else:\n                    #We always wrap the measure numbers in\n                    #parentheses\n                    arg_str = self._print(\n                        v).parens()[0]\n\n                    o1.append(arg_str + ' ' + k._pretty_form)\n                vectstrs.append(k._pretty_form)\n\n        #outstr = u(\"\").join(o1)\n        if o1[0].startswith(u\" + \"):\n            o1[0] = o1[0][3:]\n        elif o1[0].startswith(\" \"):\n            o1[0] = o1[0][1:]\n        #Fixing the newlines\n        lengths = []\n        strs = ['']\n        for i, partstr in enumerate(o1):\n            # XXX: What is this hack?\n            if '\\n' in partstr:\n                tempstr = partstr\n                tempstr = tempstr.replace(vectstrs[i], '')\n                tempstr = tempstr.replace(u'\\N{RIGHT PARENTHESIS UPPER HOOK}',\n                                          u'\\N{RIGHT PARENTHESIS UPPER HOOK}'\n                                          + ' ' + vectstrs[i])\n                o1[i] = tempstr\n        o1 = [x.split('\\n') for x in o1]\n        n_newlines = max([len(x) for x in o1])\n        for parts in o1:\n            lengths.append(len(parts[0]))\n            for j in range(n_newlines):\n                if j+1 <= len(parts):\n                    if j >= len(strs):\n                        strs.append(' ' * (sum(lengths[:-1]) +\n                                           3*(len(lengths)-1)))\n                    if j == 0:\n                        strs[0] += parts[0] + ' + '\n                    else:\n                        strs[j] += parts[j] + ' '*(lengths[-1] -\n                                                   len(parts[j])+\n                                                   3)\n                else:\n                    if j >= len(strs):\n                        strs.append(' ' * (sum(lengths[:-1]) +\n                                           3*(len(lengths)-1)))\n                    strs[j] += ' '*(lengths[-1]+3)\n\n        return prettyForm(u'\\n'.join([s[:-3] for s in strs]))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.pretty.pretty.PrettyPrinter._print_BasisDependent",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/pretty/pretty.py"
+          },
+          {
+            "start_node": "sympy/printing/pretty/pretty.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.pretty.pretty.PrettyPrinter._print_BasisDependent"
+          }
+        ],
+        "similarity": 0.1392791922686183,
+        "end_line": 871,
+        "signature": "sympy.printing.pretty.pretty.PrettyPrinter._print_BasisDependent(self, expr)"
+      },
+      {
+        "start_line": 561,
+        "file_path": "sympy/core/power.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_subs(self, old, new):\n        from sympy import exp, log, Symbol\n        def _check(ct1, ct2, old):\n            \"\"\"Return bool, pow where, if bool is True, then the exponent of\n            Pow `old` will combine with `pow` so the substitution is valid,\n            otherwise bool will be False,\n\n            cti are the coefficient and terms of an exponent of self or old\n            In this _eval_subs routine a change like (b**(2*x)).subs(b**x, y)\n            will give y**2 since (b**x)**2 == b**(2*x); if that equality does\n            not hold then the substitution should not occur so `bool` will be\n            False.\n            \"\"\"\n            coeff1, terms1 = ct1\n            coeff2, terms2 = ct2\n            if terms1 == terms2:\n                pow = coeff1/coeff2\n                try:\n                    pow = as_int(pow)\n                    combines = True\n                except ValueError:\n                    combines = Pow._eval_power(\n                        Pow(*old.as_base_exp(), evaluate=False),\n                        pow) is not None\n                return combines, pow\n            return False, None\n\n        if old == self.base:\n            return new**self.exp._subs(old, new)\n\n        # issue 10829: (4**x - 3*y + 2).subs(2**x, y) -> y**2 - 3*y + 2\n        if old.func is self.func and self.exp == old.exp:\n            l = log(self.base, old.base)\n            if l.is_Number:\n                return Pow(new, l)\n\n        if old.func is self.func and self.base == old.base:\n            if self.exp.is_Add is False:\n                ct1 = self.exp.as_independent(Symbol, as_Add=False)\n                ct2 = old.exp.as_independent(Symbol, as_Add=False)\n                ok, pow = _check(ct1, ct2, old)\n                if ok:\n                    # issue 5180: (x**(6*y)).subs(x**(3*y),z)->z**2\n                    return self.func(new, pow)\n            else:  # b**(6*x+a).subs(b**(3*x), y) -> y**2 * b**a\n                # exp(exp(x) + exp(x**2)).subs(exp(exp(x)), w) -> w * exp(exp(x**2))\n                oarg = old.exp\n                new_l = []\n                o_al = []\n                ct2 = oarg.as_coeff_mul()\n                for a in self.exp.args:\n                    newa = a._subs(old, new)\n                    ct1 = newa.as_coeff_mul()\n                    ok, pow = _check(ct1, ct2, old)\n                    if ok:\n                        new_l.append(new**pow)\n                        continue\n                    o_al.append(newa)\n                if new_l:\n                    new_l.append(Pow(self.base, Add(*o_al), evaluate=False))\n                    return Mul(*new_l)\n\n        if old.func is exp and self.exp.is_real and self.base.is_positive:\n            ct1 = old.args[0].as_independent(Symbol, as_Add=False)\n            ct2 = (self.exp*log(self.base)).as_independent(\n                Symbol, as_Add=False)\n            ok, pow = _check(ct1, ct2, old)\n            if ok:\n                return self.func(new, pow)  # (2**x).subs(exp(x*log(2)), z) -> z",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.power.Pow._eval_subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/power.py"
+          },
+          {
+            "start_node": "sympy/core/power.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.power.Pow._eval_subs"
+          }
+        ],
+        "similarity": 0.13918612498816235,
+        "end_line": 629,
+        "signature": "sympy.core.power.Pow._eval_subs(self, old, new)"
+      },
+      {
+        "start_line": 1759,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __new__(cls, arg):\n        \"\"\"\n        Use anticommutation to get canonical form of operators.\n\n        Employ associativity of normal ordered product: {ab{cd}} = {abcd}\n        but note that {ab}{cd} /= {abcd}.\n\n        We also employ distributivity: {ab + cd} = {ab} + {cd}.\n\n        Canonical form also implies expand() {ab(c+d)} = {abc} + {abd}.\n\n        \"\"\"\n\n        # {ab + cd} = {ab} + {cd}\n        arg = sympify(arg)\n        arg = arg.expand()\n        if arg.is_Add:\n            return Add(*[ cls(term) for term in arg.args])\n\n        if arg.is_Mul:\n\n            # take coefficient outside of normal ordering brackets\n            c_part, seq = arg.args_cnc()\n            if c_part:\n                coeff = Mul(*c_part)\n                if not seq:\n                    return coeff\n            else:\n                coeff = S.One\n\n            # {ab{cd}} = {abcd}\n            newseq = []\n            foundit = False\n            for fac in seq:\n                if isinstance(fac, NO):\n                    newseq.extend(fac.args)\n                    foundit = True\n                else:\n                    newseq.append(fac)\n            if foundit:\n                return coeff*cls(Mul(*newseq))\n\n            # We assume that the user don't mix B and F operators\n            if isinstance(seq[0], BosonicOperator):\n                raise NotImplementedError\n\n            try:\n                newseq, sign = _sort_anticommuting_fermions(seq)\n            except ViolationOfPauliPrinciple:\n                return S.Zero\n\n            if sign % 2:\n                return (S.NegativeOne*coeff)*cls(Mul(*newseq))\n            elif sign:\n                return coeff*cls(Mul(*newseq))\n            else:\n                pass  # since sign==0, no permutations was necessary\n\n            # if we couldn't do anything with Mul object, we just\n            # mark it as normal ordered\n            if coeff != S.One:\n                return coeff*cls(Mul(*newseq))\n            return Expr.__new__(cls, Mul(*newseq))\n\n        if isinstance(arg, NO):\n            return arg\n\n        # if object was not Mul or Add, normal ordering does not apply\n        return arg",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.NO.__new__",
+        "documentation": "Use anticommutation to get canonical form of operators.\n\nEmploy associativity of normal ordered product: {ab{cd}} = {abcd}\nbut note that {ab}{cd} /= {abcd}.\n\nWe also employ distributivity: {ab + cd} = {ab} + {cd}.\n\nCanonical form also implies expand() {ab(c+d)} = {abc} + {abd}.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.NO.__new__"
+          }
+        ],
+        "similarity": 0.1386379176939473,
+        "end_line": 1827,
+        "signature": "sympy.physics.secondquant.NO.__new__(cls, arg)"
+      },
+      {
+        "start_line": 1017,
+        "file_path": "sympy/series/formal.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_term(self, pt):\n        try:\n            pt_xk = self.xk.coeff(pt)\n            pt_ak = self.ak.coeff(pt).simplify()  # Simplify the coefficients\n        except IndexError:\n            term = S.Zero\n        else:\n            term = (pt_ak * pt_xk)\n\n        if self.ind:\n            ind = S.Zero\n            for t in Add.make_args(self.ind):\n                pow_x = self._get_pow_x(t)\n                if pt == 0 and pow_x < 1:\n                    ind += t\n                elif pow_x >= pt and pow_x < pt + 1:\n                    ind += t\n            term += ind\n\n        return term.collect(self.x)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.series.formal.FormalPowerSeries._eval_term",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/series/formal.py"
+          },
+          {
+            "start_node": "sympy/series/formal.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.series.formal.FormalPowerSeries._eval_term"
+          }
+        ],
+        "similarity": 0.13835365412278267,
+        "end_line": 1036,
+        "signature": "sympy.series.formal.FormalPowerSeries._eval_term(self, pt)"
+      },
+      {
+        "start_line": 831,
+        "file_path": "sympy/core/mul.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_mul(self, **hints):\n        from sympy import fraction\n\n        # Handle things like 1/(x*(x + 1)), which are automatically converted\n        # to 1/x*1/(x + 1)\n        expr = self\n        n, d = fraction(expr)\n        if d.is_Mul:\n            n, d = [i._eval_expand_mul(**hints) if i.is_Mul else i\n                for i in (n, d)]\n            expr = n/d\n            if not expr.is_Mul:\n                return expr\n\n        plain, sums, rewrite = [], [], False\n        for factor in expr.args:\n            if factor.is_Add:\n                sums.append(factor)\n                rewrite = True\n            else:\n                if factor.is_commutative:\n                    plain.append(factor)\n                else:\n                    sums.append(Basic(factor))  # Wrapper\n\n        if not rewrite:\n            return expr\n        else:\n            plain = self.func(*plain)\n            if sums:\n                terms = self.func._expandsums(sums)\n                args = []\n                for term in terms:\n                    t = self.func(plain, term)\n                    if t.is_Mul and any(a.is_Add for a in t.args):\n                        t = t._eval_expand_mul()\n                    args.append(t)\n                return Add(*args)\n            else:\n                return plain",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.mul.Mul._eval_expand_mul",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/mul.py"
+          },
+          {
+            "start_node": "sympy/core/mul.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.mul.Mul._eval_expand_mul"
+          }
+        ],
+        "similarity": 0.1381819648528084,
+        "end_line": 870,
+        "signature": "sympy.core.mul.Mul._eval_expand_mul(self)"
+      },
+      {
+        "start_line": 567,
+        "file_path": "sympy/printing/latex.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_Derivative(self, expr):\n        dim = len(expr.variables)\n        if requires_partial(expr):\n            diff_symbol = r'\\partial'\n        else:\n            diff_symbol = r'd'\n\n\n        if dim == 1:\n            tex = r\"\\frac{%s}{%s %s}\" % (diff_symbol, diff_symbol,\n                self._print(expr.variables[0]))\n        else:\n            multiplicity, i, tex = [], 1, \"\"\n            current = expr.variables[0]\n\n            for symbol in expr.variables[1:]:\n                if symbol == current:\n                    i = i + 1\n                else:\n                    multiplicity.append((current, i))\n                    current, i = symbol, 1\n            else:\n                multiplicity.append((current, i))\n\n            for x, i in multiplicity:\n                if i == 1:\n                    tex += r\"%s %s\" % (diff_symbol, self._print(x))\n                else:\n                    tex += r\"%s %s^{%s}\" % (diff_symbol, self._print(x), i)\n\n            tex = r\"\\frac{%s^{%s}}{%s} \" % (diff_symbol, dim, tex)\n\n        if isinstance(expr.expr, AssocOp):\n            return r\"%s\\left(%s\\right)\" % (tex, self._print(expr.expr))\n        else:\n            return r\"%s %s\" % (tex, self._print(expr.expr))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.latex.LatexPrinter._print_Derivative",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/latex.py"
+          },
+          {
+            "start_node": "sympy/printing/latex.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.latex.LatexPrinter._print_Derivative"
+          }
+        ],
+        "similarity": 0.1380211086568456,
+        "end_line": 602,
+        "signature": "sympy.printing.latex.LatexPrinter._print_Derivative(self, expr)"
+      },
+      {
+        "start_line": 172,
+        "file_path": "sympy/holonomic/holonomic.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __init__(self, list_of_poly, parent):\n        \"\"\"\n        Parameters\n        ==========\n\n        list_of_poly:\n            List of polynomials belonging to the base ring of the algebra.\n        parent:\n            Parent algebra of the operator.\n        \"\"\"\n\n        # the parent ring for this operator\n        # must be an DifferentialOperatorAlgebra object\n        self.parent = parent\n        base = self.parent.base\n        self.x = base.gens[0] if isinstance(base.gens[0], Symbol) else base.gens[0][0]\n        # sequence of polynomials in x for each power of Dx\n        # the list should not have trailing zeroes\n        # represents the operator\n        # convert the expressions into ring elements using from_sympy\n        for i, j in enumerate(list_of_poly):\n            if not isinstance(j, base.dtype):\n                list_of_poly[i] = base.from_sympy(sympify(j))\n            else:\n                list_of_poly[i] = base.from_sympy(base.to_sympy(j))\n\n        self.listofpoly = list_of_poly\n        # highest power of `Dx`\n        self.order = len(self.listofpoly) - 1",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.holonomic.holonomic.DifferentialOperator.__init__",
+        "documentation": "Parameters\n==========\n\nlist_of_poly:\n    List of polynomials belonging to the base ring of the algebra.\nparent:\n    Parent algebra of the operator.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/holonomic/holonomic.py"
+          },
+          {
+            "start_node": "sympy/holonomic/holonomic.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.holonomic.holonomic.DifferentialOperator.__init__"
+          }
+        ],
+        "similarity": 0.13784247737394564,
+        "end_line": 200,
+        "signature": "sympy.holonomic.holonomic.DifferentialOperator.__init__(self, list_of_poly, parent)"
+      },
+      {
+        "start_line": 1068,
+        "file_path": "sympy/functions/elementary/trigonometric.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_trig(self, **hints):\n        from sympy import im, re\n        arg = self.args[0]\n        x = None\n        if arg.is_Add:\n            from sympy import symmetric_poly\n            n = len(arg.args)\n            TX = []\n            for x in arg.args:\n                tx = tan(x, evaluate=False)._eval_expand_trig()\n                TX.append(tx)\n\n            Yg = numbered_symbols('Y')\n            Y = [ next(Yg) for i in range(n) ]\n\n            p = [0, 0]\n            for i in range(n + 1):\n                p[1 - i % 2] += symmetric_poly(i, Y)*(-1)**((i % 4)//2)\n            return (p[0]/p[1]).subs(list(zip(Y, TX)))\n\n        else:\n            coeff, terms = arg.as_coeff_Mul(rational=True)\n            if coeff.is_Integer and coeff > 1:\n                I = S.ImaginaryUnit\n                z = Symbol('dummy', real=True)\n                P = ((1 + I*z)**coeff).expand()\n                return (im(P)/re(P)).subs([(z, tan(terms))])\n        return tan(arg)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.elementary.trigonometric.tan._eval_expand_trig",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/elementary/trigonometric.py"
+          },
+          {
+            "start_node": "sympy/functions/elementary/trigonometric.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.elementary.trigonometric.tan._eval_expand_trig"
+          }
+        ],
+        "similarity": 0.13781133247500926,
+        "end_line": 1095,
+        "signature": "sympy.functions.elementary.trigonometric.tan._eval_expand_trig(self)"
+      },
+      {
+        "start_line": 429,
+        "file_path": "sympy/printing/pretty/stringpict.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __mul__(self, *others):\n        \"\"\"Make a pretty multiplication.\n        Parentheses are needed around +, - and neg.\n        \"\"\"\n        if len(others) == 0:\n            return self # We aren't actually multiplying... So nothing to do here.\n\n        args = self\n        if args.binding > prettyForm.MUL:\n            arg = stringPict(*args.parens())\n        result = [args]\n        for arg in others:\n            result.append(xsym('*'))\n            #add parentheses for weak binders\n            if arg.binding > prettyForm.MUL:\n                arg = stringPict(*arg.parens())\n            result.append(arg)\n        len_res = len(result)\n        for i in range(len_res):\n            if i < len_res - 1 and result[i] == '-1' and result[i + 1] == xsym('*'):\n                # substitute -1 by -, like in -1*x -> -x\n                result.pop(i)\n                result.pop(i)\n                result.insert(i, '-')\n        if result[0][0] == '-':\n            # if there is a - sign in front of all\n            # This test was failing to catch a prettyForm.__mul__(prettyForm(\"-1\", 0, 6)) being negative\n            bin = prettyForm.NEG\n            if result[0] == '-':\n                right = result[1]\n                if right.picture[right.baseline][0] == '-':\n                    result[0] = '- '\n        else:\n            bin = prettyForm.MUL\n        return prettyForm(binding=bin, *stringPict.next(*result))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.pretty.stringpict.prettyForm.__mul__",
+        "documentation": "Make a pretty multiplication.\nParentheses are needed around +, - and neg.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/pretty/stringpict.py"
+          },
+          {
+            "start_node": "sympy/printing/pretty/stringpict.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.pretty.stringpict.prettyForm.__mul__"
+          }
+        ],
+        "similarity": 0.13743791774939795,
+        "end_line": 463,
+        "signature": "sympy.printing.pretty.stringpict.prettyForm.__mul__(self)"
+      },
+      {
+        "start_line": 201,
+        "file_path": "sympy/core/basic.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _compare_pretty(a, b):\n        from sympy.series.order import Order\n        if isinstance(a, Order) and not isinstance(b, Order):\n            return 1\n        if not isinstance(a, Order) and isinstance(b, Order):\n            return -1\n\n        if a.is_Rational and b.is_Rational:\n            l = a.p * b.q\n            r = b.p * a.q\n            return (l > r) - (l < r)\n        else:\n            from sympy.core.symbol import Wild\n            p1, p2, p3 = Wild(\"p1\"), Wild(\"p2\"), Wild(\"p3\")\n            r_a = a.match(p1 * p2**p3)\n            if r_a and p3 in r_a:\n                a3 = r_a[p3]\n                r_b = b.match(p1 * p2**p3)\n                if r_b and p3 in r_b:\n                    b3 = r_b[p3]\n                    c = Basic.compare(a3, b3)\n                    if c != 0:\n                        return c\n\n        return Basic.compare(a, b)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.basic.Basic._compare_pretty",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/basic.py"
+          },
+          {
+            "start_node": "sympy/core/basic.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.basic.Basic._compare_pretty"
+          }
+        ],
+        "similarity": 0.1370669998608649,
+        "end_line": 225,
+        "signature": "sympy.core.basic.Basic._compare_pretty(a, b)"
+      },
+      {
+        "start_line": 2359,
+        "file_path": "sympy/polys/rings.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def compose(f, x, a=None):\n        ring = f.ring\n        poly = ring.zero\n        gens_map = dict(list(zip(ring.gens, list(range(ring.ngens)))))\n\n        if a is not None:\n            replacements = [(x, a)]\n        else:\n            if isinstance(x, list):\n                replacements = list(x)\n            elif isinstance(x, dict):\n                replacements = sorted(list(x.items()), key=lambda k: gens_map[k[0]])\n            else:\n                raise ValueError(\"expected a generator, value pair a sequence of such pairs\")\n\n        for k, (x, g) in enumerate(replacements):\n            replacements[k] = (gens_map[x], ring.ring_new(g))\n\n        for monom, coeff in f.iterterms():\n            monom = list(monom)\n            subpoly = ring.one\n\n            for i, g in replacements:\n                n, monom[i] = monom[i], 0\n                if n:\n                    subpoly *= g**n\n\n            subpoly = subpoly.mul_term((tuple(monom), coeff))\n            poly += subpoly\n\n        return poly",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.rings.PolyElement.compose",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/rings.py"
+          },
+          {
+            "start_node": "sympy/polys/rings.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.rings.PolyElement.compose"
+          }
+        ],
+        "similarity": 0.1369960339682874,
+        "end_line": 2389,
+        "signature": "sympy.polys.rings.PolyElement.compose(f, x, a)"
+      },
+      {
+        "start_line": 1481,
+        "file_path": "sympy/functions/special/bessel.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_func(self, **hints):\n        arg = self.args[0]\n        symbs = arg.free_symbols\n\n        if len(symbs) == 1:\n            z = symbs.pop()\n            c = Wild(\"c\", exclude=[z])\n            d = Wild(\"d\", exclude=[z])\n            m = Wild(\"m\", exclude=[z])\n            n = Wild(\"n\", exclude=[z])\n            M = arg.match(c*(d*z**n)**m)\n            if M is not None:\n                m = M[m]\n                # The transformation is in principle\n                # given by 03.07.16.0001.01 but note\n                # that there is an error in this formule.\n                # http://functions.wolfram.com/Bessel-TypeFunctions/AiryAiPrime/16/01/01/0001/\n                if (3*m).is_integer:\n                    c = M[c]\n                    d = M[d]\n                    n = M[n]\n                    pf = (d**m * z**(n*m)) / (d * z**n)**m\n                    newarg = c * d**m * z**(n*m)\n                    return S.Half * ((pf + S.One)*airyaiprime(newarg) + (pf - S.One)/sqrt(3)*airybiprime(newarg))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.special.bessel.airyaiprime._eval_expand_func",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/special/bessel.py"
+          },
+          {
+            "start_node": "sympy/functions/special/bessel.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.special.bessel.airyaiprime._eval_expand_func"
+          }
+        ],
+        "similarity": 0.1368236563891001,
+        "end_line": 1504,
+        "signature": "sympy.functions.special.bessel.airyaiprime._eval_expand_func(self)"
+      },
+      {
+        "start_line": 410,
+        "file_path": "sympy/functions/elementary/trigonometric.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_trig(self, **hints):\n        from sympy import expand_mul\n        from sympy.functions.special.polynomials import chebyshevt, chebyshevu\n        arg = self.args[0]\n        x = None\n        if arg.is_Add:  # TODO, implement more if deep stuff here\n            # TODO: Do this more efficiently for more than two terms\n            x, y = arg.as_two_terms()\n            sx = sin(x, evaluate=False)._eval_expand_trig()\n            sy = sin(y, evaluate=False)._eval_expand_trig()\n            cx = cos(x, evaluate=False)._eval_expand_trig()\n            cy = cos(y, evaluate=False)._eval_expand_trig()\n            return sx*cy + sy*cx\n        else:\n            n, x = arg.as_coeff_Mul(rational=True)\n            if n.is_Integer:  # n will be positive because of .eval\n                # canonicalization\n\n                # See http://mathworld.wolfram.com/Multiple-AngleFormulas.html\n                if n.is_odd:\n                    return (-1)**((n - 1)/2)*chebyshevt(n, sin(x))\n                else:\n                    return expand_mul((-1)**(n/2 - 1)*cos(x)*chebyshevu(n -\n                        1, sin(x)), deep=False)\n            pi_coeff = _pi_coeff(arg)\n            if pi_coeff is not None:\n                if pi_coeff.is_Rational:\n                    return self.rewrite(sqrt)\n        return sin(arg)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.elementary.trigonometric.sin._eval_expand_trig",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/elementary/trigonometric.py"
+          },
+          {
+            "start_node": "sympy/functions/elementary/trigonometric.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.elementary.trigonometric.sin._eval_expand_trig"
+          }
+        ],
+        "similarity": 0.13677322227196326,
+        "end_line": 438,
+        "signature": "sympy.functions.elementary.trigonometric.sin._eval_expand_trig(self)"
+      },
+      {
+        "start_line": 479,
+        "file_path": "sympy/simplify/combsimp.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def eval(cls, a, b):\n        if b.is_Integer:\n            if not b:\n                return S.One\n\n            n, result = int(b), S.One\n\n            if n > 0:\n                for i in range(n):\n                    result *= a + i\n\n                return result\n            elif n < 0:\n                for i in range(1, -n + 1):\n                    result *= a - i\n\n                return 1/result\n        else:\n            if b.is_Add:\n                c, _b = b.as_coeff_Add()\n\n                if c.is_Integer:\n                    if c > 0:\n                        return _rf(a, _b)*_rf(a + _b, c)\n                    elif c < 0:\n                        return _rf(a, _b)/_rf(a + _b + c, -c)\n\n            if a.is_Add:\n                c, _a = a.as_coeff_Add()\n\n                if c.is_Integer:\n                    if c > 0:\n                        return _rf(_a, b)*_rf(_a + b, c)/_rf(_a, c)\n                    elif c < 0:\n                        return _rf(_a, b)*_rf(_a + c, -c)/_rf(_a + b + c, -c)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.combsimp._rf.eval",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/combsimp.py"
+          },
+          {
+            "start_node": "sympy/simplify/combsimp.py",
+            "description": "contains method",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.combsimp._rf.eval"
+          }
+        ],
+        "similarity": 0.13657002859650036,
+        "end_line": 513,
+        "signature": "sympy.simplify.combsimp._rf.eval(cls, a, b)"
+      },
+      {
+        "start_line": 3594,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_power(self, expt):\n        \"\"\"\n        b is I = sqrt(-1)\n        e is symbolic object but not equal to 0, 1\n\n        I**r -> (-1)**(r/2) -> exp(r/2*Pi*I) -> sin(Pi*r/2) + cos(Pi*r/2)*I, r is decimal\n        I**0 mod 4 -> 1\n        I**1 mod 4 -> I\n        I**2 mod 4 -> -1\n        I**3 mod 4 -> -I\n        \"\"\"\n\n        if isinstance(expt, Number):\n            if isinstance(expt, Integer):\n                expt = expt.p % 4\n                if expt == 0:\n                    return S.One\n                if expt == 1:\n                    return S.ImaginaryUnit\n                if expt == 2:\n                    return -S.One\n                return -S.ImaginaryUnit\n            return (S.NegativeOne)**(expt*S.Half)\n        return",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.ImaginaryUnit._eval_power",
+        "documentation": "b is I = sqrt(-1)\ne is symbolic object but not equal to 0, 1\n\nI**r -> (-1)**(r/2) -> exp(r/2*Pi*I) -> sin(Pi*r/2) + cos(Pi*r/2)*I, r is decimal\nI**0 mod 4 -> 1\nI**1 mod 4 -> I\nI**2 mod 4 -> -1\nI**3 mod 4 -> -I",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.ImaginaryUnit._eval_power"
+          }
+        ],
+        "similarity": 0.13647015506305196,
+        "end_line": 3617,
+        "signature": "sympy.core.numbers.ImaginaryUnit._eval_power(self, expt)"
+      },
+      {
+        "start_line": 4140,
+        "file_path": "sympy/polys/polytools.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _unify(f, g):\n        g = sympify(g)\n\n        if not g.is_Poly:\n            try:\n                return f.rep.dom, f.per, f.rep, f.rep.per(f.rep.dom.from_sympy(g))\n            except CoercionFailed:\n                raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        if len(f.gens) != len(g.gens):\n            raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        if not (isinstance(f.rep, DMP) and isinstance(g.rep, DMP)):\n            raise UnificationFailed(\"can't unify %s with %s\" % (f, g))\n\n        cls = f.__class__\n        gens = f.gens\n\n        dom = f.rep.dom.unify(g.rep.dom, gens)\n\n        F = f.rep.convert(dom)\n        G = g.rep.convert(dom)\n\n        def per(rep, dom=dom, gens=gens, remove=None):\n            if remove is not None:\n                gens = gens[:remove] + gens[remove + 1:]\n\n                if not gens:\n                    return dom.to_sympy(rep)\n\n            return cls.new(rep, *gens)\n\n        return dom, per, F, G",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polytools.PurePoly._unify",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polytools.py"
+          },
+          {
+            "start_node": "sympy/polys/polytools.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polytools.PurePoly._unify"
+          }
+        ],
+        "similarity": 0.13628226095535967,
+        "end_line": 4172,
+        "signature": "sympy.polys.polytools.PurePoly._unify(f, g)"
+      },
+      {
+        "start_line": 983,
+        "file_path": "sympy/printing/pretty/pretty.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_hyper(self, e):\n        # FIXME refactor Matrix, Piecewise, and this into a tabular environment\n        ap = [self._print(a) for a in e.ap]\n        bq = [self._print(b) for b in e.bq]\n\n        P = self._print(e.argument)\n        P.baseline = P.height()//2\n\n        # Drawing result - first create the ap, bq vectors\n        D = None\n        for v in [ap, bq]:\n            D_row = self._hprint_vec(v)\n            if D is None:\n                D = D_row       # first row in a picture\n            else:\n                D = prettyForm(*D.below(' '))\n                D = prettyForm(*D.below(D_row))\n\n        # make sure that the argument `z' is centred vertically\n        D.baseline = D.height()//2\n\n        # insert horizontal separator\n        P = prettyForm(*P.left(' '))\n        D = prettyForm(*D.right(' '))\n\n        # insert separating `|`\n        D = self._hprint_vseparator(D, P)\n\n        # add parens\n        D = prettyForm(*D.parens('(', ')'))\n\n        # create the F symbol\n        above = D.height()//2 - 1\n        below = D.height() - above - 1\n\n        sz, t, b, add, img = annotated('F')\n        F = prettyForm('\\n' * (above - t) + img + '\\n' * (below - b),\n                       baseline=above + sz)\n        add = (sz + 1)//2\n\n        F = prettyForm(*F.left(self._print(len(e.ap))))\n        F = prettyForm(*F.right(self._print(len(e.bq))))\n        F.baseline = above + add\n\n        D = prettyForm(*F.right(' ', D))\n\n        return D",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.pretty.pretty.PrettyPrinter._print_hyper",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/pretty/pretty.py"
+          },
+          {
+            "start_node": "sympy/printing/pretty/pretty.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.pretty.pretty.PrettyPrinter._print_hyper"
+          }
+        ],
+        "similarity": 0.13624714042402553,
+        "end_line": 1029,
+        "signature": "sympy.printing.pretty.pretty.PrettyPrinter._print_hyper(self, e)"
+      },
+      {
+        "start_line": 1931,
+        "file_path": "sympy/printing/pretty/pretty.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_Subs(self, e):\n        pform = self._print(e.expr)\n        pform = prettyForm(*pform.parens())\n\n        h = pform.height() if pform.height() > 1 else 2\n        rvert = stringPict(vobj('|', h), baseline=pform.baseline)\n        pform = prettyForm(*pform.right(rvert))\n\n        b = pform.baseline\n        pform.baseline = pform.height() - 1\n        pform = prettyForm(*pform.right(self._print_seq([\n            self._print_seq((self._print(v[0]), xsym('=='), self._print(v[1])),\n                delimiter='') for v in zip(e.variables, e.point) ])))\n\n        pform.baseline = b\n        return pform",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.pretty.pretty.PrettyPrinter._print_Subs",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/pretty/pretty.py"
+          },
+          {
+            "start_node": "sympy/printing/pretty/pretty.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.pretty.pretty.PrettyPrinter._print_Subs"
+          }
+        ],
+        "similarity": 0.13616512175036352,
+        "end_line": 1946,
+        "signature": "sympy.printing.pretty.pretty.PrettyPrinter._print_Subs(self, e)"
+      },
+      {
+        "start_line": 1048,
+        "file_path": "sympy/series/formal.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_derivative(self, x):\n        f = self.function.diff(x)\n        ind = self.ind.diff(x)\n\n        pow_xk = self._get_pow_x(self.xk.formula)\n        ak = self.ak\n        k = ak.variables[0]\n        if ak.formula.has(x):\n            form = []\n            for e, c in ak.formula.args:\n                temp = S.Zero\n                for t in Add.make_args(e):\n                    pow_x = self._get_pow_x(t)\n                    temp += t * (pow_xk + pow_x)\n                form.append((temp, c))\n            form = Piecewise(*form)\n            ak = sequence(form.subs(k, k + 1), (k, ak.start - 1, ak.stop))\n        else:\n            ak = sequence((ak.formula * pow_xk).subs(k, k + 1),\n                          (k, ak.start - 1, ak.stop))\n\n        return self.func(f, self.x, self.x0, self.dir, (ak, self.xk, ind))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.series.formal.FormalPowerSeries._eval_derivative",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/series/formal.py"
+          },
+          {
+            "start_node": "sympy/series/formal.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.series.formal.FormalPowerSeries._eval_derivative"
+          }
+        ],
+        "similarity": 0.13613282541402927,
+        "end_line": 1069,
+        "signature": "sympy.series.formal.FormalPowerSeries._eval_derivative(self, x)"
+      },
+      {
+        "start_line": 1637,
+        "file_path": "sympy/functions/special/bessel.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _eval_expand_func(self, **hints):\n        arg = self.args[0]\n        symbs = arg.free_symbols\n\n        if len(symbs) == 1:\n            z = symbs.pop()\n            c = Wild(\"c\", exclude=[z])\n            d = Wild(\"d\", exclude=[z])\n            m = Wild(\"m\", exclude=[z])\n            n = Wild(\"n\", exclude=[z])\n            M = arg.match(c*(d*z**n)**m)\n            if M is not None:\n                m = M[m]\n                # The transformation is in principle\n                # given by 03.08.16.0001.01 but note\n                # that there is an error in this formule.\n                # http://functions.wolfram.com/Bessel-TypeFunctions/AiryBiPrime/16/01/01/0001/\n                if (3*m).is_integer:\n                    c = M[c]\n                    d = M[d]\n                    n = M[n]\n                    pf = (d**m * z**(n*m)) / (d * z**n)**m\n                    newarg = c * d**m * z**(n*m)\n                    return S.Half * (sqrt(3)*(pf - S.One)*airyaiprime(newarg) + (pf + S.One)*airybiprime(newarg))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.special.bessel.airybiprime._eval_expand_func",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/special/bessel.py"
+          },
+          {
+            "start_node": "sympy/functions/special/bessel.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.special.bessel.airybiprime._eval_expand_func"
+          }
+        ],
+        "similarity": 0.13606542844400374,
+        "end_line": 1660,
+        "signature": "sympy.functions.special.bessel.airybiprime._eval_expand_func(self)"
+      },
+      {
+        "start_line": 1386,
+        "file_path": "sympy/core/numbers.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def __sub__(self, other):\n        if global_evaluate[0]:\n            if isinstance(other, Integer):\n                return Rational(self.p - self.q*other.p, self.q, 1)\n            elif isinstance(other, Rational):\n                return Rational(self.p*other.q - self.q*other.p, self.q*other.q)\n            elif isinstance(other, Float):\n                return -other + self\n            else:\n                return Number.__sub__(self, other)\n        return Number.__sub__(self, other)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.numbers.Rational.__sub__",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/numbers.py"
+          },
+          {
+            "start_node": "sympy/core/numbers.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.numbers.Rational.__sub__"
+          }
+        ],
+        "similarity": 0.1356387697463002,
+        "end_line": 1396,
+        "signature": "sympy.core.numbers.Rational.__sub__(self, other)"
+      },
+      {
+        "start_line": 481,
+        "file_path": "sympy/holonomic/holonomic.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def unify(self, other):\n        \"\"\"\n        Unifies the base polynomial ring of a given two Holonomic\n        Functions.\n        \"\"\"\n\n        R1 = self.annihilator.parent.base\n        R2 = other.annihilator.parent.base\n\n        dom1 = R1.dom\n        dom2 = R2.dom\n\n        if R1 == R2:\n            return (self, other)\n\n        R = (dom1.unify(dom2)).old_poly_ring(self.x)\n\n        newparent, _ = DifferentialOperators(R, str(self.annihilator.parent.gen_symbol))\n\n        sol1 = [R1.to_sympy(i) for i in self.annihilator.listofpoly]\n        sol2 = [R2.to_sympy(i) for i in other.annihilator.listofpoly]\n\n        sol1 = DifferentialOperator(sol1, newparent)\n        sol2 = DifferentialOperator(sol2, newparent)\n\n        sol1 = HolonomicFunction(sol1, self.x, self.x0, self.y0)\n        sol2 = HolonomicFunction(sol2, other.x, other.x0, other.y0)\n\n        return (sol1, sol2)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.holonomic.holonomic.HolonomicFunction.unify",
+        "documentation": "Unifies the base polynomial ring of a given two Holonomic\nFunctions.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/holonomic/holonomic.py"
+          },
+          {
+            "start_node": "sympy/holonomic/holonomic.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.holonomic.holonomic.HolonomicFunction.unify"
+          }
+        ],
+        "similarity": 0.13542392153710903,
+        "end_line": 509,
+        "signature": "sympy.holonomic.holonomic.HolonomicFunction.unify(self, other)"
+      },
+      {
+        "start_line": 1071,
+        "file_path": "sympy/series/formal.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def integrate(self, x=None):\n        \"\"\"Integrate Formal Power Series.\n\n        Examples\n        ========\n\n        >>> from sympy import fps, sin\n        >>> from sympy.abc import x\n        >>> f = fps(sin(x))\n        >>> f.integrate(x).truncate()\n        -1 + x**2/2 - x**4/24 + O(x**6)\n        >>> f.integrate((x, 0, 1))\n        -cos(1) + 1\n        \"\"\"\n        from sympy.integrals import integrate\n\n        if x is None:\n            x = self.x\n        elif iterable(x):\n            return integrate(self.function, x)\n\n        f = integrate(self.function, x)\n        ind = integrate(self.ind, x)\n        ind += (f - ind).limit(x, 0)  # constant of integration\n\n        pow_xk = self._get_pow_x(self.xk.formula)\n        ak = self.ak\n        k = ak.variables[0]\n        if ak.formula.has(x):\n            form = []\n            for e, c in ak.formula.args:\n                temp = S.Zero\n                for t in Add.make_args(e):\n                    pow_x = self._get_pow_x(t)\n                    temp += t / (pow_xk + pow_x + 1)\n                form.append((temp, c))\n            form = Piecewise(*form)\n            ak = sequence(form.subs(k, k - 1), (k, ak.start + 1, ak.stop))\n        else:\n            ak = sequence((ak.formula / (pow_xk + 1)).subs(k, k - 1),\n                          (k, ak.start + 1, ak.stop))\n\n        return self.func(f, self.x, self.x0, self.dir, (ak, self.xk, ind))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.series.formal.FormalPowerSeries.integrate",
+        "documentation": "Integrate Formal Power Series.\n\nExamples\n========\n\n>>> from sympy import fps, sin\n>>> from sympy.abc import x\n>>> f = fps(sin(x))\n>>> f.integrate(x).truncate()\n-1 + x**2/2 - x**4/24 + O(x**6)\n>>> f.integrate((x, 0, 1))\n-cos(1) + 1",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/series/formal.py"
+          },
+          {
+            "start_node": "sympy/series/formal.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.series.formal.FormalPowerSeries.integrate"
+          }
+        ],
+        "similarity": 0.13525961040350468,
+        "end_line": 1113,
+        "signature": "sympy.series.formal.FormalPowerSeries.integrate(self, x)"
+      },
+      {
+        "start_line": 118,
+        "file_path": "sympy/printing/julia.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def _print_Mul(self, expr):\n        # print complex numbers nicely in Julia\n        if (expr.is_number and expr.is_imaginary and\n                expr.as_coeff_Mul()[0].is_integer):\n            return \"%sim\" % self._print(-S.ImaginaryUnit*expr)\n\n        # cribbed from str.py\n        prec = precedence(expr)\n\n        c, e = expr.as_coeff_Mul()\n        if c < 0:\n            expr = _keep_coeff(-c, e)\n            sign = \"-\"\n        else:\n            sign = \"\"\n\n        a = []  # items in the numerator\n        b = []  # items that are in the denominator (if any)\n\n        if self.order not in ('old', 'none'):\n            args = expr.as_ordered_factors()\n        else:\n            # use make_args in case expr was something like -x -> x\n            args = Mul.make_args(expr)\n\n        # Gather args for numerator/denominator\n        for item in args:\n            if (item.is_commutative and item.is_Pow and item.exp.is_Rational\n                    and item.exp.is_negative):\n                if item.exp != -1:\n                    b.append(Pow(item.base, -item.exp, evaluate=False))\n                else:\n                    b.append(Pow(item.base, -item.exp))\n            elif item.is_Rational and item is not S.Infinity:\n                if item.p != 1:\n                    a.append(Rational(item.p))\n                if item.q != 1:\n                    b.append(Rational(item.q))\n            else:\n                a.append(item)\n\n        a = a or [S.One]\n\n        a_str = [self.parenthesize(x, prec) for x in a]\n        b_str = [self.parenthesize(x, prec) for x in b]\n\n        # from here it differs from str.py to deal with \"*\" and \".*\"\n        def multjoin(a, a_str):\n            # here we probably are assuming the constants will come first\n            r = a_str[0]\n            for i in range(1, len(a)):\n                mulsym = '*' if a[i-1].is_number else '.*'\n                r = r + mulsym + a_str[i]\n            return r\n\n        if len(b) == 0:\n            return sign + multjoin(a, a_str)\n        elif len(b) == 1:\n            divsym = '/' if b[0].is_number else './'\n            return sign + multjoin(a, a_str) + divsym + b_str[0]\n        else:\n            divsym = '/' if all([bi.is_number for bi in b]) else './'\n            return (sign + multjoin(a, a_str) +\n                    divsym + \"(%s)\" % multjoin(b, b_str))",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.julia.JuliaCodePrinter._print_Mul",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/julia.py"
+          },
+          {
+            "start_node": "sympy/printing/julia.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.julia.JuliaCodePrinter._print_Mul"
+          }
+        ],
+        "similarity": 0.13521408308166896,
+        "end_line": 181,
+        "signature": "sympy.printing.julia.JuliaCodePrinter._print_Mul(self, expr)"
+      },
+      {
+        "start_line": 732,
+        "file_path": "sympy/simplify/hyperexpand.py",
+        "issue_id": null,
+        "type": "method",
+        "content": null,
+        "source_code": "    def find_instantiations(self, func):\n        \"\"\"\n        Find substitutions of the free symbols that match ``func``.\n\n        Return the substitution dictionaries as a list. Note that the returned\n        instantiations need not actually match, or be valid!\n\n        \"\"\"\n        from sympy.solvers import solve\n        ap = func.ap\n        bq = func.bq\n        if len(ap) != len(self.func.ap) or len(bq) != len(self.func.bq):\n            raise TypeError('Cannot instantiate other number of parameters')\n        symbol_values = []\n        for a in self.symbols:\n            if a in self.func.ap.args:\n                symbol_values.append(ap)\n            elif a in self.func.bq.args:\n                symbol_values.append(bq)\n            else:\n                raise ValueError(\"At least one of the parameters of the \"\n                        \"formula must be equal to %s\" % (a,))\n        base_repl = [dict(list(zip(self.symbols, values)))\n                for values in product(*symbol_values)]\n        abuckets, bbuckets = [sift(params, _mod1) for params in [ap, bq]]\n        a_inv, b_inv = [dict((a, len(vals)) for a, vals in bucket.items())\n                for bucket in [abuckets, bbuckets]]\n        critical_values = [[0] for _ in self.symbols]\n        result = []\n        _n = Dummy()\n        for repl in base_repl:\n            symb_a, symb_b = [sift(params, lambda x: _mod1(x.xreplace(repl)))\n                for params in [self.func.ap, self.func.bq]]\n            for bucket, obucket in [(abuckets, symb_a), (bbuckets, symb_b)]:\n                for mod in set(list(bucket.keys()) + list(obucket.keys())):\n                    if (not mod in bucket) or (not mod in obucket) \\\n                            or len(bucket[mod]) != len(obucket[mod]):\n                        break\n                    for a, vals in zip(self.symbols, critical_values):\n                        if repl[a].free_symbols:\n                            continue\n                        exprs = [expr for expr in obucket[mod] if expr.has(a)]\n                        repl0 = repl.copy()\n                        repl0[a] += _n\n                        for expr in exprs:\n                            for target in bucket[mod]:\n                                n0, = solve(expr.xreplace(repl0) - target, _n)\n                                if n0.free_symbols:\n                                    raise ValueError(\"Value should not be true\")\n                                vals.append(n0)\n            else:\n                values = []\n                for a, vals in zip(self.symbols, critical_values):\n                    a0 = repl[a]\n                    min_ = floor(min(vals))\n                    max_ = ceiling(max(vals))\n                    values.append([a0 + n for n in range(min_, max_ + 1)])\n                result.extend(dict(list(zip(self.symbols, l))) for l in product(*values))\n        return result",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.simplify.hyperexpand.Formula.find_instantiations",
+        "documentation": "Find substitutions of the free symbols that match ``func``.\n\nReturn the substitution dictionaries as a list. Note that the returned\ninstantiations need not actually match, or be valid!",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/simplify/hyperexpand.py"
+          },
+          {
+            "start_node": "sympy/simplify/hyperexpand.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.simplify.hyperexpand.Formula.find_instantiations"
+          }
+        ],
+        "similarity": 0.1350810513864504,
+        "end_line": 790,
+        "signature": "sympy.simplify.hyperexpand.Formula.find_instantiations(self, func)"
+      }
+    ],
+    "classes": [
+      {
+        "start_line": 677,
+        "file_path": "sympy/integrals/risch.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonElementaryIntegralException(Exception):\n    \"\"\"\n    Exception used by subroutines within the Risch algorithm to indicate to one\n    another that the function being integrated does not have an elementary\n    integral in the given differential field.\n    \"\"\"\n    # TODO: Rewrite algorithms below to use this (?)\n\n    # TODO: Pass through information about why the integral was nonelementary,\n    # and store that in the resulting NonElementaryIntegral somehow.\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.risch.NonElementaryIntegralException",
+        "documentation": "Exception used by subroutines within the Risch algorithm to indicate to one\nanother that the function being integrated does not have an elementary\nintegral in the given differential field.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/risch.py"
+          },
+          {
+            "start_node": "sympy/integrals/risch.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.risch.NonElementaryIntegralException"
+          }
+        ],
+        "similarity": 0.0969467541638508,
+        "end_line": 687,
+        "signature": null
+      },
+      {
+        "start_line": 75,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SubstitutionOfAmbigousOperatorFailed(SecondQuantizationError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.SubstitutionOfAmbigousOperatorFailed",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.SubstitutionOfAmbigousOperatorFailed"
+          }
+        ],
+        "similarity": 0.09387197882931542,
+        "end_line": 76,
+        "signature": null
+      },
+      {
+        "start_line": 1517,
+        "file_path": "sympy/integrals/risch.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NonElementaryIntegral(Integral):\n    \"\"\"\n    Represents a nonelementary Integral.\n\n    If the result of integrate() is an instance of this class, it is\n    guaranteed to be nonelementary.  Note that integrate() by default will try\n    to find any closed-form solution, even in terms of special functions which\n    may themselves not be elementary.  To make integrate() only give\n    elementary solutions, or, in the cases where it can prove the integral to\n    be nonelementary, instances of this class, use integrate(risch=True).\n    In this case, integrate() may raise NotImplementedError if it cannot make\n    such a determination.\n\n    integrate() uses the deterministic Risch algorithm to integrate elementary\n    functions or prove that they have no elementary integral.  In some cases,\n    this algorithm can split an integral into an elementary and nonelementary\n    part, so that the result of integrate will be the sum of an elementary\n    expression and a NonElementaryIntegral.\n\n    Examples\n    ========\n\n    >>> from sympy import integrate, exp, log, Integral\n    >>> from sympy.abc import x\n\n    >>> a = integrate(exp(-x**2), x, risch=True)\n    >>> print(a)\n    Integral(exp(-x**2), x)\n    >>> type(a)\n    <class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n    >>> expr = (2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x))\n    >>> b = integrate(expr, x, risch=True)\n    >>> print(b)\n    -log(-x + log(x))/2 + log(x + log(x))/2 + Integral(1/log(x), x)\n    >>> type(b.atoms(Integral).pop())\n    <class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n    \"\"\"\n    # TODO: This is useful in and of itself, because isinstance(result,\n    # NonElementaryIntegral) will tell if the integral has been proven to be\n    # elementary. But should we do more?  Perhaps a no-op .doit() if\n    # elementary=True?  Or maybe some information on why the integral is\n    # nonelementary.\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.risch.NonElementaryIntegral",
+        "documentation": "Represents a nonelementary Integral.\n\nIf the result of integrate() is an instance of this class, it is\nguaranteed to be nonelementary.  Note that integrate() by default will try\nto find any closed-form solution, even in terms of special functions which\nmay themselves not be elementary.  To make integrate() only give\nelementary solutions, or, in the cases where it can prove the integral to\nbe nonelementary, instances of this class, use integrate(risch=True).\nIn this case, integrate() may raise NotImplementedError if it cannot make\nsuch a determination.\n\nintegrate() uses the deterministic Risch algorithm to integrate elementary\nfunctions or prove that they have no elementary integral.  In some cases,\nthis algorithm can split an integral into an elementary and nonelementary\npart, so that the result of integrate will be the sum of an elementary\nexpression and a NonElementaryIntegral.\n\nExamples\n========\n\n>>> from sympy import integrate, exp, log, Integral\n>>> from sympy.abc import x\n\n>>> a = integrate(exp(-x**2), x, risch=True)\n>>> print(a)\nIntegral(exp(-x**2), x)\n>>> type(a)\n<class 'sympy.integrals.risch.NonElementaryIntegral'>\n\n>>> expr = (2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x))\n>>> b = integrate(expr, x, risch=True)\n>>> print(b)\n-log(-x + log(x))/2 + log(x + log(x))/2 + Integral(1/log(x), x)\n>>> type(b.atoms(Integral).pop())\n<class 'sympy.integrals.risch.NonElementaryIntegral'>",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/risch.py"
+          },
+          {
+            "start_node": "sympy/integrals/risch.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.risch.NonElementaryIntegral"
+          }
+        ],
+        "similarity": 0.08695216458528125,
+        "end_line": 1561,
+        "signature": null
+      },
+      {
+        "start_line": 63,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AppliesOnlyToSymbolicIndex(SecondQuantizationError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.AppliesOnlyToSymbolicIndex",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.AppliesOnlyToSymbolicIndex"
+          }
+        ],
+        "similarity": 0.08582548815169633,
+        "end_line": 64,
+        "signature": null
+      },
+      {
+        "start_line": 27,
+        "file_path": "sympy/core/sympify.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CantSympify(object):\n    \"\"\"\n    Mix in this trait to a class to disallow sympification of its instances.\n\n    Examples\n    ========\n\n    >>> from sympy.core.sympify import sympify, CantSympify\n\n    >>> class Something(dict):\n    ...     pass\n    ...\n    >>> sympify(Something())\n    {}\n\n    >>> class Something(dict, CantSympify):\n    ...     pass\n    ...\n    >>> sympify(Something())\n    Traceback (most recent call last):\n    ...\n    SympifyError: SympifyError: {}\n\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.sympify.CantSympify",
+        "documentation": "Mix in this trait to a class to disallow sympification of its instances.\n\nExamples\n========\n\n>>> from sympy.core.sympify import sympify, CantSympify\n\n>>> class Something(dict):\n...     pass\n...\n>>> sympify(Something())\n{}\n\n>>> class Something(dict, CantSympify):\n...     pass\n...\n>>> sympify(Something())\nTraceback (most recent call last):\n...\nSympifyError: SympifyError: {}",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/sympify.py"
+          },
+          {
+            "start_node": "sympy/core/sympify.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.core.sympify.CantSympify"
+          }
+        ],
+        "similarity": 0.08509238843250176,
+        "end_line": 51,
+        "signature": null
+      },
+      {
+        "start_line": 260,
+        "file_path": "sympy/physics/unitsystems/units.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Constant(Unit):\n    \"\"\"\n    Physical constant.\n\n    In our framework a constant is considered as a unit, to which humans givesa\n    special sense, because we believe that they give us a special information\n    on nature; but it is just a demonstration of our ignorance.\n    \"\"\"\n\n    #TODO: to begin nothing more is needed, but we prepare a dedicated class\n    #      for further developments\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.unitsystems.units.Constant",
+        "documentation": "Physical constant.\n\nIn our framework a constant is considered as a unit, to which humans givesa\nspecial sense, because we believe that they give us a special information\non nature; but it is just a demonstration of our ignorance.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/unitsystems/units.py"
+          },
+          {
+            "start_node": "sympy/physics/unitsystems/units.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.unitsystems.units.Constant"
+          }
+        ],
+        "similarity": 0.08253608923528272,
+        "end_line": 271,
+        "signature": null
+      },
+      {
+        "start_line": 59,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SecondQuantizationError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.SecondQuantizationError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.SecondQuantizationError"
+          }
+        ],
+        "similarity": 0.07869581527160677,
+        "end_line": 60,
+        "signature": null
+      },
+      {
+        "start_line": 586,
+        "file_path": "sympy/polys/polyoptions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Symmetric(with_metaclass(OptionType, BooleanOption)):\n    \"\"\"``symmetric`` option to polynomial manipulation functions. \"\"\"\n\n    option = 'symmetric'\n\n    requires = ['modulus']\n    excludes = ['greedy', 'domain', 'split', 'gaussian', 'extension']",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyoptions.Symmetric",
+        "documentation": "``symmetric`` option to polynomial manipulation functions. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyoptions.py"
+          },
+          {
+            "start_node": "sympy/polys/polyoptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyoptions.Symmetric"
+          }
+        ],
+        "similarity": 0.07784254650984804,
+        "end_line": 592,
+        "signature": null
+      },
+      {
+        "start_line": 79,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class WicksTheoremDoesNotApply(SecondQuantizationError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.WicksTheoremDoesNotApply",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.WicksTheoremDoesNotApply"
+          }
+        ],
+        "similarity": 0.07689269389695454,
+        "end_line": 80,
+        "signature": null
+      },
+      {
+        "start_line": 397,
+        "file_path": "sympy/integrals/transforms.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class MellinTransformStripError(ValueError):\n    \"\"\"\n    Exception raised by _rewrite_gamma. Mainly for internal use.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.transforms.MellinTransformStripError",
+        "documentation": "Exception raised by _rewrite_gamma. Mainly for internal use.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/transforms.py"
+          },
+          {
+            "start_node": "sympy/integrals/transforms.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.transforms.MellinTransformStripError"
+          }
+        ],
+        "similarity": 0.07631464583898498,
+        "end_line": 401,
+        "signature": null
+      },
+      {
+        "start_line": 67,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ContractionAppliesOnlyToFermions(SecondQuantizationError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.ContractionAppliesOnlyToFermions",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.ContractionAppliesOnlyToFermions"
+          }
+        ],
+        "similarity": 0.07365778043264527,
+        "end_line": 68,
+        "signature": null
+      },
+      {
+        "start_line": 1800,
+        "file_path": "sympy/functions/elementary/trigonometric.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InverseTrigonometricFunction(Function):\n    \"\"\"Base class for inverse trigonometric functions.\"\"\"\n\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.functions.elementary.trigonometric.InverseTrigonometricFunction",
+        "documentation": "Base class for inverse trigonometric functions.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/functions/elementary/trigonometric.py"
+          },
+          {
+            "start_node": "sympy/functions/elementary/trigonometric.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.functions.elementary.trigonometric.InverseTrigonometricFunction"
+          }
+        ],
+        "similarity": 0.07352419723254139,
+        "end_line": 1803,
+        "signature": null
+      },
+      {
+        "start_line": 17,
+        "file_path": "sympy/printing/codeprinter.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class AssignmentError(Exception):\n    \"\"\"\n    Raised if an assignment variable for a loop is missing.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.printing.codeprinter.AssignmentError",
+        "documentation": "Raised if an assignment variable for a loop is missing.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/printing/codeprinter.py"
+          },
+          {
+            "start_node": "sympy/printing/codeprinter.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.printing.codeprinter.AssignmentError"
+          }
+        ],
+        "similarity": 0.07231657719223959,
+        "end_line": 21,
+        "signature": null
+      },
+      {
+        "start_line": 13,
+        "file_path": "sympy/utilities/misc.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Undecidable(ValueError):\n    # an error to be raised when a decision cannot be made definitively\n    # where a definitive answer is needed\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.misc.Undecidable",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/misc.py"
+          },
+          {
+            "start_node": "sympy/utilities/misc.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.misc.Undecidable"
+          }
+        ],
+        "similarity": 0.07176484342875007,
+        "end_line": 16,
+        "signature": null
+      },
+      {
+        "start_line": 152,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class TensorSymbol(Expr):\n\n    is_commutative = True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.TensorSymbol",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.TensorSymbol"
+          }
+        ],
+        "similarity": 0.07068381431343448,
+        "end_line": 154,
+        "signature": null
+      },
+      {
+        "start_line": 188,
+        "file_path": "sympy/core/compatibility.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NotIterable:\n    \"\"\"\n    Use this as mixin when creating a class which is not supposed to return\n    true when iterable() is called on its instances. I.e. avoid infinite loop\n    when calling e.g. list() on the instance\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.compatibility.NotIterable",
+        "documentation": "Use this as mixin when creating a class which is not supposed to return\ntrue when iterable() is called on its instances. I.e. avoid infinite loop\nwhen calling e.g. list() on the instance",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/compatibility.py"
+          },
+          {
+            "start_node": "sympy/core/compatibility.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.compatibility.NotIterable"
+          }
+        ],
+        "similarity": 0.07048016404730746,
+        "end_line": 194,
+        "signature": null
+      },
+      {
+        "start_line": 71,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ViolationOfPauliPrinciple(SecondQuantizationError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.ViolationOfPauliPrinciple",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.ViolationOfPauliPrinciple"
+          }
+        ],
+        "similarity": 0.07027105214570262,
+        "end_line": 72,
+        "signature": null
+      },
+      {
+        "start_line": 47,
+        "file_path": "sympy/core/evalf.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PrecisionExhausted(ArithmeticError):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.evalf.PrecisionExhausted",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/evalf.py"
+          },
+          {
+            "start_node": "sympy/core/evalf.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.evalf.PrecisionExhausted"
+          }
+        ],
+        "similarity": 0.07010066278168864,
+        "end_line": 48,
+        "signature": null
+      },
+      {
+        "start_line": 373,
+        "file_path": "sympy/core/operations.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ShortCircuit(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.operations.ShortCircuit",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/operations.py"
+          },
+          {
+            "start_node": "sympy/core/operations.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.core.operations.ShortCircuit"
+          }
+        ],
+        "similarity": 0.06716675871170419,
+        "end_line": 374,
+        "signature": null
+      },
+      {
+        "start_line": 373,
+        "file_path": "sympy/polys/polyoptions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Greedy(with_metaclass(OptionType, BooleanOption)):\n    \"\"\"``greedy`` option to polynomial manipulation functions. \"\"\"\n\n    option = 'greedy'\n\n    requires = []\n    excludes = ['domain', 'split', 'gaussian', 'extension', 'modulus', 'symmetric']",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyoptions.Greedy",
+        "documentation": "``greedy`` option to polynomial manipulation functions. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyoptions.py"
+          },
+          {
+            "start_node": "sympy/polys/polyoptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyoptions.Greedy"
+          }
+        ],
+        "similarity": 0.06671805905888575,
+        "end_line": 379,
+        "signature": null
+      },
+      {
+        "start_line": 1819,
+        "file_path": "sympy/integrals/transforms.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InverseHankelTransform(HankelTypeTransform):\n    \"\"\"\n    Class representing unevaluated inverse Hankel transforms.\n\n    For usage of this class, see the :class:`IntegralTransform` docstring.\n\n    For how to compute inverse Hankel transforms, see the\n    :func:`inverse_hankel_transform` docstring.\n    \"\"\"\n\n    _name = 'Inverse Hankel'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.transforms.InverseHankelTransform",
+        "documentation": "Class representing unevaluated inverse Hankel transforms.\n\nFor usage of this class, see the :class:`IntegralTransform` docstring.\n\nFor how to compute inverse Hankel transforms, see the\n:func:`inverse_hankel_transform` docstring.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/transforms.py"
+          },
+          {
+            "start_node": "sympy/integrals/transforms.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.transforms.InverseHankelTransform"
+          }
+        ],
+        "similarity": 0.06446736005330927,
+        "end_line": 1829,
+        "signature": null
+      },
+      {
+        "start_line": 332,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Argument(Variable):\n    \"\"\"An abstract Argument data structure: a name and a data type.\n\n    This structure is refined in the descendants below.\n\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.Argument",
+        "documentation": "An abstract Argument data structure: a name and a data type.\n\nThis structure is refined in the descendants below.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.Argument"
+          }
+        ],
+        "similarity": 0.0623985608868036,
+        "end_line": 338,
+        "signature": null
+      },
+      {
+        "start_line": 300,
+        "file_path": "sympy/integrals/meijerint.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class _CoeffExpValueError(ValueError):\n    \"\"\"\n    Exception raised by _get_coeff_exp, for internal use only.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.meijerint._CoeffExpValueError",
+        "documentation": "Exception raised by _get_coeff_exp, for internal use only.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/meijerint.py"
+          },
+          {
+            "start_node": "sympy/integrals/meijerint.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.meijerint._CoeffExpValueError"
+          }
+        ],
+        "similarity": 0.061085862936761215,
+        "end_line": 304,
+        "signature": null
+      },
+      {
+        "start_line": 642,
+        "file_path": "sympy/polys/polyoptions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Polys(with_metaclass(OptionType, BooleanOption, Flag)):\n    \"\"\"``polys`` flag to polynomial manipulation functions. \"\"\"\n\n    option = 'polys'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyoptions.Polys",
+        "documentation": "``polys`` flag to polynomial manipulation functions. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyoptions.py"
+          },
+          {
+            "start_node": "sympy/polys/polyoptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyoptions.Polys"
+          }
+        ],
+        "similarity": 0.06028803771041165,
+        "end_line": 645,
+        "signature": null
+      },
+      {
+        "start_line": 485,
+        "file_path": "sympy/physics/quantum/gate.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CGateS(CGate):\n    \"\"\"Version of CGate that allows gate simplifications.\n    I.e. cnot looks like an oplus, cphase has dots, etc.\n    \"\"\"\n    simplify_cgate=True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.quantum.gate.CGateS",
+        "documentation": "Version of CGate that allows gate simplifications.\nI.e. cnot looks like an oplus, cphase has dots, etc.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/quantum/gate.py"
+          },
+          {
+            "start_node": "sympy/physics/quantum/gate.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.quantum.gate.CGateS"
+          }
+        ],
+        "similarity": 0.06023378142141854,
+        "end_line": 489,
+        "signature": null
+      },
+      {
+        "start_line": 255,
+        "file_path": "sympy/core/facts.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class TautologyDetected(Exception):\n    \"\"\"(internal) Prover uses it for reporting detected tautology\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.facts.TautologyDetected",
+        "documentation": "(internal) Prover uses it for reporting detected tautology",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/facts.py"
+          },
+          {
+            "start_node": "sympy/core/facts.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.core.facts.TautologyDetected"
+          }
+        ],
+        "similarity": 0.05980134455560208,
+        "end_line": 257,
+        "signature": null
+      },
+      {
+        "start_line": 1429,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BosonicBasis(object):\n    \"\"\"\n    Base class for a basis set of bosonic Fock states.\n    \"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.BosonicBasis",
+        "documentation": "Base class for a basis set of bosonic Fock states.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.BosonicBasis"
+          }
+        ],
+        "similarity": 0.0591030393482095,
+        "end_line": 1433,
+        "signature": null
+      },
+      {
+        "start_line": 14,
+        "file_path": "sympy/solvers/polysys.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class SolveFailed(Exception):\n    \"\"\"Raised when solver's conditions weren't met. \"\"\"",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.solvers.polysys.SolveFailed",
+        "documentation": "Raised when solver's conditions weren't met. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/solvers/polysys.py"
+          },
+          {
+            "start_node": "sympy/solvers/polysys.py",
+            "description": "contains class",
+            "type": "RELATED",
+            "end_node": "sympy.solvers.polysys.SolveFailed"
+          }
+        ],
+        "similarity": 0.05896973685331271,
+        "end_line": 15,
+        "signature": null
+      },
+      {
+        "start_line": 87,
+        "file_path": "sympy/core/function.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class PoleError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.function.PoleError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/function.py"
+          },
+          {
+            "start_node": "sympy/core/function.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.function.PoleError"
+          }
+        ],
+        "similarity": 0.05832414079847899,
+        "end_line": 88,
+        "signature": null
+      },
+      {
+        "start_line": 382,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class BosonicOperator(SqOperator):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.BosonicOperator",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.BosonicOperator"
+          }
+        ],
+        "similarity": 0.05787457940016284,
+        "end_line": 383,
+        "signature": null
+      },
+      {
+        "start_line": 1763,
+        "file_path": "sympy/integrals/transforms.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class HankelTransform(HankelTypeTransform):\n    \"\"\"\n    Class representing unevaluated Hankel transforms.\n\n    For usage of this class, see the :class:`IntegralTransform` docstring.\n\n    For how to compute Hankel transforms, see the :func:`hankel_transform`\n    docstring.\n    \"\"\"\n\n    _name = 'Hankel'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.integrals.transforms.HankelTransform",
+        "documentation": "Class representing unevaluated Hankel transforms.\n\nFor usage of this class, see the :class:`IntegralTransform` docstring.\n\nFor how to compute Hankel transforms, see the :func:`hankel_transform`\ndocstring.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/integrals/transforms.py"
+          },
+          {
+            "start_node": "sympy/integrals/transforms.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.integrals.transforms.HankelTransform"
+          }
+        ],
+        "similarity": 0.057580455672552065,
+        "end_line": 1773,
+        "signature": null
+      },
+      {
+        "start_line": 390,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Creator(SqOperator):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.Creator",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.Creator"
+          }
+        ],
+        "similarity": 0.056713933305203634,
+        "end_line": 391,
+        "signature": null
+      },
+      {
+        "start_line": 1176,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class FockStateKet(FockState):\n    \"\"\"\n    Representation of a ket.\n    \"\"\"\n    lbracket = '|'\n    rbracket = '>'",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.FockStateKet",
+        "documentation": "Representation of a ket.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.FockStateKet"
+          }
+        ],
+        "similarity": 0.05607951801842319,
+        "end_line": 1181,
+        "signature": null
+      },
+      {
+        "start_line": 20,
+        "file_path": "sympy/core/mul.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NC_Marker:\n    is_Order = False\n    is_Mul = False\n    is_Number = False\n    is_Poly = False\n\n    is_commutative = False",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.core.mul.NC_Marker",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/core/mul.py"
+          },
+          {
+            "start_node": "sympy/core/mul.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.core.mul.NC_Marker"
+          }
+        ],
+        "similarity": 0.0560746828569338,
+        "end_line": 26,
+        "signature": null
+      },
+      {
+        "start_line": 599,
+        "file_path": "sympy/physics/quantum/gate.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class TwoQubitGate(Gate):\n    \"\"\"A two qubit unitary gate base class.\"\"\"\n\n    nqubits = Integer(2)",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.quantum.gate.TwoQubitGate",
+        "documentation": "A two qubit unitary gate base class.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/quantum/gate.py"
+          },
+          {
+            "start_node": "sympy/physics/quantum/gate.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.quantum.gate.TwoQubitGate"
+          }
+        ],
+        "similarity": 0.05436080523696806,
+        "end_line": 602,
+        "signature": null
+      },
+      {
+        "start_line": 364,
+        "file_path": "sympy/polys/polyoptions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Field(with_metaclass(OptionType, BooleanOption)):\n    \"\"\"``field`` option to polynomial manipulation functions. \"\"\"\n\n    option = 'field'\n\n    requires = []\n    excludes = ['domain', 'split', 'gaussian']",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyoptions.Field",
+        "documentation": "``field`` option to polynomial manipulation functions. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyoptions.py"
+          },
+          {
+            "start_node": "sympy/polys/polyoptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyoptions.Field"
+          }
+        ],
+        "similarity": 0.05371963896327856,
+        "end_line": 370,
+        "signature": null
+      },
+      {
+        "start_line": 386,
+        "file_path": "sympy/physics/secondquant.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Annihilator(SqOperator):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.physics.secondquant.Annihilator",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/physics/secondquant.py"
+          },
+          {
+            "start_node": "sympy/physics/secondquant.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.physics.secondquant.Annihilator"
+          }
+        ],
+        "similarity": 0.05172587224934157,
+        "end_line": 387,
+        "signature": null
+      },
+      {
+        "start_line": 159,
+        "file_path": "doc/ext/numpydoc.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NumpyPythonDomain(ManglingDomainBase, PythonDomain):\n    name = 'np'\n    directive_mangling_map = {\n        'function': 'function',\n        'class': 'class',\n        'exception': 'class',\n        'method': 'function',\n        'classmethod': 'function',\n        'staticmethod': 'function',\n        'attribute': 'attribute',\n    }\n    indices = []",
+        "distance": 1.25,
+        "title": null,
+        "name": "doc.ext.numpydoc.NumpyPythonDomain",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "doc/ext/numpydoc.py"
+          },
+          {
+            "start_node": "doc/ext/numpydoc.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "doc.ext.numpydoc.NumpyPythonDomain"
+          }
+        ],
+        "similarity": 0.05126667673650505,
+        "end_line": 170,
+        "signature": null
+      },
+      {
+        "start_line": 43,
+        "file_path": "sympy/polys/polyoptions.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class Flag(Option):\n    \"\"\"Base class for all kinds of flags. \"\"\"\n\n    is_Flag = True",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.polys.polyoptions.Flag",
+        "documentation": "Base class for all kinds of flags. ",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/polys/polyoptions.py"
+          },
+          {
+            "start_node": "sympy/polys/polyoptions.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.polys.polyoptions.Flag"
+          }
+        ],
+        "similarity": 0.04574305529546456,
+        "end_line": 46,
+        "signature": null
+      },
+      {
+        "start_line": 92,
+        "file_path": "sympy/utilities/autowrap.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CodeWrapError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.autowrap.CodeWrapError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/autowrap.py"
+          },
+          {
+            "start_node": "sympy/utilities/autowrap.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.autowrap.CodeWrapError"
+          }
+        ],
+        "similarity": 0.043092565807672456,
+        "end_line": 93,
+        "signature": null
+      },
+      {
+        "start_line": 111,
+        "file_path": "sympy/parsing/sympy_parser.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class ParenthesisGroup(list):\n    \"\"\"List of tokens representing an expression in parentheses.\"\"\"\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.parsing.sympy_parser.ParenthesisGroup",
+        "documentation": "List of tokens representing an expression in parentheses.",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/parsing/sympy_parser.py"
+          },
+          {
+            "start_node": "sympy/parsing/sympy_parser.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.parsing.sympy_parser.ParenthesisGroup"
+          }
+        ],
+        "similarity": 0.03932793403542705,
+        "end_line": 113,
+        "signature": null
+      },
+      {
+        "start_line": 341,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class InputArgument(Argument):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.InputArgument",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.InputArgument"
+          }
+        ],
+        "similarity": 0.03846819089612265,
+        "end_line": 342,
+        "signature": null
+      },
+      {
+        "start_line": 735,
+        "file_path": "sympy/utilities/codegen.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class CodeGenError(Exception):\n    pass",
+        "distance": 1.25,
+        "title": null,
+        "name": "sympy.utilities.codegen.CodeGenError",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "sympy/utilities/codegen.py"
+          },
+          {
+            "start_node": "sympy/utilities/codegen.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "sympy.utilities.codegen.CodeGenError"
+          }
+        ],
+        "similarity": 0.036837234208114016,
+        "end_line": 736,
+        "signature": null
+      },
+      {
+        "start_line": 173,
+        "file_path": "doc/ext/numpydoc.py",
+        "issue_id": null,
+        "type": "class",
+        "content": null,
+        "source_code": "class NumpyCDomain(ManglingDomainBase, CDomain):\n    name = 'np-c'\n    directive_mangling_map = {\n        'function': 'function',\n        'member': 'attribute',\n        'macro': 'function',\n        'type': 'class',\n        'var': 'object',\n    }",
+        "distance": 1.25,
+        "title": null,
+        "name": "doc.ext.numpydoc.NumpyCDomain",
+        "documentation": "",
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "doc/ext/numpydoc.py"
+          },
+          {
+            "start_node": "doc/ext/numpydoc.py",
+            "description": "contains file",
+            "type": "RELATED",
+            "end_node": "doc.ext.numpydoc.NumpyCDomain"
+          }
+        ],
+        "similarity": 0.03134750556993571,
+        "end_line": 181,
+        "signature": null
+      }
+    ],
+    "issues": [
+      {
+        "content": "```\r\nPython 3.6.0 |Continuum Analytics, Inc.| (default, Dec 23 2016, 12:22:00) \r\nType \"copyright\", \"credits\" or \"license\" for more information.\r\n\r\nIPython 5.1.0 -- An enhanced Interactive Python.\r\n?         -> Introduction and overview of IPython's features.\r\n%quickref -> Quick reference.\r\nhelp      -> Python's own help system.\r\nobject?   -> Details about 'object', use 'object??' for extra details.\r\n\r\nIn [1]: from sympy import symbols\r\n\r\nIn [2]: a = symbols('a', real=True)\r\n\r\nIn [3]: t = symbols('t', real=True, negative=False)\r\n\r\nIn [4]: bug = a * (-t + (-t + 1) * (2 * t - 1)) / (2 * t - 1)\r\n\r\nIn [5]: bug.subs(a, 1)\r\nOut[5]: (-t + (-t + 1)*(2*t - 1))/(2*t - 1)\r\n\r\nIn [6]: bug.subs(a, 1).apart()\r\nOut[6]: -t + 1/2 - 1/(2*(2*t - 1))\r\n\r\nIn [7]: bug.subs(a, 1).apart(t)\r\nOut[7]: -t + 1/2 - 1/(2*(2*t - 1))\r\n\r\nIn [8]: bug.apart(t)\r\nOut[8]: -a*t\r\n\r\nIn [9]: import sympy; sympy.__version__\r\nOut[9]: '1.0'\r\n```\nWrong result with apart\n```\r\nPython 3.6.0 |Continuum Analytics, Inc.| (default, Dec 23 2016, 12:22:00) \r\nType \"copyright\", \"credits\" or \"license\" for more information.\r\n\r\nIPython 5.1.0 -- An enhanced Interactive Python.\r\n?         -> Introduction and overview of IPython's features.\r\n%quickref -> Quick reference.\r\nhelp      -> Python's own help system.\r\nobject?   -> Details about 'object', use 'object??' for extra details.\r\n\r\nIn [1]: from sympy import symbols\r\n\r\nIn [2]: a = symbols('a', real=True)\r\n\r\nIn [3]: t = symbols('t', real=True, negative=False)\r\n\r\nIn [4]: bug = a * (-t + (-t + 1) * (2 * t - 1)) / (2 * t - 1)\r\n\r\nIn [5]: bug.subs(a, 1)\r\nOut[5]: (-t + (-t + 1)*(2*t - 1))/(2*t - 1)\r\n\r\nIn [6]: bug.subs(a, 1).apart()\r\nOut[6]: -t + 1/2 - 1/(2*(2*t - 1))\r\n\r\nIn [7]: bug.subs(a, 1).apart(t)\r\nOut[7]: -t + 1/2 - 1/(2*(2*t - 1))\r\n\r\nIn [8]: bug.apart(t)\r\nOut[8]: -a*t\r\n\r\nIn [9]: import sympy; sympy.__version__\r\nOut[9]: '1.0'\r\n```\n",
+        "distance": 0,
+        "title": "Wrong result with apart",
+        "name": "root",
+        "path": [],
+        "issue_id": "root",
+        "similarity": 2.0,
+        "type": "issue"
+      },
+      {
+        "start_line": null,
+        "file_path": null,
+        "issue_id": "12219",
+        "type": "issue",
+        "content": "https://circleci.com/\r\n\r\nIt's a little harder to set up than Travis, but it should run a lot faster. Basically, you have to create a bunch of Dockerfiles that set up and run the tests. I've not configured it before, so I don't know exactly how to do it. We'll have to figure that out. \n\n\nComment by asmeurer:\nIf someone wants to try this and they don't have permissions to enable CircleCI for sympy/sympy, just let me know and I can do it. You can also try testing it out on your fork first. \n\nComment by tanayag:\nis it to be configured using circle.yml file?? @asmeurer ",
+        "source_code": null,
+        "distance": 0.25,
+        "title": "Try out CircleCI for tests",
+        "name": "issue#12219",
+        "documentation": null,
+        "path": [
+          {
+            "start_node": "root",
+            "description": "points to issue",
+            "type": "RELATED",
+            "end_node": "issue#12219"
+          }
+        ],
+        "similarity": 0.20916199725371787,
+        "end_line": null,
+        "signature": null
+      }
+    ]
+  },
+  "artifact_stats": {
+    "skipped_due_to_time": 5,
+    "valid_related_items": 17
+  }
+}

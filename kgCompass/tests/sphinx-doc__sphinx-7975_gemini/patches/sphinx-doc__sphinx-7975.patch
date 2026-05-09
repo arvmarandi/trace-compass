@@ -1,0 +1,96 @@
+Based on the issue description and the provided code, the bug likely resides in the indexing logic where symbol characters (e.g., `@`, `£`, `←`) are incorrectly classified, leading to duplicate "Symbols" sections in the HTML output. The core problem is that the `str.isalpha()` method returns `True` for some Unicode symbols (e.g., Roman numerals, letterlike symbols), causing them to be sorted and grouped as letters instead of symbols. This results in two groups both labeled "Symbols": one for truly non-alphabetic symbols (sorted before letters) and another for letter-like symbols (sorted after letters).
+
+The fix is to use `unicodedata.category()` to reliably determine if a character belongs to the "Letter" category. The same logic applies in both the sorting key function (`keyfunc`) and the grouping key function (`keyfunc3`). We also keep the underscore as a special case.
+
+### Edits
+
+#### File: `sphinx/environment/adapters/indexentries.py`
+
+**1. Fix `keyfunc` (sorting key function)**
+
+Replace the line that checks `isalpha()` or `startswith('_')` with a check using `unicodedata.category()`.
+
+```python
+### sphinx/environment/adapters/indexentries.py
+- start_line : 60
+- end_line : 67
+<<<<<<< SEARCH
+        def keyfunc(entry: Tuple[str, List]) -> Tuple[str, str]:
+            key, (void, void, category_key) = entry
+            if category_key:
+                # using specified category key to sort
+                key = category_key
+            lckey = unicodedata.normalize('NFD', key.lower())
+            if lckey.startswith('\N{RIGHT-TO-LEFT MARK}'):
+                lckey = lckey[1:]
+            if lckey[0:1].isalpha() or lckey.startswith('_'):
+                lckey = chr(127) + lckey
+            # ensure a determinstic order *within* letters by also sorting on
+            # the entry itself
+            return (lckey, entry[0])
+=======
+        def keyfunc(entry: Tuple[str, List]) -> Tuple[str, str]:
+            key, (void, void, category_key) = entry
+            if category_key:
+                # using specified category key to sort
+                key = category_key
+            lckey = unicodedata.normalize('NFD', key.lower())
+            if lckey.startswith('\N{RIGHT-TO-LEFT MARK}'):
+                lckey = lckey[1:]
+            if (unicodedata.category(lckey[0:1])[0] == 'L' or
+                    lckey.startswith('_')):
+                lckey = chr(127) + lckey
+            # ensure a determinstic order *within* letters by also sorting on
+            # the entry itself
+            return (lckey, entry[0])
+>>>>>>> REPLACE
+```
+
+**2. Fix `keyfunc3` (grouping key function)**
+
+Replace the line that checks `isalpha()` or `== '_'` with a check using `unicodedata.category()`.
+
+```python
+### sphinx/environment/adapters/indexentries.py
+- start_line : 139
+- end_line : 150
+<<<<<<< SEARCH
+        def keyfunc3(item: Tuple[str, List]) -> str:
+            # hack: mutating the subitems dicts to a list in the keyfunc
+            k, v = item
+            v[1] = sorted(((si, se) for (si, (se, void, void)) in v[1].items()),
+                          key=keyfunc2)
+            if v[2] is None:
+                # now calculate the key
+                if k.startswith('\N{RIGHT-TO-LEFT MARK}'):
+                    k = k[1:]
+                letter = unicodedata.normalize('NFD', k[0])[0].upper()
+                if letter.isalpha() or letter == '_':
+                    return letter
+                else:
+                    # get all other symbols under one heading
+                    return _('Symbols')
+            else:
+                return v[2]
+=======
+        def keyfunc3(item: Tuple[str, List]) -> str:
+            # hack: mutating the subitems dicts to a list in the keyfunc
+            k, v = item
+            v[1] = sorted(((si, se) for (si, (se, void, void)) in v[1].items()),
+                          key=keyfunc2)
+            if v[2] is None:
+                # now calculate the key
+                if k.startswith('\N{RIGHT-TO-LEFT MARK}'):
+                    k = k[1:]
+                letter = unicodedata.normalize('NFD', k[0])[0].upper()
+                if unicodedata.category(letter)[0] == 'L' or letter == '_':
+                    return letter
+                else:
+                    # get all other symbols under one heading
+                    return _('Symbols')
+            else:
+                return v[2]
+>>>>>>> REPLACE
+```
+
+These changes ensure that only characters with a Unicode category starting with `'L'` (letters, including underscore as a special case) are treated as alphabetic. All other characters (including currency symbols, arrows, math symbols, Roman numerals, etc.) are correctly sorted and grouped under a single "Symbols" heading, preventing duplicate sections.

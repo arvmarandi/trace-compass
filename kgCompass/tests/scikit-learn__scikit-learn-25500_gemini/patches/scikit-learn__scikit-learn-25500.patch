@@ -1,0 +1,54 @@
+We need to fix `IsotonicRegression.predict` to return a numpy array regardless of the global `transform_output` config. The current implementation calls `self.transform(T)`, which under `set_config(transform_output="pandas")` returns a pandas DataFrame/Series instead of a 1D ndarray, causing a shape mismatch error in `_CalibratedClassifier.predict_proba`. The fix wraps the `transform` call with `config_context(transform_output="default")` to enforce default output format.
+
+### Changes
+
+1. **Add import for `config_context`** in `sklearn/isotonic.py`.
+2. **Modify `predict` method** to use the context manager.
+
+```python
+### sklearn/isotonic.py
+- start_line : (insert after import numpy as np)
+- end_line : (same line)
+<<<<<<< SEARCH
+import numpy as np
+=======
+import numpy as np
+from sklearn._config import config_context
+>>>>>>> REPLACE
+
+### sklearn/isotonic.py
+- start_line : 400
+- end_line : 413
+<<<<<<< SEARCH
+    def predict(self, T):
+        """Predict new data by linear interpolation.
+
+        Parameters
+        ----------
+        T : array-like of shape (n_samples,) or (n_samples, 1)
+            Data to transform.
+
+        Returns
+        -------
+        y_pred : ndarray of shape (n_samples,)
+            Transformed data.
+        """
+        return self.transform(T)
+=======
+    def predict(self, T):
+        """Predict new data by linear interpolation.
+
+        Parameters
+        ----------
+        T : array-like of shape (n_samples,) or (n_samples, 1)
+            Data to transform.
+
+        Returns
+        -------
+        y_pred : ndarray of shape (n_samples,)
+            Transformed data.
+        """
+        with config_context(transform_output="default"):
+            return self.transform(T)
+>>>>>>> REPLACE
+```

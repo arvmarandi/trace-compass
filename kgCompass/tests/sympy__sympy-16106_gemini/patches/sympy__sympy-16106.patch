@@ -1,0 +1,58 @@
+We need to add a dedicated `_print_Indexed` method to both `MathMLContentPrinter` and `MathMLPresentationPrinter` classes. Currently, `Indexed` objects fall through to the generic `_print_Basic` method, which expects to iterate over the expression's arguments using `for arg in e` (or `e.args` in some versions), but `Indexed` does not define `__iter__`, causing a `TypeError`. Adding a specific printer for `Indexed` avoids this and produces correct MathML.
+
+For the content printer, we represent an `Indexed` as a function application (`<apply>` with the base as the operator and indices as arguments). For the presentation printer, we use `<msub>` to render base with subscripts (joined by commas for multiple indices).
+
+Below are the necessary changes.
+
+---
+
+### SymPy/printing/mathml.py
+
+#### MathMLContentPrinter._print_Indexed (add after _print_Symbol)
+
+```python
+### sympy/printing/mathml.py
+- start_line : 389
+- end_line : 389
+<<<<<<< SEARCH
+        return ci
+=======
+        return ci
+
+    def _print_Indexed(self, expr):
+        x = self.dom.createElement('apply')
+        x.appendChild(self._print(expr.base))
+        for index in expr.indices:
+            x.appendChild(self._print(index))
+        return x
+>>>>>>> REPLACE
+```
+
+#### MathMLPresentationPrinter._print_Indexed (add after _print_Symbol)
+
+```python
+### sympy/printing/mathml.py
+- start_line : 844
+- end_line : 844
+<<<<<<< SEARCH
+        return x
+=======
+        return x
+
+    def _print_Indexed(self, expr):
+        msub = self.dom.createElement('msub')
+        msub.appendChild(self._print(expr.base))
+        if len(expr.indices) == 1:
+            msub.appendChild(self._print(expr.indices[0]))
+        else:
+            inner = self.dom.createElement('mrow')
+            for i, idx in enumerate(expr.indices):
+                if i > 0:
+                    mo = self.dom.createElement('mo')
+                    mo.appendChild(self.dom.createTextNode(', '))
+                    inner.appendChild(mo)
+                inner.appendChild(self._print(idx))
+            msub.appendChild(inner)
+        return msub
+>>>>>>> REPLACE
+```

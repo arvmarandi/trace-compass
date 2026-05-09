@@ -1,23 +1,70 @@
-The bug occurs because when `TEST: {"MIGRATE": False}` is set, the test database is created without running migrations, leaving it empty. However, the test runner still attempts to serialize the database contents via `serialize_db_to_string()`, which queries model tables that do not exist, causing a `ProgrammingError`. The fix ensures that serialization is skipped if migrations are disabled, by combining the `SERIALIZE` and `MIGRATE` settings.
-
-### django/test/utils.py
-- start_line : 170
-- end_line : 176
 ```python
+### django/db/backends/base/creation.py
+- start_line : 94
+- end_line : 122
 <<<<<<< SEARCH
-                    connection.creation.create_test_db(
-                        verbosity=verbosity,
-                        autoclobber=not interactive,
-                        keepdb=keepdb,
-                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', True),
-                    )
+    def serialize_db_to_string(self):
+        """
+        Serialize all data in the database into a JSON string.
+        Designed only for test runner usage; will not handle large
+        amounts of data.
+        """
+        # Iteratively return every object for all models to serialize.
+        def get_objects():
+            from django.db.migrations.loader import MigrationLoader
+            loader = MigrationLoader(self.connection)
+            for app_config in apps.get_app_configs():
+                if (
+                    app_config.models_module is not None and
+                    app_config.label in loader.migrated_apps and
+                    app_config.name not in settings.TEST_NON_SERIALIZED_APPS
+                ):
+                    for model in app_config.get_models():
+                        if (
+                            model._meta.can_migrate(self.connection) and
+                            router.allow_migrate_model(self.connection.alias, model)
+                        ):
+                            queryset = model._default_manager.using(
+                                self.connection.alias,
+                            ).order_by(model._meta.pk.name)
+                            yield from queryset.iterator()
+        # Serialize to a string
+        out = StringIO()
+        serializers.serialize("json", get_objects(), indent=None, stream=out)
+        return out.getvalue()
 =======
-                    connection.creation.create_test_db(
-                        verbosity=verbosity,
-                        autoclobber=not interactive,
-                        keepdb=keepdb,
-                        serialize=connection.settings_dict['TEST'].get('SERIALIZE', True) and
-                            connection.settings_dict['TEST'].get('MIGRATE', True),
-                    )
+    def serialize_db_to_string(self):
+        """
+        Serialize all data in the database into a JSON string.
+        Designed only for test runner usage; will not handle large
+        amounts of data.
+        """
+        # If test database creation will not apply migrations, there are no
+        # tables to serialize from.
+        if not self.connection.settings_dict['TEST'].get('MIGRATE', True):
+            return ''
+        # Iteratively return every object for all models to serialize.
+        def get_objects():
+            from django.db.migrations.loader import MigrationLoader
+            loader = MigrationLoader(self.connection)
+            for app_config in apps.get_app_configs():
+                if (
+                    app_config.models_module is not None and
+                    app_config.label in loader.migrated_apps and
+                    app_config.name not in settings.TEST_NON_SERIALIZED_APPS
+                ):
+                    for model in app_config.get_models():
+                        if (
+                            model._meta.can_migrate(self.connection) and
+                            router.allow_migrate_model(self.connection.alias, model)
+                        ):
+                            queryset = model._default_manager.using(
+                                self.connection.alias,
+                            ).order_by(model._meta.pk.name)
+                            yield from queryset.iterator()
+        # Serialize to a string
+        out = StringIO()
+        serializers.serialize("json", get_objects(), indent=None, stream=out)
+        return out.getvalue()
 >>>>>>> REPLACE
 ```

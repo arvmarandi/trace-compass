@@ -81,12 +81,6 @@ def fix_line_numbers(result_file, output_dir, instance_id):
                     continue
                 print(f'Found file {file_path} in commit {base_commit}')
 
-                directory = os.path.dirname(entity['file_path'])
-                if directory:
-                    os.makedirs(directory, exist_ok=True)
-                with open(entity['file_path'], 'w', encoding='utf-8') as f:
-                    f.write(file_content)
-
                 found, start_line, end_line, source_code = find_entity_in_content(
                     entity_type, entity, file_content, repo_name
                 )
