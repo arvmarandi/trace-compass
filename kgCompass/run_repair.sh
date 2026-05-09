@@ -155,7 +155,7 @@ echo -e "\n--- Step 4: Final Patch Generation ---"
 # Checkout the base commit so repair.py sees the buggy code, not HEAD
 BASE_COMMIT=$(python3 -c "
 from datasets import load_dataset
-ds = load_dataset('princeton-nlp/SWE-bench_Lite', split='test')
+ds = load_dataset('princeton-nlp/SWE-bench_Verified', split='test')
 row = next((r for r in ds if r['instance_id'] == '$INSTANCE_ID'), None)
 if row:
     print(row['base_commit'])
