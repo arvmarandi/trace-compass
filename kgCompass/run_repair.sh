@@ -7,6 +7,15 @@ if [[ "$DEBUG" == "1" ]]; then
 fi
 
 # --- Environment and Proxy Setup ---
+# Source shared config (one level up) if not already loaded by pipeline.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_ENV="$SCRIPT_DIR/../config.env"
+if [ -f "$CONFIG_ENV" ]; then
+    set -a
+    source "$CONFIG_ENV"
+    set +a
+fi
+
 # Add the project root to PYTHONPATH to solve module import issues without using -m.
 export PYTHONPATH=$(pwd)
 
