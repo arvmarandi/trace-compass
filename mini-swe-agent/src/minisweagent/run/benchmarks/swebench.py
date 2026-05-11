@@ -144,11 +144,11 @@ def process_instance(
     """Process a single SWEBench instance."""
     instance_id = instance["instance_id"]
     instance_dir = output_dir / instance_id
-    # avoid inconsistent state if something here fails and there's leftover previous files
     remove_from_preds_file(output_dir / "preds.json", instance_id)
     (instance_dir / f"{instance_id}.traj.json").unlink(missing_ok=True)
-    # model = get_model(config=config.get("model", {}))
-    # task = instance["problem_statement"]
+
+    model = get_model(config=config.get("model", {}))
+    task = instance["problem_statement"]
 
     progress_manager.on_instance_start(instance_id)
     progress_manager.update_instance_status(instance_id, "Pulling/starting environment")
@@ -158,116 +158,75 @@ def process_instance(
     result = None
     extra_info = {}
 
-    # Load pre-generated patch from preds.json instead of running LLM generation.
-    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
-    if _preds_path.exists():
-        _preds = json.loads(_preds_path.read_text())
-        if instance_id in _preds:
-            result = _preds[instance_id].get("model_patch", "") or ""
-            _preds_model_name = _preds[instance_id].get("model_name_or_path", "pre-generated")
-            exit_status = "Submitted" if result else None
-        else:
-            _preds_model_name = "pre-generated"
-    else:
-        _preds_model_name = "pre-generated"
-
     try:
         env = get_sb_environment(config, instance)
-        # agent = ProgressTrackingAgent(
-        #     model,
-        #     env,
-        #     progress_manager=progress_manager,
-        #     instance_id=instance_id,
-        #     **config.get("agent", {}),
-        # )
-
+        agent = ProgressTrackingAgent(
+            model,
+            env,
+            progress_manager=progress_manager,
+            instance_id=instance_id,
+            **config.get("agent", {}),
+        )
 
         # PART 1: Focal Function Localization
-        # prog_files = find_program_files(env)
-        # llm_prog_files = None # prompt llm to retrieve relevant files 
+        progress_manager.update_instance_status(instance_id, "Localizing program functions")
+        prog_files = find_program_files(env, exclude_test_files=True)
+        llm_prog_files = []
+        for _ in range(5):
+            raw = agent.run_func_loc1(task, prog_files)
+            raw = raw.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+            llm_prog_files = [f.strip(' "\'').strip() for f in raw.split('\n') if f.strip()]
+            if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10:
+                break
 
-        # # validation loop
-        # for i in range(5): # 5 iterations, at most 
-        #     # prompt llm to retrieve relevant file
-        #     llm_prog_files = agent.run_func_loc1(task, prog_files)
+        validated_prog_files = [
+            p for f in llm_prog_files
+            if (p := find_closest_paths(f, prog_files)) is not None
+        ]
+        prog_functions = find_functions(env, validated_prog_files)
+        prog_function_paths = agent.run_func_loc2(task, prog_functions)
 
-        #     # validate the paths
-        #     llm_prog_files = llm_prog_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-        #     llm_prog_files = [f.strip(' "\'').strip() for f in llm_prog_files.split('\n') if f.strip()]
+        # PART 2: Test Function Localization
+        progress_manager.update_instance_status(instance_id, "Localizing test functions")
+        test_files = find_test_files(env)
+        llm_test_files = []
+        for _ in range(5):
+            raw = agent.run_test_func_loc1(task, test_files)
+            raw = raw.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
+            llm_test_files = [f.strip(' "\'').strip() for f in raw.split('\n') if f.strip()]
+            if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10:
+                break
 
-        #     if (len(prog_files) >= 10 and len(llm_prog_files) == 10) or len(prog_files) < 10: # make sure that K files are produced
-        #         break
+        validated_test_files = [
+            p for f in llm_test_files
+            if (p := find_closest_paths(f, test_files)) is not None
+        ]
+        test_functions = find_test_functions(env, validated_test_files)
+        test_function_paths = agent.run_test_func_loc2(task, test_functions)
 
-        # validated_prog_files = []
-        # for file_path in llm_prog_files:
-        #     val_path = find_closest_paths(file_path, prog_files)
-        #     if val_path:
-        #         validated_prog_files.append(val_path)
+        # PART 3: Test Generation
+        progress_manager.update_instance_status(instance_id, "Generating reproduction tests")
+        prog_bodies = get_function_bodies(env, prog_function_paths)
+        test_bodies = get_function_bodies(env, test_function_paths)
+        info = agent.run(task, prog_bodies + "\n\n" + test_bodies)
+        exit_status = info.get("exit_status")
+        result = info.get("submission")
 
-        # # find all the functions in the selected files
-        # prog_functions = find_functions(env, validated_prog_files)
-
-        # # prompt llmn to retrieve relevant functions
-        # prog_function_paths = agent.run_func_loc2(task, prog_functions) 
-        
-
-        # # PART 2: Test Function Localization
-        # # files with tests in them
-        # test_files = find_test_files(env)
-        # llm_test_files = None
-
-        # # validation loop
-        # for i in range(5): # 5 iterations, at most 
-        #     # prompt llm to retrieve relevant file
-        #     llm_test_files = agent.run_test_func_loc1(task, test_files)
-
-        #     # validate the paths
-        #     llm_test_files = llm_test_files.replace('\\\\n', '\n').replace('\\n', '\n').strip().rstrip('\\').strip("'\"")
-        #     llm_test_files = [f.strip(' "\'').strip() for f in llm_test_files.split('\n') if f.strip()]
-
-        #     if (len(test_files) >= 10 and len(llm_test_files) == 10) or len(test_files) < 10: # make sure that K files are produced
-        #         break
-
-        # validated_files = []
-        # for file_path in llm_test_files:
-        #     val_path = find_closest_paths(file_path, test_files)
-        #     if val_path:
-        #         validated_files.append(val_path)
-
-        # # find all the functions in the selected files
-        # test_functions = find_test_functions(env, validated_files)
-
-        # # prompt llmn to retrieve relevant functions
-        # test_function_paths = agent.run_test_func_loc2(task, test_functions)
-
-        # # PART 3: Test Generation
-        # prog_bodies = get_function_bodies(env, prog_function_paths)
-        # test_bodies = get_function_bodies(env, test_function_paths)
-
-        # info = agent.run(task, prog_bodies + test_bodies)
-        # exit_status = info.get("exit_status")
-        # result = info.get("submission")
-
-        # PART 4: Generate Stack Traces and Coverage
-        if result: # if there's a patch
+        # PART 4: Generate Stack Traces
+        if result:
+            progress_manager.update_instance_status(instance_id, "Capturing stack traces")
             try:
-                apply_patch_to_env(env, result) # apply the diff
-                test_files = extract_test_files_from_patch(result) # parse the diff to extract the test file paths
-                if test_files:
+                apply_patch_to_env(env, result)
+                patch_test_files = extract_test_files_from_patch(result)
+                if patch_test_files:
                     repo_id = instance.get("repo", "")
                     version = instance.get("version", "")
-
-                    # run tests normally to capture stack traces
-                    raw_output = run_tests_in_env(env, test_files, repo_id, version)
-                    traces = extract_stack_traces(raw_output)
-                    extra_info["stack_traces"] = traces
+                    raw_output = run_tests_in_env(env, patch_test_files, repo_id, version)
+                    extra_info["stack_traces"] = extract_stack_traces(raw_output)
                     extra_info["test_output"] = raw_output
-
-                    # re-run only failing tests under sys.settrace for deep call frames
-                    settrace = run_settrace_on_failing_tests(env, raw_output, repo_id, test_files)
+                    settrace = run_settrace_on_failing_tests(env, raw_output, repo_id, patch_test_files)
                     if settrace:
                         extra_info["settrace_traces"] = settrace
-                        
             except Exception as trace_err:
                 logger.warning(f"Stack trace generation failed for {instance_id}: {trace_err}")
 
@@ -297,8 +256,7 @@ def process_instance(
                 "messages": [],
             }, indent=2))
         logger.info(f"Saved trajectory to '{traj_path}'")
-        # update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)  
-        update_preds_file(output_dir / "preds.json", instance_id, _preds_model_name, result)
+        update_preds_file(output_dir / "preds.json", instance_id, model.config.model_name, result)
         progress_manager.on_instance_end(instance_id, exit_status)
 
 
@@ -1196,16 +1154,6 @@ def main(
 
     if instance_ids:
         instances = select_instances(instances, instance_ids=instance_ids)
-
-    # Temporarily: sample 10 random instances from those covered by preds.json.
-    _preds_path = Path(__file__).parents[4] / "tmp" / "preds.json"
-    if _preds_path.exists():
-        _preds_ids = set(json.loads(_preds_path.read_text()).keys())
-        instances = [i for i in instances if i["instance_id"] in _preds_ids]
-        if len(instances) > 150:
-            random.seed(42)
-            instances = random.sample(instances, 150)
-        logger.info(f"Sampled {len(instances)} instances from preds.json")
 
     logger.info(f"Running on {len(instances)} instances...")
 

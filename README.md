@@ -1,59 +1,70 @@
-
 # TraceCompass
 
-TraceCompass is the natural extension of KGCompass, incorporating dynamic traces to inform better fault localization.
+TraceCompass extends KGCompass with dynamic execution signals derived from bug-reproducing tests, improving fault localization for automated software repair on SWE-bench.
 
+## Setup
 
+### Prerequisites
 
+- Python 3.10+
+- Docker (for SWE-bench evaluation environments)
+- A running Neo4j instance (default: `bolt://localhost:7687`)
 
-## Run Test Generation Locally
-
-Clone the project
-
-```bash
-  git clone https://github.com/arvmarandi/trace-compass.git
-```
-
-Follow mini-swe-agent's setup guide: https://mini-swe-agent.com/latest/quickstart/
-
-Generate tests
+### 1. Clone the repository
 
 ```bash
-  mini-extra swebench \                                                                  
-  --model [model_provider\model_name] \    
-  -o [output_directory] \
-  --split test \
-  --workers [num_workers]
+git clone https://github.com/arvmarandi/trace-compass.git
+cd trace-compass
 ```
 
-Convert generated tests to a SWT-Bench-compatible format
+### 2. Install dependencies
 
 ```bash
-  python3 scripts\json_cleaner.py
+./setup.sh
 ```
 
-Go to the swt-bench directory
+### 3. Configure credentials
+
+Copy the example config and fill in your credentials:
 
 ```bash
-  cd swt-bench
+cp config.env.example config.env
 ```
 
-Install dependencies
+Then edit `config.env`:
+
+```
+MODEL=deepseek/deepseek-v4-flash      # LLM in litellm format
+SUBSET=verified                        # SWE-bench subset: "verified" or "lite"
+DEEPSEEK_API_KEY=...
+GITHUB_TOKEN=...
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=...
+PARALLEL=1                             # instances to run concurrently
+```
+
+## Running Evaluations
+
+### Single instance
 
 ```bash
-  python -m venv .venv
-  source .venv/bin/activate
-  pip install -e .
+./pipeline.sh django__django-10914
 ```
 
-Run evaluations
+### Full dataset
 
 ```bash
-  python -m src.main \                                                                                                                              
-    --predictions_path ../mini-swe-agent/outputs/swt_bench_compatible.json \
-    --filter_swt \
-    --max_workers [num_workers] \
-    --run_id [iteration_num]
+./pipeline.sh all             # runs all of SWE-bench Verified
+./pipeline.sh all lite        # runs all of SWE-bench Lite
 ```
 
-The evaluation_results directory will contain all evaluation metrics.
+### Output
+
+Results are written to `kgCompass/tests/<instance_id>_<model>/`:
+- `patches/<instance_id>.patch` — generated repair patch
+- `kg_locations/` — KG-based fault locations
+- `llm_locations/` — LLM-based fault locations
+- `final_locations/` — merged fault locations
+
+Stack traces from test generation are written to `mini-swe-agent/outputs/stack-traces/<instance_id>/`.

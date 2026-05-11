@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 from bs4 import BeautifulSoup
 import requests
 import traceback
@@ -40,6 +41,120 @@ from config import (
 )
 from language_factory import LanguageConfigFactory, ParserFactory, language_by_extension, EXT_LANG_MAP
 from functools import lru_cache
+
+
+def _load_trace_scores(instance_id: str, traces_dir: str) -> dict:
+    """Load settrace data for an instance and compute per-function trace scores.
+
+    Uses all_calls filtered to call_depth <= MAX_TRACE_DEPTH, plus
+    exception_frames (always included regardless of depth). This keeps the
+    high-recall signal from all_calls while reducing noise from deeply-nested
+    utility functions that are unlikely to be buggy.
+
+    exception_frames are scored by 0.85^depth_from_innermost (0=innermost).
+    all_calls are scored by 0.85^call_depth (0=called directly from test).
+    The max score across all tests is kept per (file_path, func_name) pair.
+    """
+    MAX_TRACE_DEPTH = 10
+
+    traj_path = Path(traces_dir) / instance_id / f"{instance_id}.traj.json"
+    if not traj_path.exists():
+        print(f"No trace file found at {traj_path}, skipping trace augmentation")
+        return {}
+
+    traj = json.loads(traj_path.read_text())
+    settrace = traj.get("info", {}).get("settrace_traces", {})
+    if not settrace:
+        print(f"No settrace_traces in {traj_path}, skipping trace augmentation")
+        return {}
+
+    scores = {}  # (file_path, func_name) -> float
+    for entry in settrace.values():
+        if isinstance(entry, dict):
+            exc_frames = entry.get("exception_frames", [])
+            all_calls  = entry.get("all_calls", [])
+        else:
+            exc_frames = entry
+            all_calls  = entry
+
+        for depth_from_inner, frame in enumerate(reversed(exc_frames)):
+            key = (frame.get("file", ""), frame.get("func", ""))
+            if key[0] and key[1]:
+                scores[key] = max(scores.get(key, 0.0), 0.7 ** depth_from_inner)
+
+        for frame in all_calls:
+            call_depth = frame.get("call_depth", 0) or 0
+            if call_depth > MAX_TRACE_DEPTH:
+                continue
+            key = (frame.get("file", ""), frame.get("func", ""))
+            if key[0] and key[1]:
+                scores[key] = max(scores.get(key, 0.0), 0.85 ** call_depth)
+
+    print(f"Loaded trace scores for {len(scores)} (file, func) pairs from {traj_path}")
+    return scores
+
+
+def _normalize_trace_file_path(raw_path: str, repo_dir: str) -> str:
+    """Convert a settrace file path to a repo-relative path.
+
+    settrace paths can be absolute (/abs/.../playground/repo_dir/a/b.py)
+    or relative (playground/repo_dir/a/b.py). We strip everything up to
+    and including the repo directory, matching the format KG entities use.
+    """
+    normalized = os.path.normpath(raw_path).replace("\\", "/")
+    marker = f"playground/{repo_dir}/"
+    idx = normalized.find(marker)
+    if idx != -1:
+        return normalized[idx + len(marker):]
+    # Already relative to repo root (no playground prefix)
+    parts = normalized.split("/")
+    if parts and parts[0] == repo_dir:
+        return "/".join(parts[1:])
+    return normalized
+
+
+def _load_top_trace_candidates(instance_id: str, traces_dir: str, top_k: int = 5) -> list[dict]:
+    """Return top_k shallowest functions from all_calls as candidate dicts.
+
+    Sorted by call_depth ascending (0 = called directly from test).
+    Returns dicts compatible with the related_entities format expected by
+    fix_fl_line.py (file_path, signature, start_line, end_line, path).
+    """
+    traj_path = Path(traces_dir) / instance_id / f"{instance_id}.traj.json"
+    if not traj_path.exists():
+        return []
+    traj = json.loads(traj_path.read_text())
+    settrace = traj.get("info", {}).get("settrace_traces", {})
+    if not settrace:
+        return []
+
+    # Derive repo directory name from instance_id (e.g. django__django-12345 -> django__django)
+    repo_dir = "-".join(instance_id.split("-")[:-1])
+
+    seen: dict[str, tuple[int, str]] = {}  # func -> (min_depth, raw_file_path)
+    for entry in settrace.values():
+        calls = entry.get("all_calls", []) if isinstance(entry, dict) else entry
+        for f in calls:
+            fn = f.get("func")
+            fp = f.get("file", "")
+            d = f.get("call_depth", 999) or 999
+            if fn and (fn not in seen or d < seen[fn][0]):
+                seen[fn] = (d, fp)
+    ranked = sorted(seen.items(), key=lambda x: x[1][0])[:top_k]
+    return [
+        {
+            "name": fn,
+            "file_path": _normalize_trace_file_path(info[1], repo_dir),
+            "signature": fn,
+            "start_line": 0,
+            "end_line": 0,
+            "similarity": 0.0,
+            "source": "trace",
+            "path": [{"start_node": "root", "description": "trace candidate", "type": "TRACE", "end_node": fn}],
+        }
+        for fn, info in ranked
+    ]
+
 
 class CodeAnalyzer:
     def __init__(self, config):
@@ -128,7 +243,14 @@ class CodeAnalyzer:
             if not target_sample:
                 return
             self._process_repository(target_sample)
-            
+
+            # Augment Method nodes with stack trace scores if a traces dir was provided
+            traces_dir = self.config.get('traces_dir')
+            if traces_dir:
+                trace_scores = _load_trace_scores(self.config['instance_id'], traces_dir)
+                if trace_scores:
+                    self.kg.set_trace_scores(trace_scores)
+
             # Get related entities
             related_entities = self.kg.get_all_similarities_to_root(limit=SEARCH_SPACE, max_hops=4, sort=True)
 
@@ -140,7 +262,24 @@ class CodeAnalyzer:
             print("Related entity statistics:")
             for entity_type, entities in related_entities.items():
                 print(f"{entity_type}: {len(entities)} entities")
-            
+
+            # Union approach: append top-5 trace candidates not already in the KG top-20
+            if traces_dir:
+                kg_methods  = related_entities.get('methods', [])
+                kg_classes  = related_entities.get('classes', [])
+                top20 = sorted(kg_methods + kg_classes, key=lambda x: x.get('similarity', 0), reverse=True)[:20]
+                kg_short_names = {e.get('name', '').split('.')[-1] for e in top20}
+                trace_extras = [
+                    c for c in _load_top_trace_candidates(self.config['instance_id'], traces_dir)
+                    if c['name'] not in kg_short_names
+                ]
+                if trace_extras:
+                    print(f"Appending {len(trace_extras)} trace candidate(s) not in KG top-20: "
+                          f"{[c['name'] for c in trace_extras]}")
+                    related_entities['methods'] = kg_methods + trace_extras
+                else:
+                    print("Trace candidates fully overlap with KG top-20; no extras appended.")
+
             return {
                 'related_entities': related_entities,
                 'artifact_stats': self.artifact_stats,
@@ -1199,30 +1338,35 @@ class CodeAnalyzer:
         start_time = end_time - (7 * 24 * 60 * 60)  # Number of seconds in 7 days
         time_range = (start_time, end_time)
         
+        use_github_search = True
         if self.config['repo_name'] == 'django/django':
-            import pandas as pd
-            df = pd.read_csv('django-tickets.csv')
-            best_id = None
-            for _, row in df.iterrows():
-                title_clean = title.lower().replace('.', '').replace(' ', '')
-                issue_title_clean = row['Summary'].lower().replace('.', '').replace(' ', '')
-                same_length = pylcs.lcs(title_clean, issue_title_clean)
-                similarity = same_length / max(len(title_clean), len(issue_title_clean))
-                # Update best match
-                if similarity > max_similarity:
-                    # Potential best match, fetch to check time
-                    potential_issue = self._get_issues('django/django', issue_id=row['id'])
-                    if potential_issue: # _get_issues for Django already does time check and counting
-                        max_similarity = similarity
-                        best_id = row['id'] # Keep track of ID
-                        best_match_issue = potential_issue # Store the already time-checked issue
-                    # If potential_issue is None, it was time-skipped by _get_issues
-            # best_match_issue is now either a valid one or None
-            if best_id and not best_match_issue: # if we had a best_id but it resolved to None (time skipped)
-                 pass # Already handled by _get_issues's call to _check_and_count_artifact_time
-            elif best_match_issue: # If it's a valid issue
-                 pass # Already handled by _get_issues
-        else:
+            try:
+                import pandas as pd
+                df = pd.read_csv('django-tickets.csv')
+                use_github_search = False
+                best_id = None
+                for _, row in df.iterrows():
+                    title_clean = title.lower().replace('.', '').replace(' ', '')
+                    issue_title_clean = row['Summary'].lower().replace('.', '').replace(' ', '')
+                    same_length = pylcs.lcs(title_clean, issue_title_clean)
+                    similarity = same_length / max(len(title_clean), len(issue_title_clean))
+                    # Update best match
+                    if similarity > max_similarity:
+                        # Potential best match, fetch to check time
+                        potential_issue = self._get_issues('django/django', issue_id=row['id'])
+                        if potential_issue: # _get_issues for Django already does time check and counting
+                            max_similarity = similarity
+                            best_id = row['id'] # Keep track of ID
+                            best_match_issue = potential_issue # Store the already time-checked issue
+                        # If potential_issue is None, it was time-skipped by _get_issues
+                # best_match_issue is now either a valid one or None
+                if best_id and not best_match_issue: # if we had a best_id but it resolved to None (time skipped)
+                     pass # Already handled by _get_issues's call to _check_and_count_artifact_time
+                elif best_match_issue: # If it's a valid issue
+                     pass # Already handled by _get_issues
+            except FileNotFoundError:
+                print("django-tickets.csv not found, falling back to GitHub search for django/django")
+        if use_github_search:
             for issue in self._get_issues(self.config['repo_name'], time_range=time_range):
                 # Time check and count for each issue from search
                 if not self._check_and_count_artifact_time(issue.created_at.timestamp(), f"gh_{issue.number}"):
@@ -1498,6 +1642,10 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         benchmark_name_arg = sys.argv[4]
 
+    traces_dir_arg = None  # Optional stack-trace directory
+    if len(sys.argv) > 5:
+        traces_dir_arg = sys.argv[5]
+
     repo_name = None
     if benchmark_name_arg == 'multi-swe-bench':
         # Instance ID format: OWNER__REPO-ISSUENUMBER (e.g., apache__dubbo-10638)
@@ -1526,11 +1674,12 @@ if __name__ == "__main__":
 
     config = {
         'repo_path': f'playground/{repo_path_arg}/',
-        'repo_name': repo_name, 
+        'repo_name': repo_name,
         'repo_root': repo_name.split('/')[-1],
         'instance_id': instance_id_arg,
         'benchmark_name': benchmark_name_arg,
-        'language': 'java' if benchmark_name_arg == 'multi-swe-bench' else 'python'
+        'language': 'java' if benchmark_name_arg == 'multi-swe-bench' else 'python',
+        'traces_dir': traces_dir_arg,
     }
 
     print(f"Configuration: {config}")

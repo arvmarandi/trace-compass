@@ -903,16 +903,16 @@ def check_code_differ_by_just_empty_lines(code, prev_code) -> bool:
     return normalized_code1 == normalized_code2
 
 def extract_python_blocks(text):
-    # Regular expression pattern to match ```python\n{text}\n```
-    pattern = r"```python\n(.*?)\n```"
-
-    # Use re.findall to find all matches
+    # Capture optional ### header lines preceding each ```python block so the
+    # file name is available to split_edit_multifile_commands even when the LLM
+    # places the header outside the fenced block.
+    pattern = r"((?:### [^\n]+\n(?:- [^\n]+\n)*)\n*)?```python\n(.*?)\n```"
     matches = re.findall(pattern, text, re.DOTALL)
 
-    if len(matches) == 0:
+    if not matches:
         return [text]
 
-    return matches
+    return [header + code for header, code in matches]
 
 def split_edit_multifile_commands(commands) -> dict[str, str]:
     """Split commands based on edited files."""
@@ -930,9 +930,15 @@ def split_edit_multifile_commands(commands) -> dict[str, str]:
                     if line.startswith('### '):
                         file_name = "'" + line.replace('### ', '').strip() + "'"
                     elif line.startswith('- start_line'):
-                        start_line = int(line.split(':')[1].strip())
+                        try:
+                            start_line = int(line.split(':')[1].strip())
+                        except ValueError:
+                            pass
                     elif line.startswith('- end_line'):
-                        end_line = int(line.split(':')[1].strip())
+                        try:
+                            end_line = int(line.split(':')[1].strip())
+                        except ValueError:
+                            pass
 
             if len(subcommand.split("<<<<<<< SEARCH")) != 2:
                 continue

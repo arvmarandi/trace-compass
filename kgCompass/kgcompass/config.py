@@ -8,7 +8,7 @@ load_dotenv()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 # Bailian
-BAILIAN_API_KEY = os.getenv("GEMINI_API_KEY")
+BAILIAN_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
@@ -26,16 +26,25 @@ NORMAL_CONNECTION = WEAK_CONNECTION * CONNECTION_FACTOR
 STRONG_CONNECTION = NORMAL_CONNECTION * CONNECTION_FACTOR
 
 # Dataset Configuration
-DATASET_NAME = "princeton-nlp/SWE-bench_Lite"
+DATASET_NAME = "princeton-nlp/SWE-bench_Verified"
 
 # Graph Configuration
 DECAY_FACTOR = 0.6
 VECTOR_SIMILARITY_WEIGHT = 0.3
+TRACE_WEIGHT = 0.1  # Weight for stack trace score augmentation
 
 # API Configuration
-DEEPSEEK_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-MODEL_NAME = "gemini-2.5-flash"
-REVIEW_MODEL_NAME = "gemini-2.5-flash"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+# Derive model name from the shared MODEL env var (strip litellm provider prefix if present),
+# falling back to KGCOMPASS_MODEL or a hardcoded default.
+def _resolve_model() -> str:
+    if m := os.getenv("KGCOMPASS_MODEL"):
+        return m
+    shared = os.getenv("MODEL", "deepseek/deepseek-chat")
+    return shared.split("/")[-1]
+
+MODEL_NAME = _resolve_model()
+REVIEW_MODEL_NAME = MODEL_NAME
 
 # LLM Request Configuration
 MAX_TOKENS = 8192

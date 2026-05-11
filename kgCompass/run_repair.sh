@@ -7,6 +7,15 @@ if [[ "$DEBUG" == "1" ]]; then
 fi
 
 # --- Environment and Proxy Setup ---
+# Source shared config (one level up) if not already loaded by pipeline.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_ENV="$SCRIPT_DIR/../config.env"
+if [ -f "$CONFIG_ENV" ]; then
+    set -a
+    source "$CONFIG_ENV"
+    set +a
+fi
+
 # Add the project root to PYTHONPATH to solve module import issues without using -m.
 export PYTHONPATH=$(pwd)
 
@@ -17,8 +26,10 @@ unset all_proxy
 
 # --- Configuration ---
 INSTANCE_ID=$1
-MODEL_NAME="gemini" # Hardcoded to deepseek
+MODEL_NAME="${MODEL##*/}"  # strip provider prefix, e.g. deepseek/deepseek-v4-flash -> deepseek-v4-flash
+MODEL_NAME="${MODEL_NAME:-unknown}"
 TEMPERATURE=${TEMPERATURE:-0.3}
+TRACES_DIR=${TRACES_DIR:-"../mini-swe-agent/outputs/stack-traces"}
 
 if [ -z "$INSTANCE_ID" ]; then
   echo "Usage: $0 <instance_id>"
@@ -115,7 +126,12 @@ if [ -f "$KG_RESULT_FILE" ]; then
     echo "✅ KG location file already exists, skipping."
 else
     # Assumes fl.py writes its output to a JSON file.
-    python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
+    if [ -d "$TRACES_DIR" ]; then
+        python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR" swe-bench "$TRACES_DIR"
+    else
+        echo "⚠️  TRACES_DIR '$TRACES_DIR' not found, running without trace augmentation."
+        python kgcompass/fl.py "$INSTANCE_ID" "$REPO_IDENTIFIER" "$KG_LOCATIONS_DIR"
+    fi
     echo "✅ KG location saved to $KG_RESULT_FILE"
 fi
 
@@ -145,6 +161,29 @@ fi
 
 # Step 4: Final Patch Generation
 echo -e "\n--- Step 4: Final Patch Generation ---"
+
+# Checkout the base commit so repair.py sees the buggy code, not HEAD
+case "${SUBSET:-verified}" in
+    "verified") _DATASET="princeton-nlp/SWE-bench_Verified" ;;
+    "lite")     _DATASET="princeton-nlp/SWE-bench_Lite" ;;
+    *)          _DATASET="${SUBSET}" ;;
+esac
+BASE_COMMIT=$(python3 -c "
+from datasets import load_dataset
+ds = load_dataset('$_DATASET', split='test')
+row = next((r for r in ds if r['instance_id'] == '$INSTANCE_ID'), None)
+if row:
+    print(row['base_commit'])
+" 2>/dev/null)
+
+if [ -n "$BASE_COMMIT" ]; then
+    echo "Checking out base commit $BASE_COMMIT in $REPO_PATH"
+    git -C "$REPO_PATH" reset --hard --quiet
+    git -C "$REPO_PATH" checkout "$BASE_COMMIT" --quiet
+else
+    echo "⚠️  Could not determine base commit for $INSTANCE_ID; playground may be at wrong commit."
+fi
+
 # Note: The patch file name is determined inside repair.py, we check for its existence.
 PATCH_FILE="${PATCH_DIR}/${INSTANCE_ID}.patch"
 if [ -f "$PATCH_FILE" ]; then
