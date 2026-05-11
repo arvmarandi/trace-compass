@@ -26,7 +26,8 @@ unset all_proxy
 
 # --- Configuration ---
 INSTANCE_ID=$1
-MODEL_NAME="gemini" # Hardcoded to deepseek
+MODEL_NAME="${MODEL##*/}"  # strip provider prefix, e.g. deepseek/deepseek-v4-flash -> deepseek-v4-flash
+MODEL_NAME="${MODEL_NAME:-unknown}"
 TEMPERATURE=${TEMPERATURE:-0.3}
 TRACES_DIR=${TRACES_DIR:-"../mini-swe-agent/outputs/stack-traces"}
 
