@@ -2,6 +2,33 @@
 
 TraceCompass extends KGCompass with dynamic execution signals derived from bug-reproducing tests, improving fault localization for automated software repair on SWE-bench.
 
+## Layout
+
+```
+trace-compass/
+├── pipeline.sh                  # Top-level orchestrator: runs mini-SWT-agent then KGCompass
+├── setup.sh                     # Installs all dependencies
+├── config.env.example           # Template for credentials and runtime config
+│
+├── mini-swe-agent/              # Modified mini-SWE-agent for test generation and trace capture
+│   ├── src/minisweagent/
+│   │   └── run/benchmarks/
+│   │       └── swebench.py      # process_instance(): test gen + sys.settrace stack capture
+│   └── outputs/stack-traces/    # Per-instance trace output (all_calls, exception_frames)
+│
+├── kgCompass/                   # Fault localization and patch generation
+│   ├── kgcompass/
+│   │   ├── fl.py                # KG-based fault localization, augmented with trace scores
+│   │   ├── llm_loc.py           # LLM-based fault localization
+│   │   ├── fix_fl_line.py       # Merges KG + LLM locations, resolves line numbers
+│   │   └── repair.py            # Generates patch from final fault locations
+│   ├── run_repair.sh            # Orchestrates Steps 1–4 for a single instance
+│   ├── playground/              # Cloned repos checked out to base commits for repair
+│   └── tests/                   # Run artifacts: patches, locations, logs (gitignored)
+│
+└── SWE-bench/                   # Upstream SWE-bench evaluation harness (submodule)
+```
+
 ## Setup
 
 ### Prerequisites
