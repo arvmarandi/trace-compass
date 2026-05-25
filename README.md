@@ -2,6 +2,33 @@
 
 TraceCompass extends KGCompass with dynamic execution signals derived from bug-reproducing tests, improving fault localization for automated software repair on SWE-bench.
 
+## How It Works
+
+TraceCompass extends [KGCompass](https://arxiv.org/abs/2503.21710) with dynamic execution signals from bug-reproducing tests. The pipeline runs in three phases:
+
+1. **Test Generation (mini-SWT-agent):** Given an issue and repository, an LLM localizes relevant test and source files, then writes a fail-to-pass (F2P) test; one that fails on the buggy code and passes after the fix.
+2. **Stack Trace Capture:** The generated test runs inside Docker under `sys.settrace`, recording the call stack at the first exception and a de-duplicated list of all invoked functions.
+3. **Stack-Trace-Augmented KGCompass:** Traces augment KGCompass in two ways: (a) a depth-decayed score term boosts functions near the point of failure, and (b) the 5 shallowest trace candidates are unioned with the top-20 KG candidates to recover buggy functions absent from the graph.
+
+![Relevance score formula](assets/relevance-function.png)
+
+## Results
+
+### SWT-Bench Lite — test generation (276 instances)
+
+![mini-SWT-agent performance](assets/mini-swt-agent-performance.png)
+
+### Buggy function recall — SWE-Bench Lite (300 instances)
+
+![Buggy function recalls](assets/buggy-function-recalls.png)
+
+### Patch resolution — SWE-Bench Lite (300 instances)
+
+| Method | Resolved | % |
+|---|---|---|
+| KGCompass (baseline) | 104 | 34.6 |
+| **TraceCompass** | **122** | **40.7** |
+
 ## Layout
 
 ```
