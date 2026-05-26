@@ -2,13 +2,13 @@
 
 TraceCompass extends KGCompass with dynamic execution signals derived from bug-reproducing tests, improving fault localization for automated software repair on SWE-bench.
 
-## How It Works
+## Approach
 
 TraceCompass extends [KGCompass](https://arxiv.org/abs/2503.21710) with dynamic execution signals from bug-reproducing tests. The pipeline runs in three phases:
 
 1. **Test Generation (mini-SWT-agent):** Given an issue and repository, an LLM localizes relevant test and source files, then writes a fail-to-pass (F2P) test; one that fails on the buggy code and passes after the fix.
 2. **Stack Trace Capture:** The generated test runs inside Docker under `sys.settrace`, recording the call stack at the first exception and a de-duplicated list of all invoked functions.
-3. **Stack-Trace-Augmented KGCompass:** Traces augment KGCompass in two ways: (a) a depth-decayed score term boosts functions near the point of failure, and (b) the 5 shallowest trace candidates are unioned with the top-20 KG candidates to recover buggy functions absent from the graph.
+3. **Stack-Trace-Augmented KGCompass:** Stack traces augment KGCompass in two ways: (a) a depth-decayed score term boosts relevant functions near the point of failure, as given by the figure, and (b) the 5 shallowest trace candidates are unioned with the top-20 KG candidates to recover buggy functions absent from the graph.
 
 ![Relevance score formula](assets/relevance-function.png)
 
@@ -16,18 +16,26 @@ TraceCompass extends [KGCompass](https://arxiv.org/abs/2503.21710) with dynamic 
 
 ### SWT-Bench Lite — test generation (276 instances)
 
-![mini-SWT-agent performance](assets/mini-swt-agent-performance.png)
+| Method | Model | F2P | % |
+|---|---|---|---|
+| ZeroShot | GPT-4 | 16 | 5.8 |
+| LIBRO | GPT-4 | 42 | 15.2 |
+| SWE-Agent+ | GPT-4 | 53 | 19.2 |
+| Otter++ | GPT-4o | 80 | 29.0 |
+| AssertFlip | GPT-4o | 99 | 36.0 |
+| e-Otter++ | Claude-3.7-Sonnet | 145 | 52.5 |
+| **mini-SWT-agent** | **MiniMax2.5** | **153** | **55.4** |
 
 ### Buggy function recall — SWE-Bench Lite (300 instances)
 
-![Buggy function recalls](assets/buggy-function-recalls.png)
-
-### Patch resolution — SWE-Bench Lite (300 instances)
-
-| Method | Resolved | % |
+| | KGCompass | TraceCompass |
 |---|---|---|
-| KGCompass (baseline) | 104 | 34.6 |
-| **TraceCompass** | **122** | **40.7** |
+| Recall @1 | 14.3% | 17.2% |
+| Recall @3 | 21.8% | 27.3% |
+| Recall @5 | 30.0% | 34.0% |
+| Recall @10 | 36.4% | 38.8% |
+| Recall @20 | 44.3% | 45.9% |
+| Recall @25 | 44.3% | 52.2% |
 
 ## Layout
 
